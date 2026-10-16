@@ -4,12 +4,23 @@
     hint="分别运行两种代理，对比深层属性赋值时 set 是否被拦截。"
     @clear="clear"
   >
-    <button class="run" @click="runShallow">运行：只代理最外层</button>
-    <button class="run" @click="runDeep">运行：惰性递归 + 缓存</button>
+    <button
+      class="run"
+      @click="runShallow"
+    >
+      运行：只代理最外层
+    </button>
+    <button
+      class="run"
+      @click="runDeep"
+    >
+      运行：惰性递归 + 缓存
+    </button>
   </DemoPanel>
 </template>
 
 <script setup lang="ts">
+/* eslint-disable @typescript-eslint/no-explicit-any -- Proxy 处理器需兼容任意对象，仅用于演示 */
 import DemoPanel from './DemoPanel.vue'
 import { useDemoLog } from './useDemoLog'
 

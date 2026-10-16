@@ -1,7 +1,12 @@
 <template>
   <section class="demo">
     <h3>{{ title }}</h3>
-    <p v-if="hint" class="hint">{{ hint }}</p>
+    <p
+      v-if="hint"
+      class="hint"
+    >
+      {{ hint }}
+    </p>
 
     <!-- 演示按钮由各教程组件通过默认插槽传入 -->
     <div class="buttons">
@@ -9,19 +14,40 @@
     </div>
 
     <!-- 需要可视化交互的场景（如可点击的 DOM 结构）放在 body 插槽 -->
-    <div v-if="$slots.body" class="body">
+    <div
+      v-if="$slots.body"
+      class="body"
+    >
       <slot name="body" />
     </div>
 
     <div class="panel-head">
       <span>运行日志</span>
-      <button class="clear" @click="emit('clear')">清空</button>
+      <button
+        class="clear"
+        @click="emit('clear')"
+      >
+        清空
+      </button>
     </div>
 
-    <ul v-if="logs.length" class="logs">
-      <li v-for="(line, i) in logs" :key="i">{{ line }}</li>
+    <ul
+      v-if="logs.length"
+      class="logs"
+    >
+      <li
+        v-for="(line, i) in logs"
+        :key="i"
+      >
+        {{ line }}
+      </li>
     </ul>
-    <p v-else class="empty">暂无输出。</p>
+    <p
+      v-else
+      class="empty"
+    >
+      暂无输出。
+    </p>
   </section>
 </template>
 

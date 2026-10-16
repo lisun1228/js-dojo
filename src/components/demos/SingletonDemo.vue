@@ -4,7 +4,12 @@
     hint="多次获取实例，验证拿到的始终是同一个对象。"
     @clear="clear"
   >
-    <button class="run" @click="run">运行：getInstance 两次 + 外部 new</button>
+    <button
+      class="run"
+      @click="run"
+    >
+      运行：getInstance 两次 + 外部 new
+    </button>
   </DemoPanel>
 </template>
 

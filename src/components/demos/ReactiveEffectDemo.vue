@@ -4,7 +4,12 @@
     hint="运行后修改数据，观察 track / trigger 日志与 effect 的重新执行。"
     @clear="clear"
   >
-    <button class="run" @click="run">运行：track / trigger / effect</button>
+    <button
+      class="run"
+      @click="run"
+    >
+      运行：track / trigger / effect
+    </button>
   </DemoPanel>
 </template>
 

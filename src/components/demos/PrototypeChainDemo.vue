@@ -4,8 +4,18 @@
     hint="逐条验证原型链上的引用关系（用 Object.getPrototypeOf 代替 __proto__）。"
     @clear="clear"
   >
-    <button class="run" @click="runObject">验证：对象原型链</button>
-    <button class="run" @click="runFunction">验证：函数原型链</button>
+    <button
+      class="run"
+      @click="runObject"
+    >
+      验证：对象原型链
+    </button>
+    <button
+      class="run"
+      @click="runFunction"
+    >
+      验证：函数原型链
+    </button>
   </DemoPanel>
 </template>
 

@@ -3,7 +3,12 @@
     渲染 Markdown 文本。
     注意：v-html 插入的节点不会带 scoped 属性，所以内容样式统一用 :deep() 穿透。
   -->
-  <div class="markdown-body" v-html="html"></div>
+  <!-- eslint-disable vue/no-v-html -- 正文来自仓库内置的 md，需按 HTML 渲染 -->
+  <div
+    class="markdown-body"
+    v-html="html"
+  ></div>
+  <!-- eslint-enable vue/no-v-html -->
 </template>
 
 <script setup lang="ts">

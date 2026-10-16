@@ -4,8 +4,18 @@
     hint="在下方子组件里输入、点按钮，观察 $props / $attrs / 插槽 / 事件参数的不同。"
     @clear="clear"
   >
-    <button class="run" @click="resetName">重置父组件 name</button>
-    <button class="run" @click="handleNativeClick($event)">运行：原生事件 $event</button>
+    <button
+      class="run"
+      @click="resetName"
+    >
+      重置父组件 name
+    </button>
+    <button
+      class="run"
+      @click="handleNativeClick($event)"
+    >
+      运行：原生事件 $event
+    </button>
 
     <template #body>
       <p class="parent-line">

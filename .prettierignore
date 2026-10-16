@@ -1,0 +1,7 @@
+dist
+node_modules
+public
+package-lock.json
+
+# 教程正文是手写讲解，含大量刻意编排的示例代码，不参与自动格式化
+src/docs/**/*.md

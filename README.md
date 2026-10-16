@@ -8,14 +8,14 @@
 
 ## 技术栈
 
-| 依赖 | 版本 | 用途 |
-| --- | --- | --- |
-| Vue | ^3.5 | 框架（`<script setup>` SFC，Vue 3.5 的 `useTemplateRef` 等新 API） |
-| Vue Router | ^4.6 | 路由（history 模式 + 懒加载） |
-| TypeScript | ~6.0 | 类型检查 |
-| Vite | ^8.3 | 开发与构建 |
-| markdown-it | ^15 | Markdown → HTML |
-| highlight.js | ^11 | 代码块语法高亮 |
+| 依赖         | 版本 | 用途                                                               |
+| ------------ | ---- | ------------------------------------------------------------------ |
+| Vue          | ^3.5 | 框架（`<script setup>` SFC，Vue 3.5 的 `useTemplateRef` 等新 API） |
+| Vue Router   | ^4.6 | 路由（history 模式 + 懒加载）                                      |
+| TypeScript   | ~6.0 | 类型检查                                                           |
+| Vite         | ^8.3 | 开发与构建                                                         |
+| markdown-it  | ^15  | Markdown → HTML                                                    |
+| highlight.js | ^11  | 代码块语法高亮                                                     |
 
 ## 快速开始
 
@@ -28,6 +28,74 @@ npm run preview   # 本地预览构建产物
 ```
 
 环境要求：Node.js 20+（建议使用 LTS 版本）。
+
+## 开发规范
+
+### 一、代码书写规范
+
+为保证团队成员书写出一致的代码风格，本项目使用 eslint 约束了代码风格并会在文件进行保存时自动进行格式化修复。
+
+规则由 [eslint.config.js](eslint.config.js)（ESLint + typescript-eslint + eslint-plugin-vue + Prettier）与 [.prettierrc.json](.prettierrc.json) 共同定义。
+
+> 教程正文 `src/docs/**/*.md` 属于手写讲解、含刻意编排的示例代码，已在 [.prettierignore](.prettierignore) 中排除，不参与自动格式化。
+
+**编辑器配置（保存时自动修复）**
+
+VS Code 需安装 `Vue.volar`、`dbaeumer.vscode-eslint`、`esbenp.prettier-vscode`，并在 `.vscode/settings.json` 中开启：
+
+```json
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.validate": ["javascript", "typescript", "vue"]
+}
+```
+
+**常用命令**
+
+| 命令                   | 说明                             |
+| ---------------------- | -------------------------------- |
+| `npm run lint`         | 全量检查代码规范问题（不改文件） |
+| `npm run lint:fix`     | 全量检查并自动修复可修复的问题   |
+| `npm run format`       | 用 Prettier 格式化全仓文件       |
+| `npm run format:check` | 只校验格式，不做修改             |
+
+**提交前校验**
+
+自动修复并不能覆盖所有场景，为了保证代码的可靠性，项目还会在代码进行 git 提交时校验代码的正确性：Husky 的 `pre-commit` 钩子会对暂存文件跑一遍 eslint / Prettier 校验，如果存在未修复的代码格式错误，将会导致代码无法进行 git 提交。请手动按照 eslint 错误提示进行修复（或执行 `npm run lint:fix`）后再进行 git 提交。
+
+### 二、Git 提交规范
+
+git 提交时采用了 commitlint 规范进行格式验证，提交代码时说明信息需要符合相关规范格式才能够提交，格式为 `<type>: <subject>`。
+
+例如：本次提交是新功能开发，则填写提交信息为
+
+```
+feat: 用户管理增加编辑用户信息能力
+```
+
+常用 type：
+
+| type       | 含义                         |
+| ---------- | ---------------------------- |
+| `feat`     | 新功能                       |
+| `fix`      | 修复 bug                     |
+| `docs`     | 仅文档变更                   |
+| `style`    | 代码格式（不影响逻辑）       |
+| `refactor` | 重构（既非新功能也非修 bug） |
+| `perf`     | 性能优化                     |
+| `test`     | 测试相关                     |
+| `build`    | 构建或依赖变更               |
+| `ci`       | CI 配置变更                  |
+| `chore`    | 其他杂项                     |
+| `revert`   | 回滚提交                     |
+
+规则定义在 [commitlint.config.js](commitlint.config.js)，由 Husky 的 `commit-msg` 钩子执行校验，格式不符会被拒绝提交。
+
+commitlint 规范参考文档：<https://blog.csdn.net/weixin_41447256/article/details/124260333/>
 
 ## 目录结构
 
@@ -71,18 +139,18 @@ tutorials.ts（分类 + 教程清单）
 
 ### 现有教程
 
-| 分类 | 教程 | 路由 |
-| --- | --- | --- |
-| 设计模式 | 装饰器 + @语法糖 | `/doc/decorator` |
-| 设计模式 | 适配器模式 | `/doc/adapter` |
-| 设计模式 | 策略模式 | `/doc/strategy` |
-| 设计模式 | 单例模式 | `/doc/singleton` |
-| Vue | Props / 插槽 / $attrs | `/doc/props-slots` |
-| Vue | Proxy 与响应式 | `/doc/proxy-reactive` |
-| Vue | 响应式原理 effect | `/doc/reactive-effect` |
-| JS 原理 | 事件传播与停止 | `/doc/event-propagation` |
-| JS 原理 | 手写 call / bind | `/doc/call-bind` |
-| JS 原理 | 原型与原型链 | `/doc/prototype-chain` |
+| 分类     | 教程                  | 路由                     |
+| -------- | --------------------- | ------------------------ |
+| 设计模式 | 装饰器 + @语法糖      | `/doc/decorator`         |
+| 设计模式 | 适配器模式            | `/doc/adapter`           |
+| 设计模式 | 策略模式              | `/doc/strategy`          |
+| 设计模式 | 单例模式              | `/doc/singleton`         |
+| Vue      | Props / 插槽 / $attrs | `/doc/props-slots`       |
+| Vue      | Proxy 与响应式        | `/doc/proxy-reactive`    |
+| Vue      | 响应式原理 effect     | `/doc/reactive-effect`   |
+| JS 原理  | 事件传播与停止        | `/doc/event-propagation` |
+| JS 原理  | 手写 call / bind      | `/doc/call-bind`         |
+| JS 原理  | 原型与原型链          | `/doc/prototype-chain`   |
 
 ### 新增一篇教程
 
@@ -102,8 +170,17 @@ tutorials.ts（分类 + 教程清单）
 
 ```vue
 <template>
-  <DemoPanel :logs="logs" hint="操作提示" @clear="clear">
-    <button class="run" @click="run">运行</button>
+  <DemoPanel
+    :logs="logs"
+    hint="操作提示"
+    @clear="clear"
+  >
+    <button
+      class="run"
+      @click="run"
+    >
+      运行
+    </button>
 
     <!-- 需要可视化交互的元素（可点击的 DOM 结构等）放 body 插槽 -->
     <template #body>
@@ -126,11 +203,11 @@ const run = () => push('输出一行日志')
 
 ## 路由
 
-| 路径 | 说明 |
-| --- | --- |
-| `/` | 首页（占位） |
-| `/doc/:id` | 通用教程页，`id` 对应 `src/docs/<id>.md` |
-| `/:pathMatch(.*)*` | 404 兜底，展示请求的路径 |
+| 路径               | 说明                                     |
+| ------------------ | ---------------------------------------- |
+| `/`                | 首页（占位）                             |
+| `/doc/:id`         | 通用教程页，`id` 对应 `src/docs/<id>.md` |
+| `/:pathMatch(.*)*` | 404 兜底，展示请求的路径                 |
 
 ## 实现要点
 

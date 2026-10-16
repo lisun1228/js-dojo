@@ -14,9 +14,17 @@
     </button>
 
     <template #body>
-      <div ref="parentEl" class="node parent">
+      <div
+        ref="parentEl"
+        class="node parent"
+      >
         parent（冒泡监听）
-        <div ref="childEl" class="node child">child（点我）</div>
+        <div
+          ref="childEl"
+          class="node child"
+        >
+          child（点我）
+        </div>
       </div>
     </template>
   </DemoPanel>

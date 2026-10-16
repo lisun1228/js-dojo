@@ -4,8 +4,18 @@
     hint="两种适配器写法：对象适配器（前端最常用）与类适配器。"
     @clear="clear"
   >
-    <button class="run" @click="runObjectAdapter">运行：对象适配器</button>
-    <button class="run" @click="runClassAdapter">运行：类适配器</button>
+    <button
+      class="run"
+      @click="runObjectAdapter"
+    >
+      运行：对象适配器
+    </button>
+    <button
+      class="run"
+      @click="runClassAdapter"
+    >
+      运行：类适配器
+    </button>
   </DemoPanel>
 </template>
 

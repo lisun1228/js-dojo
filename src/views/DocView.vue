@@ -1,12 +1,23 @@
 <template>
-  <article v-if="doc" class="doc">
+  <article
+    v-if="doc"
+    class="doc"
+  >
     <!-- 正文：来自 src/docs/<id>.md -->
     <MarkdownView :content="doc.content" />
     <!-- 交互演示：来自 src/components/demos/<demo>.vue -->
-    <component :is="doc.demoComponent" v-if="doc.demoComponent" />
+    <component
+      :is="doc.demoComponent"
+      v-if="doc.demoComponent"
+    />
   </article>
 
-  <p v-else class="missing">未找到教程：{{ id }}</p>
+  <p
+    v-else
+    class="missing"
+  >
+    未找到教程：{{ id }}
+  </p>
 </template>
 
 <script setup lang="ts">

@@ -9,11 +9,23 @@
       <!-- 左侧树状导航 -->
       <aside class="sidebar">
         <div class="sidebar-inner">
-          <div v-for="group in menus" :key="group.title" class="menu-group">
+          <div
+            v-for="group in menus"
+            :key="group.title"
+            class="menu-group"
+          >
             <p class="group-title">{{ group.title }}</p>
             <ul class="tree">
-              <li v-for="item in group.items" :key="item.path" class="tree-item">
-                <RouterLink :to="item.path" class="tree-link">{{ item.title }}</RouterLink>
+              <li
+                v-for="item in group.items"
+                :key="item.path"
+                class="tree-item"
+              >
+                <RouterLink
+                  :to="item.path"
+                  class="tree-link"
+                  >{{ item.title }}</RouterLink
+                >
               </li>
             </ul>
           </div>
@@ -135,7 +147,9 @@ const menus = [
   font-size: 15px;
   color: var(--text-h);
   text-decoration: none;
-  transition: background 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s;
 }
 
 .tree-link:hover {

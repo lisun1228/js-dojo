@@ -4,9 +4,24 @@
     hint="策略集合 + Context 调用，替换掉一长串 if / else。"
     @clear="clear"
   >
-    <button class="run" @click="runDiscount">运行：会员折扣</button>
-    <button class="run" @click="addVip">运行：新增 VIP 策略</button>
-    <button class="run" @click="runValidate">运行：表单校验策略</button>
+    <button
+      class="run"
+      @click="runDiscount"
+    >
+      运行：会员折扣
+    </button>
+    <button
+      class="run"
+      @click="addVip"
+    >
+      运行：新增 VIP 策略
+    </button>
+    <button
+      class="run"
+      @click="runValidate"
+    >
+      运行：表单校验策略
+    </button>
   </DemoPanel>
 </template>
 

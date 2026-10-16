@@ -1,12 +1,21 @@
 <template>
-  <DemoPanel :logs="logs" @clear="clear">
-    <button v-for="item in demos" :key="item.name" class="run" @click="item.run">
+  <DemoPanel
+    :logs="logs"
+    @clear="clear"
+  >
+    <button
+      v-for="item in demos"
+      :key="item.name"
+      class="run"
+      @click="item.run"
+    >
       {{ item.name }}
     </button>
   </DemoPanel>
 </template>
 
 <script setup lang="ts">
+/* eslint-disable @typescript-eslint/no-explicit-any -- 装饰器需要处理任意目标，仅用于演示 */
 import DemoPanel from './DemoPanel.vue'
 import { useDemoLog } from './useDemoLog'
 

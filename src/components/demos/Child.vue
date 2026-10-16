@@ -9,16 +9,26 @@
     <p>【$attrs】{{ $attrs }}</p>
 
     <!-- 3. $slots：判断父组件有没有传入插槽 -->
-    <div v-if="$slots.default" class="slot-box">
+    <div
+      v-if="$slots.default"
+      class="slot-box"
+    >
       默认插槽：<slot />
     </div>
-    <div v-if="$slots.header" class="slot-box">
+    <div
+      v-if="$slots.header"
+      class="slot-box"
+    >
       具名 header 插槽：<slot name="header" />
     </div>
     <p v-if="!$slots.default && !$slots.header">父组件没有传入插槽</p>
 
     <!-- 4. 模板 ref：ref 拿到的是 DOM 元素本身，读它的值需要自己同步 -->
-    <input ref="inputEl" placeholder="在这里输入" @input="readValue" />
+    <input
+      ref="inputEl"
+      placeholder="在这里输入"
+      @input="readValue"
+    />
     <p>【模板 ref】tagName = {{ inputEl?.tagName }}，value = {{ inputValue }}</p>
 
     <!-- 5. 自定义事件：一次 emit 三个参数，用来观察父组件能拿到什么 -->

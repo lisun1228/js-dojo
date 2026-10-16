@@ -33,9 +33,7 @@ export const docs: DocItem[] = tutorials.map((tutorial) => {
     throw new Error(`缺少教程文档：src/docs/${tutorial.id}.md`)
   }
 
-  const loader = tutorial.demo
-    ? demoModules[`../components/demos/${tutorial.demo}.vue`]
-    : undefined
+  const loader = tutorial.demo ? demoModules[`../components/demos/${tutorial.demo}.vue`] : undefined
   if (tutorial.demo && !loader) {
     throw new Error(`缺少演示组件：src/components/demos/${tutorial.demo}.vue`)
   }

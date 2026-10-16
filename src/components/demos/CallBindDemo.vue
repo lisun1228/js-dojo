@@ -4,13 +4,29 @@
     hint="依次运行三个用例，观察 this 的指向差异。"
     @clear="clear"
   >
-    <button class="run" @click="runMyCall">运行：myCall</button>
-    <button class="run" @click="runMyBind">运行：myBind（普通调用）</button>
-    <button class="run" @click="runMyBindNew">运行：myBind + new</button>
+    <button
+      class="run"
+      @click="runMyCall"
+    >
+      运行：myCall
+    </button>
+    <button
+      class="run"
+      @click="runMyBind"
+    >
+      运行：myBind（普通调用）
+    </button>
+    <button
+      class="run"
+      @click="runMyBindNew"
+    >
+      运行：myBind + new
+    </button>
   </DemoPanel>
 </template>
 
 <script setup lang="ts">
+/* eslint-disable @typescript-eslint/no-explicit-any -- 演示手写 call/bind，运行时类型只能用 any */
 import DemoPanel from './DemoPanel.vue'
 import { useDemoLog } from './useDemoLog'
 
@@ -34,6 +50,7 @@ proto.myCall = function (this: AnyFn, ctx: any, ...args: any[]) {
 }
 
 proto.myBind = function (this: AnyFn, ctx: any, ...bindArgs: any[]) {
+  // eslint-disable-next-line @typescript-eslint/no-this-alias -- 手写 bind 需先把 this 固定下来
   const originFn = this
 
   function boundFn(this: any, ...innerArgs: any[]) {
