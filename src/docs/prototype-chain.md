@@ -1,5 +1,6 @@
 # 原型与原型链
 
+![原型与原型链示意图](/yuanxinglian.png)
 两条最基础、也最容易绕晕的规则：
 
 - 每一个**对象**都有一个隐式属性 `__proto__`（标准名 `[[Prototype]]`），指向它的**原型对象**
@@ -21,6 +22,7 @@ Person.prototype.__proto__ === Object.prototype     // true
 // 原型链终点
 Object.prototype.__proto__ === null                 // true
 ```
+
 
 ## 对象原型链
 

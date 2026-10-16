@@ -106,6 +106,7 @@ src/
 │   └── *.md                 # 每篇教程一个文件
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
+│   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
 │   └── demos/               # 各教程的交互演示
 │       ├── DemoPanel.vue    # 统一的「按钮 + 运行日志」外壳
 │       ├── useDemoLog.ts    # 日志收集 composable
@@ -164,6 +165,16 @@ tutorials.ts（分类 + 教程清单）
 
 侧边栏、路由、正文渲染都会自动跟随，不需要改其他地方。
 
+### 在正文里插图
+
+图片统一放在 `public/`，正文里用根路径引用，点击即可放大预览：
+
+```
+![原型与原型链示意图](/yuanxinglian.png)
+```
+
+正文是用 Vite `?raw` 读成字符串再交给 markdown-it 渲染的，`src/assets` 下的相对路径不会被 Vite 处理、运行时也无法解析，所以图片必须放 `public/`。
+
 ### 写一个演示组件
 
 演示统一用 `DemoPanel` 承载「按钮 + 运行日志」，样式由它提供，业务组件只关心逻辑：
@@ -213,6 +224,7 @@ const run = () => push('输出一行日志')
 
 - **Markdown 渲染**：用 Vite 的 `?raw` 把 `.md` 当字符串导入，交给 `markdown-it` 渲染；`highlight.js` 只按需注册 `ts / js / json / bash / sh / html / xml / vue / css / md`，避免整个语言包进 bundle。
 - **代码分割**：md 正文与演示组件都随 `DocView` 懒加载，主包保持精简。
+- **图片放大**：正文图片是 `v-html` 插入的，挂不上监听器，所以 `MarkdownView` 在容器上做事件委托，点击 `img` 后交给 `ImagePreview` 全屏预览；预览挂到 `body` 上，避免被 `main.content` 的 `overflow` 裁剪或页头层叠遮挡。
 - **代码块换行**：全局 `style.css` 给 `code` 设了 `display: inline-flex`，会把高亮产生的每个 `<span>` 当成 flex item 横排、丢掉换行，因此 `MarkdownView` 里把 `pre code` 重置为 `display: block`。
 - **左侧导航吸附**：`.sidebar-inner` 用 `position: sticky; top: 0`，页头滚出视口后导航停住不再跟随滚动；`.sidebar` 自身保持撑满全高，保证右侧分隔竖线完整。
 - **装饰器教程**：`tsconfig.app.json` 开启了 `experimentalDecorators`。

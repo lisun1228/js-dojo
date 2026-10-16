@@ -6,13 +6,21 @@
   <!-- eslint-disable vue/no-v-html -- 正文来自仓库内置的 md，需按 HTML 渲染 -->
   <div
     class="markdown-body"
+    @click="onContentClick"
     v-html="html"
   ></div>
   <!-- eslint-enable vue/no-v-html -->
+
+  <ImagePreview
+    v-if="previewSrc"
+    :src="previewSrc"
+    :alt="previewAlt"
+    @close="closePreview"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js/lib/core'
 
@@ -24,6 +32,8 @@ import bash from 'highlight.js/lib/languages/bash'
 import xml from 'highlight.js/lib/languages/xml'
 import css from 'highlight.js/lib/languages/css'
 import markdown from 'highlight.js/lib/languages/markdown'
+
+import ImagePreview from './ImagePreview.vue'
 
 hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('js', javascript)
@@ -60,6 +70,23 @@ const md = new MarkdownIt({
 })
 
 const html = computed(() => md.render(props.content))
+
+/* ---------- 正文图片点击放大 ---------- */
+
+// 图片是 v-html 动态插入的，挂不上监听器，所以在容器上做事件委托
+const previewSrc = ref('')
+const previewAlt = ref('')
+
+const onContentClick = (event: MouseEvent) => {
+  const target = event.target
+  if (!(target instanceof HTMLImageElement)) return
+  previewSrc.value = target.currentSrc || target.src
+  previewAlt.value = target.alt
+}
+
+const closePreview = () => {
+  previewSrc.value = ''
+}
 </script>
 
 <style scoped>
@@ -144,6 +171,16 @@ const html = computed(() => md.render(props.content))
   margin: 24px 0;
   border: none;
   border-top: 1px solid var(--border);
+}
+
+/* ---------- 图片 ---------- */
+.markdown-body :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 14px;
+  /* 提示可点击放大 */
+  cursor: zoom-in;
 }
 
 /* ---------- 行内代码 ---------- */
