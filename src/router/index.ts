@@ -11,7 +11,7 @@ const routes = [
     component: () => import('../views/HomeView.vue'),
   },
   {
-    // 通用教程页：id 对应 src/docs/<id>.md
+    // 通用教程页：id 对应 src/docs/<分类目录>/<id>.md
     // 分类与清单见 src/router/tutorials.ts，正文装配见 src/docs/index.ts
     path: '/doc/:id',
     name: 'doc',

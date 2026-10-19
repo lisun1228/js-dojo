@@ -3,7 +3,7 @@
     v-if="doc"
     class="doc"
   >
-    <!-- 正文：来自 src/docs/<id>.md -->
+    <!-- 正文：来自 src/docs/<分类目录>/<id>.md -->
     <MarkdownView :content="doc.content" />
     <!-- 交互演示：来自 src/components/demos/<demo>.vue -->
     <component

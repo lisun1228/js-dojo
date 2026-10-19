@@ -7,8 +7,8 @@ import { tutorials } from '../router/tutorials'
  * 变成「正文 + 演示组件」，供 DocView 渲染。
  */
 
-/** 正文：src/docs/<id>.md，用 Vite 的 ?raw 在编译期读成字符串 */
-const mdModules = import.meta.glob('./*.md', {
+/** 正文：src/docs/<分类目录>/<id>.md，用 Vite 的 ?raw 在编译期读成字符串 */
+const mdModules = import.meta.glob('./**/*.md', {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -28,9 +28,11 @@ export interface DocItem {
 }
 
 export const docs: DocItem[] = tutorials.map((tutorial) => {
-  const content = mdModules[`./${tutorial.id}.md`]
+  // 分类目录 + id 由 tutorials.ts 的 categories 统一维护
+  const file = `${tutorial.dir}/${tutorial.id}.md`
+  const content = mdModules[`./${file}`]
   if (content === undefined) {
-    throw new Error(`缺少教程文档：src/docs/${tutorial.id}.md`)
+    throw new Error(`缺少教程文档：src/docs/${file}`)
   }
 
   const loader = tutorial.demo ? demoModules[`../components/demos/${tutorial.demo}.vue`] : undefined

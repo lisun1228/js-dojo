@@ -101,9 +101,11 @@ commitlint 规范参考文档：<https://blog.csdn.net/weixin_41447256/article/d
 
 ```
 src/
-├── docs/                    # 教程正文
+├── docs/                    # 教程正文，按分类分目录（目录名 = tutorials.ts 的 dir）
 │   ├── index.ts             # 装配层：按清单加载 md 与演示组件
-│   └── *.md                 # 每篇教程一个文件
+│   ├── design-patterns/     # 设计模式
+│   ├── vue/                 # Vue
+│   └── js-principles/       # JS 原理
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
@@ -133,29 +135,30 @@ src/
 tutorials.ts（分类 + 教程清单）
    ├─ tutorialMenus  →  App.vue 左侧导航
    ├─ /doc/:id       →  DocView.vue 按 id 取内容
-   └─ tutorials      →  docs/index.ts 装配 md 正文 + 演示组件
+   └─ tutorials      →  docs/index.ts 按 dir + id 装配 src/docs/<dir>/<id>.md
 ```
 
-分类（标题、顺序、归属）只在这个文件里定义一次，改分类名只需改一处。
+分类的**目录名**（`dir`，英文 kebab-case）与**中文名**（`title`）只在 `categories` 里定义一次：`dir` 决定文档位置，`title` 用于侧边栏分组，改分类名只需改一处。
 
 ### 现有教程
 
-| 分类     | 教程                  | 路由                     |
-| -------- | --------------------- | ------------------------ |
-| 设计模式 | 装饰器 + @语法糖      | `/doc/decorator`         |
-| 设计模式 | 适配器模式            | `/doc/adapter`           |
-| 设计模式 | 策略模式              | `/doc/strategy`          |
-| 设计模式 | 单例模式              | `/doc/singleton`         |
-| Vue      | Props / 插槽 / $attrs | `/doc/props-slots`       |
-| Vue      | Proxy 与响应式        | `/doc/proxy-reactive`    |
-| Vue      | 响应式原理 effect     | `/doc/reactive-effect`   |
-| JS 原理  | 事件传播与停止        | `/doc/event-propagation` |
-| JS 原理  | 手写 call / bind      | `/doc/call-bind`         |
-| JS 原理  | 原型与原型链          | `/doc/prototype-chain`   |
+| 分类     | 教程                        | 路由                     |
+| -------- | --------------------------- | ------------------------ |
+| 设计模式 | 装饰器 + @语法糖            | `/doc/decorator`         |
+| 设计模式 | 适配器模式                  | `/doc/adapter`           |
+| 设计模式 | 策略模式                    | `/doc/strategy`          |
+| 设计模式 | 单例模式                    | `/doc/singleton`         |
+| Vue      | Props / 插槽 / $attrs       | `/doc/props-slots`       |
+| Vue      | Proxy 与响应式              | `/doc/proxy-reactive`    |
+| Vue      | 响应式原理 effect           | `/doc/reactive-effect`   |
+| Vue      | Vue3 Diff算法原理（面试版） | `/doc/diff-algorithm`    |
+| JS 原理  | 事件传播与停止              | `/doc/event-propagation` |
+| JS 原理  | 手写 call / bind            | `/doc/call-bind`         |
+| JS 原理  | 原型与原型链                | `/doc/prototype-chain`   |
 
 ### 新增一篇教程
 
-1. 在 `src/docs/` 下新建 `<id>.md` 作为正文（首行用 `# 标题`）
+1. 在 `src/docs/<dir>/` 下新建 `<id>.md` 作为正文（`dir` 取目标分类的 `dir`，首行用 `# 标题`）
 2. 需要交互演示的话，在 `src/components/demos/` 下新建 `<Xxx>Demo.vue`
 3. 在 `src/router/tutorials.ts` 对应分类里加一条记录：
 
@@ -163,7 +166,7 @@ tutorials.ts（分类 + 教程清单）
 { id: 'xxx', title: '菜单标题', demo: 'XxxDemo' }
 ```
 
-侧边栏、路由、正文渲染都会自动跟随，不需要改其他地方。
+文档路径由分类的 `dir` 和教程的 `id` 拼出（`src/docs/<dir>/<id>.md`），侧边栏、路由、正文渲染都会自动跟随，不需要改其他地方。新增分类时在 `categories` 里同时补上 `dir`（英文目录名）与 `title`（中文名），并在 `src/docs/` 下建好同名目录。
 
 ### 在正文里插图
 
@@ -214,11 +217,11 @@ const run = () => push('输出一行日志')
 
 ## 路由
 
-| 路径               | 说明                                     |
-| ------------------ | ---------------------------------------- |
-| `/`                | 首页（占位）                             |
-| `/doc/:id`         | 通用教程页，`id` 对应 `src/docs/<id>.md` |
-| `/:pathMatch(.*)*` | 404 兜底，展示请求的路径                 |
+| 路径               | 说明                                           |
+| ------------------ | ---------------------------------------------- |
+| `/`                | 首页（占位）                                   |
+| `/doc/:id`         | 通用教程页，`id` 对应 `src/docs/<dir>/<id>.md` |
+| `/:pathMatch(.*)*` | 404 兜底，展示请求的路径                       |
 
 ## 实现要点
 
