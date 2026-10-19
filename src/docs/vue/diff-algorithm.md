@@ -35,8 +35,8 @@
 2. 遍历旧节点，在map里查找：
    - 找不到：说明**旧节点需要删除**
    - 找到：记录旧节点在新数组中的下标，生成`newIndexToOldIndex`数组
-3. 这个数组代表**旧节点在新序列里的位置**
-   > 关键：**最长递增子序列**
+3. 这个数组记录**新位置上的节点在旧数组中的下标**
+   > 关键：**最长递增子序列**（下一节详细展开）
    - 递增子序列：代表节点**相对顺序不变，不需要移动，可以直接复用**
    - 不在最长递增子序列里的节点：**需要移动**
 
@@ -49,14 +49,168 @@
 - 存在但不在递增序列：移动节点
 - 旧节点多余：删除
 
-## 四、key的作用（和前面v-for知识点联动）
+## 四、最长递增子序列（LIS）详解
+
+> Vue3 快速 diff 的核心就是 LIS：**找出一组节点里，哪些节点相对顺序不变、不需要移动 DOM**。
+
+### 1. 子序列 ≠ 子数组
+
+- 子数组：连续的一段
+- 子序列：不要求连续，只要保持原有先后顺序即可
+
+### 2. 基础定义
+
+给定一个数字数组，找出**最长**的子序列，满足后面的数字 > 前面的数字（严格递增）。
+
+示例：`arr = [3, 2, 7, 4, 5, 6]`
+
+- 可选的递增子序列：`[3, 7]`、`[2, 4, 5, 6]`
+- **最长递增子序列：`[2, 4, 5, 6]`，长度 4**
+
+放到 Vue3 diff 里，数组里存的是**旧节点在新数组中的下标**：下标递增，说明这些节点在旧序列里的先后顺序，在新序列里依然保持不变，**不需要移动 DOM**；不在 LIS 里的节点才需要移动。
+
+### 3. 两种解法
+
+| 解法        | 复杂度     | 说明                         |
+| ----------- | ---------- | ---------------------------- |
+| 动态规划 DP | O(n²)      | 好理解，但双重循环，Vue 不用 |
+| 贪心 + 二分 | O(n log n) | Vue3 源码采用                |
+
+#### ① DP 版本（方便理解原理）
+
+`dp[i]` 表示以第 i 个元素结尾的最长递增子序列长度：
+
+```js
+function lisDP(arr) {
+  const dp = new Array(arr.length).fill(1)
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (arr[i] > arr[j]) {
+        dp[i] = Math.max(dp[i], dp[j] + 1)
+      }
+    }
+  }
+  return dp
+}
+```
+
+缺点：n 很大时是双重循环，性能差。Vue 的列表可能很长，所以不用。
+
+#### ② 贪心 + 二分（Vue 源码同款）
+
+> 核心思想：维护一个 `tails` 数组，`tails[k]` 表示**长度为 k+1 的递增子序列里末尾最小的数字**。末尾越小，后面越容易接上更大的数字。
+
+遍历每一项 x：
+
+1. x > tails 最后一个元素 → 直接追加到末尾（子序列变长）
+2. x ≤ tails 最后一个元素 → 在 tails 里找到**第一个 ≥ x 的位置**，替换成 x（贪心，让末尾更小）
+3. 遍历结束，`tails` 的长度就是 LIS 的**长度**
+
+示例 `arr = [3, 2, 7, 4, 5, 6]`：
+
+- x=3 → tails=`[3]`
+- x=2 → 第一个 ≥2 的是 3，替换 → tails=`[2]`
+- x=7 → 7>2，追加 → tails=`[2, 7]`
+- x=4 → 第一个 ≥4 的是 7，替换 → tails=`[2, 4]`
+- x=5 → 追加 → tails=`[2, 4, 5]`
+- x=6 → 追加 → tails=`[2, 4, 5, 6]`
+
+最终 tails 长度为 4，LIS 长度为 4。
+
+> ⚠️ `tails` **本身不是 LIS 结果**，它只能求长度。要拿到原始数组中哪些下标属于 LIS，还需要额外回溯（记录每个元素的前驱）。
+
+### 4. 在 diff 里怎么用
+
+旧子节点 `[a, b, c, d]` → 新子节点 `[a, d, b, c]`：
+
+1. 头尾预处理：头部 a 匹配，剩旧 `[b, c, d]`、新 `[d, b, c]`
+2. 建立 key → 新下标映射，遍历旧节点，得到 `newIndexToOldIndex = [3, 1, 2]`（新位置上的节点在旧数组里的下标）
+3. 对 `[3, 1, 2]` 求 LIS 得 `[1, 2]`，对应 b、c
+4. b、c 在新旧序列里相对顺序没变 → **不移动**；d 不在 LIS 里 → **移动**
+
+> 为什么这么做：DOM 移动开销大，我们希望**移动的节点数量尽可能少**。最长递增子序列，就是能保持不动的最多节点集合。
+
+### 5. Vue 同款 getLIS（带回溯，返回标记数组）
+
+```js
+/**
+ * 最长递增子序列（LIS），Vue3 用的 O(n log n) 算法
+ * @param {number[]} arr newIndexToOldIndex 数组
+ * @returns {boolean[]} 标记每个位置是否属于 LIS，true = 不需要移动
+ */
+function getLIS(arr) {
+  const tails = [] // tails[k]：长度为 k+1 的递增子序列，末尾元素在 arr 里的下标
+  const prev = new Array(arr.length).fill(-1) // prev[i]：arr[i] 在 LIS 中的前驱下标
+
+  for (let i = 0; i < arr.length; i++) {
+    const val = arr[i]
+    if (val === -1) continue // -1 代表新增节点，不参与 LIS
+
+    // 二分查找第一个 >= val 的位置
+    let left = 0
+    let right = tails.length
+    while (left < right) {
+      const mid = (left + right) >> 1
+      if (arr[tails[mid]] < val) left = mid + 1
+      else right = mid
+    }
+
+    // 记录前驱：接在长度为 left 的子序列后面
+    if (left > 0) prev[i] = tails[left - 1]
+    if (left === tails.length) tails.push(i)
+    else tails[left] = i
+  }
+
+  // 回溯：从 LIS 末尾元素沿 prev 链标记
+  const res = new Array(arr.length).fill(false)
+  let p = tails.length ? tails[tails.length - 1] : -1
+  while (p !== -1) {
+    res[p] = true
+    p = prev[p]
+  }
+  return res
+}
+```
+
+```js
+// 测试
+const arr = [3, 1, 2]
+console.log(getLIS(arr)) // [false, true, true]
+// 索引 0：false，d 需要移动；索引 1、2：true，b、c 原地不动
+```
+
+### 6. 高频追问
+
+**Q：为什么要用 LIS，而不是别的？**
+
+A：目标是让**尽可能多的节点保持原有相对顺序不移动**。LIS 就是能找出最多这样的节点，剩下的移动，移动次数最小。
+
+**Q：数组里明明是数字递增，为什么就代表 DOM 顺序不变？**
+
+A：数组元素是**旧数组的下标**。新序列里这些旧下标保持递增，说明旧 DOM 里 b 在 c 前面，新 DOM 里 b 依然在 c 前面，相对顺序没变，不用移动。
+
+**Q：LIS 只解决节点移动，那新增和删除谁处理？**
+
+A：新增、删除在求 LIS 之前就标记好了（`newIndexToOldIndex` 里的 `-1` 就是新增节点）。LIS **只管可复用节点里哪些需要移动**。
+
+**Q：Vue2 双端 diff 和 Vue3 快速 diff 的区别？**
+
+Vue2：双端比较，最多 4 个端点逐个比对，遇到需要移动的节点直接移动。
+
+Vue3：头尾预处理后，剩下的节点用 LIS 算出最少移动节点，**移动次数更少，性能更好**。
+
+### 7. 一句话总结
+
+> Vue3 快速 diff 拿到 `newIndexToOldIndex` 数组（存的是新节点对应的旧节点下标），对它求最长递增子序列：序列里的节点相对顺序不变，不需要移动 DOM；其余节点执行移动。用贪心 + 二分把复杂度降到 O(n log n)。
+
+## 五、key的作用（和前面v-for知识点联动）
 `key`是节点唯一标识：
 1. Diff依靠key判断**是不是同一个节点**，key相同才尝试复用DOM；
 2. 不用key，或者用index当key：会出现节点复用错误，状态错乱（输入框内容串位）。
 
 > ❌ index当key风险：数组中间删除/插入元素，后面index全部变化，diff会误判节点，错误复用DOM。
 
-## 五、简单伪代码思路（面试口述加分）
+## 六、简单伪代码思路（面试口述加分）
 ```js
 function diffChildren(n1, n2) {
   // 1. 头部同步
@@ -75,13 +229,13 @@ function diffChildren(n1, n2) {
 }
 ```
 
-## 六、高频面试坑点
+## 七、高频面试坑点
 1. Diff**不会跨层级对比**，如果节点层级变了，直接销毁重建；
 2. Diff是**虚拟DOM之间的对比**，不是对比真实DOM；
 3. Vue3不是全部场景都要算最长递增子序列，头尾预处理已经覆盖大部分场景；
 4. 最长递增子序列只解决**节点移动**，不处理节点属性修改（属性在patch阶段处理）。
 
-## 七、整体链路
+## 八、整体链路
 数据更新 → 触发effect → 执行render生成新VNode → `patch`打补丁 → 内部调用diff对比子节点 → 执行真实DOM增删改。
 
 ---
@@ -91,33 +245,39 @@ function diffChildren(n1, n2) {
 
 ```js
 /**
- * 最长递增子序列（LIS），Vue3用的O(nlogn)算法
- * @param {number[]} arr 索引数组
- * @returns {number[]} 子序列下标
+ * 最长递增子序列（LIS），Vue3 用的 O(n log n) 算法
+ * @param {number[]} arr newIndexToOldIndex 数组
+ * @returns {boolean[]} 标记每个位置是否属于 LIS，true = 不需要移动
  */
 function getLIS(arr) {
-  const tails = []
-  const indices = []
+  const tails = [] // tails[k]：长度为 k+1 的递增子序列，末尾元素在 arr 里的下标
+  const prev = new Array(arr.length).fill(-1) // prev[i]：arr[i] 在 LIS 中的前驱下标
+
   for (let i = 0; i < arr.length; i++) {
     const val = arr[i]
-    if (val === -1) continue
-    let left = 0, right = tails.length
+    if (val === -1) continue // -1 代表新增节点，不参与 LIS
+
+    // 二分查找第一个 >= val 的位置
+    let left = 0
+    let right = tails.length
     while (left < right) {
       const mid = (left + right) >> 1
-      if (tails[mid] < val) left = mid + 1
+      if (arr[tails[mid]] < val) left = mid + 1
       else right = mid
     }
-    if (left === tails.length) tails.push(val)
-    else tails[left] = val
-    indices[left] = i
+
+    // 记录前驱：接在长度为 left 的子序列后面
+    if (left > 0) prev[i] = tails[left - 1]
+    if (left === tails.length) tails.push(i)
+    else tails[left] = i
   }
-  // 回溯
-  let len = tails.length
-  let p = indices[len - 1]
+
+  // 回溯：从 LIS 末尾元素沿 prev 链标记
   const res = new Array(arr.length).fill(false)
-  while (len-- > 0) {
+  let p = tails.length ? tails[tails.length - 1] : -1
+  while (p !== -1) {
     res[p] = true
-    p = indices[p - 1]
+    p = prev[p]
   }
   return res
 }
@@ -243,6 +403,9 @@ quickDiff(old2, new2)
 ```
 
 ## 运行输出
+
+> 中间区域是从后往前遍历新节点的，所以移动场景的日志顺序也是倒序。
+
 ```
 ===== 快速Diff执行结果 =====
 【头部复用】key:A
@@ -254,8 +417,8 @@ quickDiff(old2, new2)
 
 ===== 移动场景测试 =====
 【头部复用】key:a
-【原地复用，无需移动】key:b
 【原地复用，无需移动】key:c
+【原地复用，无需移动】key:b
 【移动节点】key:d
 ```
 
