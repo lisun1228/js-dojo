@@ -12,6 +12,31 @@
       content="width=device-width, initial-scale=1.0"
     />
     <title>JS 道场</title>
+    <!--
+      首屏防闪烁：在样式加载前先把持久化的主题挂到 <html> 上。
+      主题 id 与 src/stores/theme.ts 的 themeOptions 保持一致（含 mode）。
+    -->
+    <script>
+      ;(function () {
+        var modes = {
+          purple: 'light',
+          night: 'dark',
+          sakura: 'light',
+          forest: 'light',
+          ocean: 'light',
+        }
+        var current = 'purple'
+        try {
+          var saved = JSON.parse(localStorage.getItem('js-dojo-theme') || '{}')
+          if (saved && modes[saved.current]) current = saved.current
+        } catch (error) {
+          /* localStorage 不可用或被写坏时忽略，走默认主题 */
+        }
+        var root = document.documentElement
+        root.dataset.theme = current
+        root.dataset.mode = modes[current]
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

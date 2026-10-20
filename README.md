@@ -8,14 +8,16 @@
 
 ## 技术栈
 
-| 依赖         | 版本 | 用途                                                               |
-| ------------ | ---- | ------------------------------------------------------------------ |
-| Vue          | ^3.5 | 框架（`<script setup>` SFC，Vue 3.5 的 `useTemplateRef` 等新 API） |
-| Vue Router   | ^4.6 | 路由（history 模式 + 懒加载）                                      |
-| TypeScript   | ~6.0 | 类型检查                                                           |
-| Vite         | ^8.3 | 开发与构建                                                         |
-| markdown-it  | ^15  | Markdown → HTML                                                    |
-| highlight.js | ^11  | 代码块语法高亮                                                     |
+| 依赖                        | 版本 | 用途                                                               |
+| --------------------------- | ---- | ------------------------------------------------------------------ |
+| Vue                         | ^3.5 | 框架（`<script setup>` SFC，Vue 3.5 的 `useTemplateRef` 等新 API） |
+| Vue Router                  | ^4.6 | 路由（history 模式 + 懒加载）                                      |
+| Pinia                       | ^4.1 | 状态管理（主题切换）                                               |
+| pinia-plugin-persistedstate | ^4.7 | Pinia 状态持久化到 localStorage                                    |
+| TypeScript                  | ~6.0 | 类型检查                                                           |
+| Vite                        | ^8.3 | 开发与构建                                                         |
+| markdown-it                 | ^15  | Markdown → HTML                                                    |
+| highlight.js                | ^11  | 代码块语法高亮                                                     |
 
 ## 快速开始
 
@@ -112,10 +114,13 @@ src/
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
+│   ├── ThemeSwitcher.vue    # 页头主题色块切换器
 │   └── demos/               # 各教程的交互演示
 │       ├── DemoPanel.vue    # 统一的「按钮 + 运行日志」外壳
 │       ├── useDemoLog.ts    # 日志收集 composable
 │       └── *Demo.vue
+├── stores/
+│   └── theme.ts             # 主题清单与当前主题（pinia + 持久化）
 ├── router/
 │   ├── tutorials.ts         # ★ 教程分类与清单（唯一数据源）
 │   └── index.ts             # 路由表
@@ -125,7 +130,7 @@ src/
 │   └── NotFound.vue         # 404 兜底
 ├── App.vue                  # 布局：页头 + 左侧分类导航 + 内容区
 ├── main.ts                  # 入口
-└── style.css                # 全局样式与主题变量（含深色模式）
+└── style.css                # 全局样式与多主题变量（data-theme 驱动）
 ```
 
 ## 教程体系

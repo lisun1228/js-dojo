@@ -1,22 +1,14 @@
+/*
+ * 主题变量：data-theme 由 src/stores/theme.ts 写到 <html> 上。
+ * 新增主题时，在这里补一组 [data-theme='<id>']，并同步 stores 里的 themeOptions。
+ */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
-  color-scheme: light dark;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -29,23 +21,83 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+/* 道场紫（默认） */
+[data-theme='purple'] {
+  color-scheme: light;
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --social-bg: rgba(244, 243, 236, 0.5);
+  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+}
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+/* 暗夜 */
+[data-theme='night'] {
+  color-scheme: dark;
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --bg: #16171d;
+  --border: #2e303a;
+  --code-bg: #1f2028;
+  --accent: #c084fc;
+  --accent-bg: rgba(192, 132, 252, 0.15);
+  --accent-border: rgba(192, 132, 252, 0.5);
+  --social-bg: rgba(47, 48, 58, 0.5);
+  --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+}
+
+/* 樱粉 */
+[data-theme='sakura'] {
+  color-scheme: light;
+  --text: #6f5863;
+  --text-h: #2a1018;
+  --bg: #fff8fa;
+  --border: #f3dbe3;
+  --code-bg: #fdf0f4;
+  --accent: #e0447f;
+  --accent-bg: rgba(224, 68, 127, 0.1);
+  --accent-border: rgba(224, 68, 127, 0.45);
+  --social-bg: rgba(253, 240, 244, 0.6);
+  --shadow: rgba(224, 68, 127, 0.12) 0 10px 15px -3px, rgba(224, 68, 127, 0.06) 0 4px 6px -2px;
+}
+
+/* 森绿 */
+[data-theme='forest'] {
+  color-scheme: light;
+  --text: #4f6357;
+  --text-h: #0d1f14;
+  --bg: #f9fdfa;
+  --border: #dcebe1;
+  --code-bg: #eff7f1;
+  --accent: #16a34a;
+  --accent-bg: rgba(22, 163, 74, 0.1);
+  --accent-border: rgba(22, 163, 74, 0.45);
+  --social-bg: rgba(239, 247, 241, 0.6);
+  --shadow: rgba(22, 163, 74, 0.12) 0 10px 15px -3px, rgba(22, 163, 74, 0.06) 0 4px 6px -2px;
+}
+
+/* 海蓝 */
+[data-theme='ocean'] {
+  color-scheme: light;
+  --text: #4b6070;
+  --text-h: #071a26;
+  --bg: #f7fbff;
+  --border: #d9e8f4;
+  --code-bg: #eef6fc;
+  --accent: #0e7fd6;
+  --accent-bg: rgba(14, 127, 214, 0.1);
+  --accent-border: rgba(14, 127, 214, 0.45);
+  --social-bg: rgba(238, 246, 252, 0.6);
+  --shadow: rgba(14, 127, 214, 0.12) 0 10px 15px -3px, rgba(14, 127, 214, 0.06) 0 4px 6px -2px;
+}
+
+[data-mode='dark'] #social .button-icon {
+  filter: invert(1) brightness(2);
 }
 
 body {

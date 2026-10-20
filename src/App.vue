@@ -1,8 +1,9 @@
 <template>
   <div class="layout">
-    <!-- 头部总标题 -->
+    <!-- 头部总标题 + 主题切换 -->
     <header class="header">
       <h1 class="title">JS 道场</h1>
+      <ThemeSwitcher />
     </header>
 
     <div class="container">
@@ -41,6 +42,7 @@
 
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import { tutorialMenus } from './router'
 
 // 左侧导航菜单，按分组构成树状结构
@@ -67,6 +69,10 @@ const menus = [
 }
 
 .header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 14px 24px;
   border-bottom: 1px solid var(--border);
 }

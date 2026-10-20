@@ -122,15 +122,14 @@ const closePreview = () => {
   --hl-attr: #953800;
 }
 
-@media (prefers-color-scheme: dark) {
-  .markdown-body {
-    --hl-comment: #8b949e;
-    --hl-keyword: #ff7b72;
-    --hl-string: #a5d6ff;
-    --hl-number: #79c0ff;
-    --hl-title: #d2a8ff;
-    --hl-attr: #ffa657;
-  }
+/* 暗色主题下换一套高亮配色，data-mode 由主题 store 写到 <html> 上 */
+[data-mode='dark'] .markdown-body {
+  --hl-comment: #8b949e;
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-number: #79c0ff;
+  --hl-title: #d2a8ff;
+  --hl-attr: #ffa657;
 }
 
 /* ---------- 标题 ---------- */
@@ -216,14 +215,13 @@ const closePreview = () => {
   display: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  .markdown-body :deep(.mermaid-diagram__light) {
-    display: none;
-  }
+/* 构建期会渲染明暗两版 SVG，暗色主题下切到暗色版 */
+[data-mode='dark'] .markdown-body :deep(.mermaid-diagram__light) {
+  display: none;
+}
 
-  .markdown-body :deep(.mermaid-diagram__dark) {
-    display: block;
-  }
+[data-mode='dark'] .markdown-body :deep(.mermaid-diagram__dark) {
+  display: block;
 }
 
 /* ---------- 行内代码 ---------- */
