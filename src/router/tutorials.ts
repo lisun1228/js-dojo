@@ -56,6 +56,14 @@ export const categories: TutorialCategory[] = [
       { id: 'diff-algorithm', title: 'Vue3 Diff算法原理（面试版）' },
       { id: 'pinia-vuex', title: 'Pinia 与 Vuex 完全指南' },
       { id: 'keep-alive', title: 'Vue 中 keep-alive 详解与面试回答模板' },
+      { id: 'slots', title: 'Vue 插槽 slot 详解与面试回答' },
+      {
+        id: 'custom-directive',
+        title: 'Vue 自定义指令详解与面试回答',
+        demo: 'CustomDirectiveDemo',
+      },
+      { id: 'router-mode', title: 'Vue 路由模式详解与面试回答' },
+      { id: 'router-guard', title: 'Vue 路由守卫详解与面试回答' },
     ],
   },
   {

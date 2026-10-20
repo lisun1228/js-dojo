@@ -162,6 +162,10 @@ tutorials.ts（分类 + 教程清单）
 | Vue      | Vue3 Diff算法原理（面试版）          | `/doc/diff-algorithm`    |
 | Vue      | Pinia 与 Vuex 完全指南               | `/doc/pinia-vuex`        |
 | Vue      | Vue 中 keep-alive 详解与面试回答模板 | `/doc/keep-alive`        |
+| Vue      | Vue 插槽 slot 详解与面试回答         | `/doc/slots`             |
+| Vue      | Vue 自定义指令详解与面试回答         | `/doc/custom-directive`  |
+| Vue      | Vue 路由模式详解与面试回答           | `/doc/router-mode`       |
+| Vue      | Vue 路由守卫详解与面试回答           | `/doc/router-guard`      |
 | JS 原理  | 事件传播与停止                       | `/doc/event-propagation` |
 | JS 原理  | 手写 call / bind                     | `/doc/call-bind`         |
 | JS 原理  | 原型与原型链                         | `/doc/prototype-chain`   |
