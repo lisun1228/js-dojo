@@ -100,6 +100,9 @@ commitlint 规范参考文档：<https://blog.csdn.net/weixin_41447256/article/d
 ## 目录结构
 
 ```
+build/
+└── mermaid.ts               # Vite 插件：构建期把 mermaid 代码块渲染成内联 SVG
+
 src/
 ├── docs/                    # 教程正文，按分类分目录（目录名 = tutorials.ts 的 dir）
 │   ├── index.ts             # 装配层：按清单加载 md 与演示组件
@@ -142,19 +145,21 @@ tutorials.ts（分类 + 教程清单）
 
 ### 现有教程
 
-| 分类     | 教程                        | 路由                     |
-| -------- | --------------------------- | ------------------------ |
-| 设计模式 | 装饰器 + @语法糖            | `/doc/decorator`         |
-| 设计模式 | 适配器模式                  | `/doc/adapter`           |
-| 设计模式 | 策略模式                    | `/doc/strategy`          |
-| 设计模式 | 单例模式                    | `/doc/singleton`         |
-| Vue      | Props / 插槽 / $attrs       | `/doc/props-slots`       |
-| Vue      | Proxy 与响应式              | `/doc/proxy-reactive`    |
-| Vue      | 响应式原理 effect           | `/doc/reactive-effect`   |
-| Vue      | Vue3 Diff算法原理（面试版） | `/doc/diff-algorithm`    |
-| JS 原理  | 事件传播与停止              | `/doc/event-propagation` |
-| JS 原理  | 手写 call / bind            | `/doc/call-bind`         |
-| JS 原理  | 原型与原型链                | `/doc/prototype-chain`   |
+| 分类     | 教程                                 | 路由                     |
+| -------- | ------------------------------------ | ------------------------ |
+| 设计模式 | 装饰器 + @语法糖                     | `/doc/decorator`         |
+| 设计模式 | 适配器模式                           | `/doc/adapter`           |
+| 设计模式 | 策略模式                             | `/doc/strategy`          |
+| 设计模式 | 单例模式                             | `/doc/singleton`         |
+| Vue      | Props / 插槽 / $attrs                | `/doc/props-slots`       |
+| Vue      | Proxy 与响应式                       | `/doc/proxy-reactive`    |
+| Vue      | 响应式原理 effect                    | `/doc/reactive-effect`   |
+| Vue      | Vue3 Diff算法原理（面试版）          | `/doc/diff-algorithm`    |
+| Vue      | Pinia 与 Vuex 完全指南               | `/doc/pinia-vuex`        |
+| Vue      | Vue 中 keep-alive 详解与面试回答模板 | `/doc/keep-alive`        |
+| JS 原理  | 事件传播与停止                       | `/doc/event-propagation` |
+| JS 原理  | 手写 call / bind                     | `/doc/call-bind`         |
+| JS 原理  | 原型与原型链                         | `/doc/prototype-chain`   |
 
 ### 新增一篇教程
 
@@ -226,6 +231,8 @@ const run = () => push('输出一行日志')
 ## 实现要点
 
 - **Markdown 渲染**：用 Vite 的 `?raw` 把 `.md` 当字符串导入，交给 `markdown-it` 渲染；`highlight.js` 只按需注册 `ts / js / json / bash / sh / html / xml / vue / css / md`，避免整个语言包进 bundle。
+- **标题锚点**：`MarkdownView` 重写了 `heading_open` 规则，给标题生成 GitHub 风格 `id`，正文里写的 `[目录](#xxx)` 可以直接跳转。
+- **Mermaid 图表**：正文里写 `mermaid` 代码块即可，构建期由 [build/mermaid.ts](build/mermaid.ts) 用本机 Chrome 渲染成内联 SVG（明暗主题各渲染一份，按内容哈希缓存在 `node_modules/.cache/mermaid`），页面运行时不会加载 mermaid。本机需有 Chrome，或用 `CHROME_PATH` 指定路径。
 - **代码分割**：md 正文与演示组件都随 `DocView` 懒加载，主包保持精简。
 - **图片放大**：正文图片是 `v-html` 插入的，挂不上监听器，所以 `MarkdownView` 在容器上做事件委托，点击 `img` 后交给 `ImagePreview` 全屏预览；预览挂到 `body` 上，避免被 `main.content` 的 `overflow` 裁剪或页头层叠遮挡。
 - **代码块换行**：全局 `style.css` 给 `code` 设了 `display: inline-flex`，会把高亮产生的每个 `<span>` 当成 flex item 横排、丢掉换行，因此 `MarkdownView` 里把 `pre code` 重置为 `display: block`。

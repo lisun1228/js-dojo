@@ -69,6 +69,24 @@ const md = new MarkdownIt({
   highlight,
 })
 
+/**
+ * 给标题生成 GitHub 风格锚点 id，正文里写的 [目录](#xxx) 才能跳转。
+ * 规则：转小写、去掉标点、空格换成 -（保留中英文与数字）。
+ */
+const slugify = (text: string) =>
+  text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s/g, '-')
+
+md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
+  const inline = tokens[idx + 1]
+  const text = inline?.type === 'inline' ? inline.content : ''
+  tokens[idx].attrSet('id', slugify(text))
+  return self.renderToken(tokens, idx, options)
+}
+
 const html = computed(() => md.render(props.content))
 
 /* ---------- 正文图片点击放大 ---------- */
@@ -181,6 +199,31 @@ const closePreview = () => {
   margin: 0 0 14px;
   /* 提示可点击放大 */
   cursor: zoom-in;
+}
+
+/* ---------- Mermaid 图表（构建期已渲染成内联 SVG） ---------- */
+.markdown-body :deep(.mermaid-diagram) {
+  margin: 0 0 14px;
+  text-align: center;
+}
+
+.markdown-body :deep(.mermaid-diagram svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-body :deep(.mermaid-diagram__dark) {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .markdown-body :deep(.mermaid-diagram__light) {
+    display: none;
+  }
+
+  .markdown-body :deep(.mermaid-diagram__dark) {
+    display: block;
+  }
 }
 
 /* ---------- 行内代码 ---------- */

@@ -54,6 +54,8 @@ export const categories: TutorialCategory[] = [
       { id: 'proxy-reactive', title: 'Proxy 与响应式', demo: 'ProxyReactiveDemo' },
       { id: 'reactive-effect', title: '响应式原理 effect', demo: 'ReactiveEffectDemo' },
       { id: 'diff-algorithm', title: 'Vue3 Diff算法原理（面试版）' },
+      { id: 'pinia-vuex', title: 'Pinia 与 Vuex 完全指南' },
+      { id: 'keep-alive', title: 'Vue 中 keep-alive 详解与面试回答模板' },
     ],
   },
   {
