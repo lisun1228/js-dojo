@@ -64,6 +64,7 @@ export const categories: TutorialCategory[] = [
       },
       { id: 'router-mode', title: 'Vue 路由模式详解与面试回答' },
       { id: 'router-guard', title: 'Vue 路由守卫详解与面试回答' },
+      { id: 'vue3-interview', title: 'Vue 3 十道高频面试题详解与答题模板' },
     ],
   },
   {

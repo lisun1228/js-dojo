@@ -166,6 +166,7 @@ tutorials.ts（分类 + 教程清单）
 | Vue      | Vue 自定义指令详解与面试回答         | `/doc/custom-directive`  |
 | Vue      | Vue 路由模式详解与面试回答           | `/doc/router-mode`       |
 | Vue      | Vue 路由守卫详解与面试回答           | `/doc/router-guard`      |
+| Vue      | Vue 3 十道高频面试题详解与答题模板   | `/doc/vue3-interview`    |
 | JS 原理  | 事件传播与停止                       | `/doc/event-propagation` |
 | JS 原理  | 手写 call / bind                     | `/doc/call-bind`         |
 | JS 原理  | 原型与原型链                         | `/doc/prototype-chain`   |
