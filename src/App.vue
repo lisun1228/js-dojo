@@ -37,11 +37,15 @@
         <RouterView />
       </main>
     </div>
+
+    <!-- 页面滚动超过一定距离后出现 -->
+    <BackToTop />
   </div>
 </template>
 
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import BackToTop from './components/BackToTop.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import { tutorialMenus } from './router'
 

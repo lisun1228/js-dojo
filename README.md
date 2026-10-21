@@ -115,6 +115,7 @@ src/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
 │   ├── ThemeSwitcher.vue    # 页头主题色块切换器
+│   ├── BackToTop.vue        # 页面滚动后的回到顶部悬浮按钮
 │   └── demos/               # 各教程的交互演示
 │       ├── DemoPanel.vue    # 统一的「按钮 + 运行日志」外壳
 │       ├── useDemoLog.ts    # 日志收集 composable
