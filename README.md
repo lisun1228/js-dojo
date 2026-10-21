@@ -113,6 +113,7 @@ src/
 │   ├── es6/                 # ES6 三十二题
 │   ├── performance/         # 性能优化 25 题
 │   ├── security/            # 前端安全 21 题
+│   ├── algorithms/          # 算法 19 题
 │   └── js-principles/       # JS 原理
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
@@ -199,6 +200,15 @@ tutorials.ts（分类 + 教程清单）
 | 前端安全 21 题 | 安全 · 06 鉴权体系与数据安全                          | `/doc/security-auth-data`               |
 | 前端安全 21 题 | 安全 · 07 跨域与 WebSocket 安全                       | `/doc/security-cors-websocket`          |
 | 前端安全 21 题 | 安全 · 08 工程化落地：SQL 注入、供应链与检查清单      | `/doc/security-supply-chain`            |
+| 算法 19 题     | 算法 19 题 · 总览与索引                               | `/doc/algo-overview`                    |
+| 算法 19 题     | 算法 · 01 复杂度分析与递归（尾调用）                  | `/doc/algo-complexity-recursion`        |
+| 算法 19 题     | 算法 · 02 基础排序：冒泡 / 选择 / 插入 / 希尔         | `/doc/algo-basic-sorts`                 |
+| 算法 19 题     | 算法 · 03 进阶排序：归并 / 快排 / 堆排                | `/doc/algo-advanced-sorts`              |
+| 算法 19 题     | 算法 · 04 线性排序：计数 / 桶 / 基数                  | `/doc/algo-linear-sorts`                |
+| 算法 19 题     | 算法 · 05 链表与堆：合并 K 个升序链表                 | `/doc/algo-linked-list-heap`            |
+| 算法 19 题     | 算法 · 06 哈希与缓存：LRU                             | `/doc/algo-hash-lru`                    |
+| 算法 19 题     | 算法 · 07 字符串与双指针                              | `/doc/algo-string-two-pointers`         |
+| 算法 19 题     | 算法 · 08 概率与随机：洗牌与最优停止                  | `/doc/algo-probability-random`          |
 
 ### 新增一篇教程
 

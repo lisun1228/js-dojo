@@ -128,6 +128,21 @@ export const categories: TutorialCategory[] = [
       },
     ],
   },
+  {
+    dir: 'algorithms',
+    title: '算法 19 题',
+    items: [
+      { id: 'algo-overview', title: '算法 19 题 · 总览与索引' },
+      { id: 'algo-complexity-recursion', title: '算法 · 01 复杂度分析与递归（尾调用）' },
+      { id: 'algo-basic-sorts', title: '算法 · 02 基础排序：冒泡 / 选择 / 插入 / 希尔' },
+      { id: 'algo-advanced-sorts', title: '算法 · 03 进阶排序：归并 / 快排 / 堆排' },
+      { id: 'algo-linear-sorts', title: '算法 · 04 线性排序：计数 / 桶 / 基数' },
+      { id: 'algo-linked-list-heap', title: '算法 · 05 链表与堆：合并 K 个升序链表' },
+      { id: 'algo-hash-lru', title: '算法 · 06 哈希与缓存：LRU' },
+      { id: 'algo-string-two-pointers', title: '算法 · 07 字符串与双指针' },
+      { id: 'algo-probability-random', title: '算法 · 08 概率与随机：洗牌与最优停止' },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */
