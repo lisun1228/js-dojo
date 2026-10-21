@@ -1,8 +1,8 @@
-# Vue 3 十道高频面试题详解与答题模板
+# Vue 3 高频面试题详解与答题模板
 
-> 覆盖：SSR / Composition API / ref 与 reactive / watch 与 watchEffect / v-model / 异步组件 / 性能优化 / Vue3 升级与迁移 / 新特性 / Composables
+> 覆盖：SSR / Composition API / ref 与 reactive / watch 与 watchEffect / v-model / 异步组件 / 性能优化 / Vue3 升级与迁移 / 新特性 / Composables / data 为什么是函数
 > 每题统一结构：**一句话结论 → 展开讲（原理 + 代码）→ 面试怎么答（30 秒 / 2 分钟）→ 追问**
-> 使用方法：先看第 0 节的答题总纲，再按题号过；考前只看第 11 节的速记卡
+> 使用方法：先看第 0 节的答题总纲，再按题号过；考前只看第 12 节的速记卡
 
 ---
 
@@ -19,13 +19,14 @@
 8. [Vue3 升级了哪些功能](#8-vue3-升级了哪些功能)
 9. [说说 Vue3 的新特性](#9-说说-vue3-的新特性)
 10. [Composables 解决了什么问题](#10-composables-解决了什么问题)
-11. [速记卡与自测清单](#11-速记卡与自测清单)
+11. [Vue 组件里的 data 为什么必须是函数](#11-vue-组件里的-data-为什么必须是函数)
+12. [速记卡与自测清单](#12-速记卡与自测清单)
 
 ---
 
 ## 0. 先看：知识地图与答题总纲
 
-### 0.1 这 10 道题其实是一张网
+### 0.1 这 11 道题其实是一张网
 
 ```mermaid
 flowchart TD
@@ -45,13 +46,14 @@ flowchart TD
   D --> Q10["⑩ Composables"]
   D --> Q6["⑥ 异步组件"]
   D --> Q5["⑤ v-model"]
+  D --> Q11["⑪ data 为什么是函数"]
 
   Q8["⑧ 升级 / 变更"] --> Q2
   Q8 --> Q5
   Q8 --> Q9
 ```
 
-**看出来的规律**：除了 SSR，其余 9 道题全部挂在「响应式」「编译渲染」「组件模型」这三根柱子上。所以答题时**尽量往这三根柱子上靠**，不要每题都独立背。
+**看出来的规律**：除了 SSR，其余 10 道题全部挂在「响应式」「编译渲染」「组件模型」这三根柱子上。所以答题时**尽量往这三根柱子上靠**，不要每题都独立背。
 
 ### 0.2 通用答题结构
 
@@ -1802,9 +1804,262 @@ useFetch(() => `/api/user/${id.value}`)
 
 ---
 
-## 11. 速记卡与自测清单
+## 11. Vue 组件里的 data 为什么必须是函数
 
-### 11.1 一页速记
+### 11.1 一句话结论
+
+因为**组件会被实例化多次**（一个页面里可能同时存在好几个同一个组件），而 **JS 对象是引用类型**：如果 `data` 直接写成一个对象，所有实例的 `data` 会指向**同一个对象**，一个实例改了数据，其他实例跟着变。
+
+写成**函数**，Vue 在**每次创建组件实例时调用一次**这个函数，`return {}` 就产生一个**全新的对象**，天然做到「每个实例一份独立状态」。
+
+一句话记：**`data` 是对象 → 相当于把属性写在原型上；`data` 是函数 → 相当于写在构造函数里。**
+
+### 11.2 先看一个「事故现场」
+
+```js
+// ❌ 错误写法：对象
+export default {
+  data: { count: 0 },
+  template: `<button @click="count++">{{ count }}</button>`,
+}
+```
+
+页面上放两个：
+
+```vue
+<Counter />
+<Counter />
+```
+
+点第一个按钮 → **两个数字同时加 1**。
+
+原因是两个组件实例的 `vm._data` 指向同一个对象：
+
+```mermaid
+flowchart LR
+  I1["实例 1<br/>vm._data"] --> O["同一个 { count: 0 }<br/>同一个 __ob__ / Proxy"]
+  I2["实例 2<br/>vm._data"] --> O
+  O --> D["同一个依赖收集器<br/>→ 任意一处修改，所有实例重渲染"]
+```
+
+```js
+// ✅ 正确写法：函数
+export default {
+  data() {
+    return { count: 0 } // 每次调用产生新对象
+  },
+}
+```
+
+```mermaid
+flowchart LR
+  I1["实例 1<br/>vm._data"] --> O1["{ count: 0 } #1"]
+  I2["实例 2<br/>vm._data"] --> O2["{ count: 0 } #2"]
+  O1 --> D1["独立依赖"]
+  O2 --> D2["独立依赖"]
+```
+
+### 11.3 三个层面的解释（由浅入深，面试按需取用）
+
+**① JS 层面：对象是引用**
+
+```js
+const a = { count: 0 }
+const b = a // b 和 a 是同一个对象
+b.count++
+console.log(a.count) // 1 —— a 也变了
+```
+
+`data: { count: 0 }` 就等于把这个对象「借给」了所有实例。
+
+**② 组件层面：组件是「工厂」，不是「单例」**
+
+一个组件定义（`export default {...}`）只是**模板 + 配置**，它会被实例化 N 次：
+
+- `<Counter />` 写了三次 → 三个实例
+- `v-for` 渲染列表 → 每个元素一个实例
+- 路由 A → B → A，如果没缓存就是新实例
+- 同一个页面里弹窗、抽屉、Tab 各放一个 → 多个实例
+
+每个实例都需要自己的状态，所以必须有「每次实例化都产生新数据」的机制——**函数调用**就是最直接的机制（每次调用创建新的执行上下文，`return {}` 是新对象）。
+
+**③ 响应式层面：连依赖都是共享的**
+
+Vue 会把 `data` 返回的对象变成响应式：Vue 2 用 `observe()` 打上 `__ob__`，Vue 3 用 `reactive()` 包成 Proxy。**同一个对象只会有一份响应式包装**：
+
+```js
+// Vue 3 的 reactive 内部有缓存（proxyMap: WeakMap<target, proxy>）
+const obj = { count: 0 }
+reactive(obj) === reactive(obj) // true，返回同一个 Proxy！
+```
+
+所以就算两个实例是通过对象共享的，它们拿到的也是**同一个 Proxy**，依赖收集在同一个 `dep` 上 → 一个实例改数据，两个实例的渲染 effect 都会被触发。
+
+> 这就是为什么「对象 data」不只是「数据看着一样」，而是**真的联动**。
+
+### 11.4 源码层面（Vue 2 / Vue 3）
+
+**Vue 2**：`initData` 里判断类型，函数就调用
+
+```js
+function initData(vm) {
+  let data = vm.$options.data
+  // 关键：是函数就调用一次，拿到全新对象
+  data = vm._data = typeof data === 'function' ? getData(data, vm) : data || {}
+
+  if (!isPlainObject(data)) {
+    data = {}
+    warn('data functions should return an object')
+  }
+  // ...
+  observe(data, true) // 递归把 data 变成响应式
+}
+
+function getData(data, vm) {
+  // 用 call 把 this 指向组件实例，并传入实例
+  return data.call(vm, vm)
+}
+```
+
+另外，Vue 2 在**合并选项**时就给了警告：
+
+```js
+// strats.data（简化）
+if (childVal && typeof childVal !== 'function') {
+  warn(
+    'The "data" option should be a function that returns a per-instance value in component definitions.',
+  )
+  return parentVal
+}
+```
+
+**Vue 3**：`applyOptions` 里直接要求函数
+
+```js
+if (dataOptions) {
+  if (__DEV__ && !isFunction(dataOptions)) {
+    warn('The data option must be a function. Plain object usage is no longer supported.')
+  }
+  const data = dataOptions.call(publicThis, publicThis)
+  if (__DEV__ && isPromise(data)) {
+    warn(
+      'data() returned a Promise - note data() cannot be async; use async setup() + <Suspense> instead.',
+    )
+  }
+  if (!isObject(data)) {
+    warn('data() should return an object.')
+  } else {
+    instance.data = reactive(data) // ← 每次拿到新对象再包响应式
+  }
+}
+```
+
+**面试讲这两段就够了**：Vue 2 是 `getData(data, vm)` 调用函数；Vue 3 是 `dataOptions.call(publicThis)` 再 `reactive()`。
+
+### 11.5 Vue 3 为什么连根实例也必须是函数
+
+| | Vue 2 | Vue 3 |
+| --- | --- | --- |
+| 根实例 | `new Vue({ data: { count: 0 } })` **允许对象** | `createApp({ data: { count: 0 } })` **必须是函数** |
+| 原因 | 根实例只会 `new` 一次，不存在多实例共享 | `createApp` 允许创建**多个 app 实例**（微前端、SSR 每请求一个、单元测试隔离），共享对象会串状态 |
+
+Vue 3 的官方说明就是：*"Plain object usage is no longer supported"*——因为「只有一个根实例」的假设不再成立。
+
+> 加分点：这也和「SSR 每个请求要新建一个 app 实例」是同一个理由。**凡是有可能多实例的东西，状态就不能放在模块级共享对象里。**
+
+### 11.6 由这题衍生的四个小问题（常连着问）
+
+**① 为什么 `data` 不建议写成箭头函数？**
+
+```js
+// ❌ 不推荐
+data: () => ({ count: 0 })
+```
+
+Vue 通过 `data.call(vm, vm)` 把 `this` 绑定到组件实例，而**箭头函数没有自己的 `this`**，`call` 绑不上去。如果 `data` 里需要访问 `this.xxx`（props、methods），就会拿到 `undefined` 或者外层的 `this`。
+
+> 只说「返回对象」的话，箭头函数在语法上能跑；但只要你在里面用 `this`，就会出问题。所以规范上统一写普通函数（或 `data() {}` 简写）。
+
+**② `data` 里能访问 `computed` 吗？**
+
+不能。Vue 2 的初始化顺序是：
+
+```text
+initProps → initMethods → initData → initComputed → initWatch
+```
+
+`data` 在 `computed` **之前**初始化，所以 `this.someComputed` 在 `data()` 里是 `undefined`。
+
+能访问的是：`props`（已初始化）、`methods`（已初始化）、`this.$options` 等。
+
+**③ 想让多个实例共享同一份数据，怎么办？**
+
+**不要**让 `data()` 返回同一个对象（这就是对象 data 的 bug 复现）。正确做法：
+
+```js
+// 方案 1：模块作用域 + 响应式（Vue 3）
+// shared.js
+import { reactive } from 'vue'
+export const sharedState = reactive({ count: 0 })
+
+// Counter.vue
+import { sharedState } from './shared'
+export default { setup: () => ({ sharedState }) }
+```
+
+```js
+// 方案 2：用状态管理（推荐，可追踪、可调试）
+const store = useCounterStore()
+```
+
+**④ `<script setup>` 里为什么天然独立？**
+
+```vue
+<script setup>
+const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例一个新 ref
+</script>
+```
+
+**`setup()` 和 `data()` 是同一个角色**：都是「每个实例执行一次的工厂」。所以 `ref` 写在里面天然隔离，不需要像 Options API 那样靠「函数返回对象」来保证。
+
+> 反过来说，如果在 `<script setup>` 外面写 `const count = ref(0)`（模块作用域），就等价于「对象 data」，所有实例会共享——这也是 Vue 3 里一个常见的翻车点。
+
+### 11.7 面试怎么答
+
+**30 秒版：**
+
+> 因为**组件会被实例化多次**，而 JS 里对象是引用类型。如果 `data` 写成对象，所有实例的 `data` 都指向同一个对象，Vue 也只会给它做一份响应式包装、一份依赖收集，结果就是**一个实例改数据，所有实例跟着变**。
+>
+> 写成函数，Vue 在每次创建实例时调用一次 `data()`，`return {}` 产生新对象，每个实例就有自己独立的状态。Vue 2 是在 `initData` 里用 `getData` 调用函数，Vue 3 是 `dataOptions.call(publicThis)` 之后再 `reactive()` 包一层。
+>
+> Vue 2 的根实例可以是对象，因为只 `new` 一次；Vue 3 因为支持多个 app 实例，连根组件也必须用函数。
+
+**2 分钟加分版（多讲这三点）：**
+
+1. **本质是「实例隔离」**：这跟 `ref` 在每个实例里独立、composable 每次调用新建状态是同一个道理，都是「把状态放进每个实例自己的作用域里」。
+2. **共享的后果不只是「值一样」**：连依赖都是共享的——Vue 3 的 `reactive` 对同一个 target 返回同一个 Proxy，所以触发更新时会同时触发多个实例重渲染。
+3. **想共享数据不能靠对象 data**：应该用 Pinia，或者把 `reactive` 提到模块作用域；`<script setup>` 里如果把 `ref` 写在 setup 外面，也会踩同样的坑。
+
+### 11.8 追问
+
+| 追问 | 要点 |
+| --- | --- |
+| 对象 `data` 具体会出什么问题？ | 多个实例共享同一个对象 / 同一个 Proxy / 同一个依赖，改一个全变；还会互相污染表单、列表等状态 |
+| Vue 2 根实例为什么可以是对象？ | 根实例只 `new` 一次，不存在多实例共享；组件才会被多次实例化 |
+| Vue 3 为什么根实例也必须函数？ | `createApp` 支持多 app 实例（微前端、SSR、测试），共享对象会串状态 |
+| 为什么不能用箭头函数？ | 箭头函数没有自己的 `this`，`data.call(vm, vm)` 绑不上，访问不到 props / methods |
+| `data` 里能访问 `computed` 吗？ | 不能，初始化顺序是 props → methods → data → computed → watch |
+| `data` 能是 `async` 函数吗？ | 不能，Vue 3 会警告；要异步取数用 `async setup()` + `Suspense` 或 `onMounted` |
+| `data` 返回的对象会被怎么处理？ | Vue 2 `observe()` 递归转响应式；Vue 3 `reactive()` 包成 Proxy |
+| 多个实例共享数据怎么做？ | Pinia，或把 `reactive` 对象提到模块作用域导出 |
+| `<script setup>` 需要 `data` 吗？ | 不需要，`ref` / `reactive` 写在 setup 内天然按实例隔离（写在外面就变成共享） |
+| 为什么说这和 `ref` 是同一个道理？ | 都是「每个实例创建时执行一次，产生独立状态」；差别只是 API 形式 |
+
+---
+
+## 12. 速记卡与自测清单
+
+### 12.1 一页速记
 
 ```text
 ① SSR
@@ -1868,9 +2123,19 @@ useFetch(() => `/api/user/${id.value}`)
    规范：use 开头 / setup 内同步调用 / 传 ref 或 getter / 返回 ref / 自己清副作用
    分工：组件内逻辑用 composable，跨页面共享用 Pinia
    vs React Hooks：Vue 只执行一次，无依赖数组，无闭包陷阱
+
+⑪ data 为什么是函数
+   根因：组件会实例化多次 + 对象是引用类型
+   对象 data → 所有实例共享同一个对象、同一个 __ob__/Proxy、同一个依赖 → 改一个全变
+   函数 data → 每次实例化调用一次，return {} 产生新对象 → 每实例独立
+   源码：Vue2 initData → getData(data, vm) = data.call(vm, vm)
+        Vue3 dataOptions.call(publicThis) → instance.data = reactive(data)
+        且 reactive 对同一 target 返回同一 Proxy（proxyMap 缓存）
+   衍生：不能箭头函数（无 this）/ data 里拿不到 computed（初始化顺序）
+        Vue3 根实例也必须函数（支持多 app）/ setup 内 ref 天然独立（同理，写外面就共享）
 ```
 
-### 11.2 自测清单
+### 12.2 自测清单
 
 **SSR**
 
@@ -1945,7 +2210,18 @@ useFetch(() => `/api/user/${id.value}`)
 - [ ] 解释为什么必须在 `setup` 内同步调用
 - [ ] 说清和 React Hooks 的本质差异
 
-### 11.3 30 个连环追问
+**data 为什么是函数**
+
+- [ ] 说出「组件实例化多次 + 对象是引用类型」这个根因
+- [ ] 能描述对象 `data` 在两个实例下的具体表现（点一个两个都变）
+- [ ] 说出 Vue 2（`getData`）/ Vue 3（`reactive`）的初始化过程
+- [ ] 解释为什么 `reactive` 对同一对象返回同一 Proxy
+- [ ] 说出为什么不能用箭头函数
+- [ ] 说出 `data` 里为什么拿不到 `computed`
+- [ ] 解释 Vue 2 根实例可以用对象、Vue 3 为什么不行
+- [ ] 说清想共享数据该怎么做（Pinia / 模块作用域）
+
+### 12.3 34 个连环追问
 
 | # | 追问 | 一句话答案 |
 | --- | --- | --- |
@@ -1979,3 +2255,7 @@ useFetch(() => `/api/user/${id.value}`)
 | 28 | composable 里能用 `provide/inject` 吗？ | 能，但要在 setup 同步阶段调用 |
 | 29 | composable 状态会共享吗？ | 不会，每次调用新建；要共享就提到模块顶层 |
 | 30 | 为什么 composable 要 `use` 开头？ | 社区约定 + lint 规则识别 + 表明「内部有响应式 / 生命周期」 |
+| 31 | 为什么组件 `data` 必须是函数？ | 组件会实例化多次，对象会被所有实例共享，状态会串 |
+| 32 | 为什么 `data` 不能用箭头函数？ | 箭头函数没有自己的 `this`，`data.call(vm)` 绑不到组件实例 |
+| 33 | `data` 里为什么拿不到 `computed`？ | 初始化顺序是 props → methods → data → computed → watch |
+| 34 | 想让多个实例共享数据怎么做？ | 用 Pinia，或把 `reactive` 提到模块作用域；不要让 `data()` 返回同一个对象 |
