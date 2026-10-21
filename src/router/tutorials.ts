@@ -107,6 +107,27 @@ export const categories: TutorialCategory[] = [
       { id: 'perf-webpack', title: '性能 · 07 Webpack：打包原理 / 构建优化 / HMR' },
     ],
   },
+  {
+    dir: 'security',
+    title: '前端安全 21 题',
+    items: [
+      { id: 'security-overview', title: '前端安全 21 题 · 总览与索引' },
+      { id: 'security-xss', title: '安全 · 01 XSS 跨站脚本攻击' },
+      { id: 'security-csrf-cookie', title: '安全 · 02 CSRF 与 Cookie 安全' },
+      { id: 'security-csp-headers', title: '安全 · 03 CSP 与安全响应头' },
+      { id: 'security-clickjacking-iframe', title: '安全 · 04 点击劫持与 iframe 安全' },
+      {
+        id: 'security-transport-https',
+        title: '安全 · 05 传输层：HTTPS、中间人、网络劫持与 SRI',
+      },
+      { id: 'security-auth-data', title: '安全 · 06 鉴权体系与数据安全' },
+      { id: 'security-cors-websocket', title: '安全 · 07 跨域与 WebSocket 安全' },
+      {
+        id: 'security-supply-chain',
+        title: '安全 · 08 工程化落地：SQL 注入、供应链与检查清单',
+      },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */

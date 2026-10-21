@@ -112,6 +112,7 @@ src/
 │   ├── vue/                 # Vue
 │   ├── es6/                 # ES6 三十二题
 │   ├── performance/         # 性能优化 25 题
+│   ├── security/            # 前端安全 21 题
 │   └── js-principles/       # JS 原理
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
@@ -189,6 +190,15 @@ tutorials.ts（分类 + 教程清单）
 | 性能优化 25 题 | 性能 · 05 图片与资源优化：懒加载                      | `/doc/perf-images-lazy-load`            |
 | 性能优化 25 题 | 性能 · 06 JS 引擎与内存：V8 优化与内存泄漏            | `/doc/perf-js-engine-memory`            |
 | 性能优化 25 题 | 性能 · 07 Webpack：打包原理 / 构建优化 / HMR          | `/doc/perf-webpack`                     |
+| 前端安全 21 题 | 前端安全 21 题 · 总览与索引                           | `/doc/security-overview`                |
+| 前端安全 21 题 | 安全 · 01 XSS 跨站脚本攻击                            | `/doc/security-xss`                     |
+| 前端安全 21 题 | 安全 · 02 CSRF 与 Cookie 安全                         | `/doc/security-csrf-cookie`             |
+| 前端安全 21 题 | 安全 · 03 CSP 与安全响应头                            | `/doc/security-csp-headers`             |
+| 前端安全 21 题 | 安全 · 04 点击劫持与 iframe 安全                      | `/doc/security-clickjacking-iframe`     |
+| 前端安全 21 题 | 安全 · 05 传输层：HTTPS、中间人、网络劫持与 SRI       | `/doc/security-transport-https`         |
+| 前端安全 21 题 | 安全 · 06 鉴权体系与数据安全                          | `/doc/security-auth-data`               |
+| 前端安全 21 题 | 安全 · 07 跨域与 WebSocket 安全                       | `/doc/security-cors-websocket`          |
+| 前端安全 21 题 | 安全 · 08 工程化落地：SQL 注入、供应链与检查清单      | `/doc/security-supply-chain`            |
 
 ### 新增一篇教程
 
