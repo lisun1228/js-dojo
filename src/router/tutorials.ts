@@ -68,6 +68,20 @@ export const categories: TutorialCategory[] = [
     ],
   },
   {
+    dir: 'es6',
+    title: 'ES6 三十二题',
+    items: [
+      { id: 'es6-overview', title: 'ES6 三十二题 · 分册索引与「新特性」总览' },
+      { id: 'es6-variables-scope-closure-this', title: '分册 01 · 变量、作用域、闭包与 this' },
+      { id: 'es6-object-prototype-inheritance', title: '分册 02 · 对象、原型与继承' },
+      { id: 'es6-reactivity-proxy', title: '分册 03 · 响应式原理：Proxy 与 Object.defineProperty' },
+      { id: 'es6-async-event-loop', title: '分册 04 · 异步：Promise、async/await 与事件循环' },
+      { id: 'es6-module-engineering', title: '分册 05 · 模块与工程化：ESM vs CommonJS、HMR' },
+      { id: 'es6-collections-iteration', title: '分册 06 · 集合、迭代与数组扩展' },
+      { id: 'es6-type-coercion', title: '分册 07 · 类型转换与隐式规则' },
+    ],
+  },
+  {
     dir: 'js-principles',
     title: 'JS 原理',
     items: [
