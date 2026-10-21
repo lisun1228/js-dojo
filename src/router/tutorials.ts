@@ -143,6 +143,52 @@ export const categories: TutorialCategory[] = [
       { id: 'algo-probability-random', title: '算法 · 08 概率与随机：洗牌与最优停止' },
     ],
   },
+  {
+    dir: 'network',
+    title: '计算机网络 71 题',
+    items: [
+      { id: 'network-overview', title: '计算机网络 71 题 · 总览与索引' },
+      {
+        id: 'network-layering-encapsulation',
+        title: '网络 · 01 分层模型与数据封装（题 45）',
+      },
+      {
+        id: 'network-url-to-page',
+        title: '网络 · 02 从输入 URL 到页面展示（题 2、6、22、29、41、63、71 + DNS 题 64）',
+      },
+      {
+        id: 'network-tcp-handshake',
+        title: '网络 · 03 TCP 连接管理：三次握手与四次挥手（题 3、4、28、32、37、56）',
+      },
+      {
+        id: 'network-tcp-reliability',
+        title: '网络 · 04 TCP 可靠传输 · 流量控制 · 拥塞控制（题 61）',
+      },
+      { id: 'network-tcp-udp', title: '网络 · 05 TCP 与 UDP（题 5、42、53、67）' },
+      {
+        id: 'network-http-message',
+        title:
+          '网络 · 06 HTTP 报文 · 方法 · 状态码 · 头部（题 7、11、12、15、16、18、19、21、31、36、46、49、51、70）',
+      },
+      {
+        id: 'network-http-versions',
+        title: '网络 · 07 HTTP 版本演进：HTTP/1.0 → 1.1 → 2 → 3（题 1、14、57）',
+      },
+      {
+        id: 'network-http-cache',
+        title: '网络 · 08 HTTP 缓存（题 8、10、20、23、35、38、40、43、58、60、62、65、69）',
+      },
+      {
+        id: 'network-https-tls',
+        title: '网络 · 09 HTTPS 与 TLS（题 13、17、30、34、39、47、48、59、66）',
+      },
+      {
+        id: 'network-cors',
+        title: '网络 · 10 跨域与 CORS（题 9、24、25、26、27、44、50、52、54、55、68）',
+      },
+      { id: 'network-websocket', title: '网络 · 11 WebSocket 与实时通信（题 33、70）' },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */

@@ -114,6 +114,7 @@ src/
 │   ├── performance/         # 性能优化 25 题
 │   ├── security/            # 前端安全 21 题
 │   ├── algorithms/          # 算法 19 题
+│   ├── network/             # 计算机网络 71 题
 │   └── js-principles/       # JS 原理
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
@@ -155,60 +156,72 @@ tutorials.ts（分类 + 教程清单）
 
 ### 现有教程
 
-| 分类           | 教程                                                  | 路由                                    |
-| -------------- | ----------------------------------------------------- | --------------------------------------- |
-| 设计模式       | 装饰器 + @语法糖                                      | `/doc/decorator`                        |
-| 设计模式       | 适配器模式                                            | `/doc/adapter`                          |
-| 设计模式       | 策略模式                                              | `/doc/strategy`                         |
-| 设计模式       | 单例模式                                              | `/doc/singleton`                        |
-| Vue            | Props / 插槽 / $attrs                                 | `/doc/props-slots`                      |
-| Vue            | Proxy 与响应式                                        | `/doc/proxy-reactive`                   |
-| Vue            | 响应式原理 effect                                     | `/doc/reactive-effect`                  |
-| Vue            | Vue3 Diff算法原理（面试版）                           | `/doc/diff-algorithm`                   |
-| Vue            | Pinia 与 Vuex 完全指南                                | `/doc/pinia-vuex`                       |
-| Vue            | Vue 中 keep-alive 详解与面试回答模板                  | `/doc/keep-alive`                       |
-| Vue            | Vue 插槽 slot 详解与面试回答                          | `/doc/slots`                            |
-| Vue            | Vue 自定义指令详解与面试回答                          | `/doc/custom-directive`                 |
-| Vue            | Vue 路由模式详解与面试回答                            | `/doc/router-mode`                      |
-| Vue            | Vue 路由守卫详解与面试回答                            | `/doc/router-guard`                     |
-| Vue            | Vue 3 高频面试题详解与答题模板                        | `/doc/vue3-interview`                   |
-| ES6 三十二题   | ES6 三十二题 · 分册索引与「新特性」总览               | `/doc/es6-overview`                     |
-| ES6 三十二题   | 分册 01 · 变量、作用域、闭包与 this                   | `/doc/es6-variables-scope-closure-this` |
-| ES6 三十二题   | 分册 02 · 对象、原型与继承                            | `/doc/es6-object-prototype-inheritance` |
-| ES6 三十二题   | 分册 03 · 响应式原理：Proxy 与 Object.defineProperty  | `/doc/es6-reactivity-proxy`             |
-| ES6 三十二题   | 分册 04 · 异步：Promise、async/await 与事件循环       | `/doc/es6-async-event-loop`             |
-| ES6 三十二题   | 分册 05 · 模块与工程化：ESM vs CommonJS、HMR          | `/doc/es6-module-engineering`           |
-| ES6 三十二题   | 分册 06 · 集合、迭代与数组扩展                        | `/doc/es6-collections-iteration`        |
-| ES6 三十二题   | 分册 07 · 类型转换与隐式规则                          | `/doc/es6-type-coercion`                |
-| JS 原理        | 事件传播与停止                                        | `/doc/event-propagation`                |
-| JS 原理        | 手写 call / bind                                      | `/doc/call-bind`                        |
-| JS 原理        | 原型与原型链                                          | `/doc/prototype-chain`                  |
-| 性能优化 25 题 | 性能优化 25 题 · 总览与索引                           | `/doc/perf-overview`                    |
-| 性能优化 25 题 | 性能 · 01 指标体系与监控                              | `/doc/perf-metrics-monitoring`          |
-| 性能优化 25 题 | 性能 · 02 加载与网络：缓存 / CDN / HTTP2 / 资源优先级 | `/doc/perf-loading-network`             |
-| 性能优化 25 题 | 性能 · 03 首屏优化：从 SSR 到关键路径                 | `/doc/perf-first-screen`                |
-| 性能优化 25 题 | 性能 · 04 渲染优化：渲染流水线与重排重绘              | `/doc/perf-rendering`                   |
-| 性能优化 25 题 | 性能 · 05 图片与资源优化：懒加载                      | `/doc/perf-images-lazy-load`            |
-| 性能优化 25 题 | 性能 · 06 JS 引擎与内存：V8 优化与内存泄漏            | `/doc/perf-js-engine-memory`            |
-| 性能优化 25 题 | 性能 · 07 Webpack：打包原理 / 构建优化 / HMR          | `/doc/perf-webpack`                     |
-| 前端安全 21 题 | 前端安全 21 题 · 总览与索引                           | `/doc/security-overview`                |
-| 前端安全 21 题 | 安全 · 01 XSS 跨站脚本攻击                            | `/doc/security-xss`                     |
-| 前端安全 21 题 | 安全 · 02 CSRF 与 Cookie 安全                         | `/doc/security-csrf-cookie`             |
-| 前端安全 21 题 | 安全 · 03 CSP 与安全响应头                            | `/doc/security-csp-headers`             |
-| 前端安全 21 题 | 安全 · 04 点击劫持与 iframe 安全                      | `/doc/security-clickjacking-iframe`     |
-| 前端安全 21 题 | 安全 · 05 传输层：HTTPS、中间人、网络劫持与 SRI       | `/doc/security-transport-https`         |
-| 前端安全 21 题 | 安全 · 06 鉴权体系与数据安全                          | `/doc/security-auth-data`               |
-| 前端安全 21 题 | 安全 · 07 跨域与 WebSocket 安全                       | `/doc/security-cors-websocket`          |
-| 前端安全 21 题 | 安全 · 08 工程化落地：SQL 注入、供应链与检查清单      | `/doc/security-supply-chain`            |
-| 算法 19 题     | 算法 19 题 · 总览与索引                               | `/doc/algo-overview`                    |
-| 算法 19 题     | 算法 · 01 复杂度分析与递归（尾调用）                  | `/doc/algo-complexity-recursion`        |
-| 算法 19 题     | 算法 · 02 基础排序：冒泡 / 选择 / 插入 / 希尔         | `/doc/algo-basic-sorts`                 |
-| 算法 19 题     | 算法 · 03 进阶排序：归并 / 快排 / 堆排                | `/doc/algo-advanced-sorts`              |
-| 算法 19 题     | 算法 · 04 线性排序：计数 / 桶 / 基数                  | `/doc/algo-linear-sorts`                |
-| 算法 19 题     | 算法 · 05 链表与堆：合并 K 个升序链表                 | `/doc/algo-linked-list-heap`            |
-| 算法 19 题     | 算法 · 06 哈希与缓存：LRU                             | `/doc/algo-hash-lru`                    |
-| 算法 19 题     | 算法 · 07 字符串与双指针                              | `/doc/algo-string-two-pointers`         |
-| 算法 19 题     | 算法 · 08 概率与随机：洗牌与最优停止                  | `/doc/algo-probability-random`          |
+| 分类             | 教程                                                                                                   | 路由                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| 设计模式         | 装饰器 + @语法糖                                                                                       | `/doc/decorator`                        |
+| 设计模式         | 适配器模式                                                                                             | `/doc/adapter`                          |
+| 设计模式         | 策略模式                                                                                               | `/doc/strategy`                         |
+| 设计模式         | 单例模式                                                                                               | `/doc/singleton`                        |
+| Vue              | Props / 插槽 / $attrs                                                                                  | `/doc/props-slots`                      |
+| Vue              | Proxy 与响应式                                                                                         | `/doc/proxy-reactive`                   |
+| Vue              | 响应式原理 effect                                                                                      | `/doc/reactive-effect`                  |
+| Vue              | Vue3 Diff算法原理（面试版）                                                                            | `/doc/diff-algorithm`                   |
+| Vue              | Pinia 与 Vuex 完全指南                                                                                 | `/doc/pinia-vuex`                       |
+| Vue              | Vue 中 keep-alive 详解与面试回答模板                                                                   | `/doc/keep-alive`                       |
+| Vue              | Vue 插槽 slot 详解与面试回答                                                                           | `/doc/slots`                            |
+| Vue              | Vue 自定义指令详解与面试回答                                                                           | `/doc/custom-directive`                 |
+| Vue              | Vue 路由模式详解与面试回答                                                                             | `/doc/router-mode`                      |
+| Vue              | Vue 路由守卫详解与面试回答                                                                             | `/doc/router-guard`                     |
+| Vue              | Vue 3 高频面试题详解与答题模板                                                                         | `/doc/vue3-interview`                   |
+| ES6 三十二题     | ES6 三十二题 · 分册索引与「新特性」总览                                                                | `/doc/es6-overview`                     |
+| ES6 三十二题     | 分册 01 · 变量、作用域、闭包与 this                                                                    | `/doc/es6-variables-scope-closure-this` |
+| ES6 三十二题     | 分册 02 · 对象、原型与继承                                                                             | `/doc/es6-object-prototype-inheritance` |
+| ES6 三十二题     | 分册 03 · 响应式原理：Proxy 与 Object.defineProperty                                                   | `/doc/es6-reactivity-proxy`             |
+| ES6 三十二题     | 分册 04 · 异步：Promise、async/await 与事件循环                                                        | `/doc/es6-async-event-loop`             |
+| ES6 三十二题     | 分册 05 · 模块与工程化：ESM vs CommonJS、HMR                                                           | `/doc/es6-module-engineering`           |
+| ES6 三十二题     | 分册 06 · 集合、迭代与数组扩展                                                                         | `/doc/es6-collections-iteration`        |
+| ES6 三十二题     | 分册 07 · 类型转换与隐式规则                                                                           | `/doc/es6-type-coercion`                |
+| JS 原理          | 事件传播与停止                                                                                         | `/doc/event-propagation`                |
+| JS 原理          | 手写 call / bind                                                                                       | `/doc/call-bind`                        |
+| JS 原理          | 原型与原型链                                                                                           | `/doc/prototype-chain`                  |
+| 性能优化 25 题   | 性能优化 25 题 · 总览与索引                                                                            | `/doc/perf-overview`                    |
+| 性能优化 25 题   | 性能 · 01 指标体系与监控                                                                               | `/doc/perf-metrics-monitoring`          |
+| 性能优化 25 题   | 性能 · 02 加载与网络：缓存 / CDN / HTTP2 / 资源优先级                                                  | `/doc/perf-loading-network`             |
+| 性能优化 25 题   | 性能 · 03 首屏优化：从 SSR 到关键路径                                                                  | `/doc/perf-first-screen`                |
+| 性能优化 25 题   | 性能 · 04 渲染优化：渲染流水线与重排重绘                                                               | `/doc/perf-rendering`                   |
+| 性能优化 25 题   | 性能 · 05 图片与资源优化：懒加载                                                                       | `/doc/perf-images-lazy-load`            |
+| 性能优化 25 题   | 性能 · 06 JS 引擎与内存：V8 优化与内存泄漏                                                             | `/doc/perf-js-engine-memory`            |
+| 性能优化 25 题   | 性能 · 07 Webpack：打包原理 / 构建优化 / HMR                                                           | `/doc/perf-webpack`                     |
+| 前端安全 21 题   | 前端安全 21 题 · 总览与索引                                                                            | `/doc/security-overview`                |
+| 前端安全 21 题   | 安全 · 01 XSS 跨站脚本攻击                                                                             | `/doc/security-xss`                     |
+| 前端安全 21 题   | 安全 · 02 CSRF 与 Cookie 安全                                                                          | `/doc/security-csrf-cookie`             |
+| 前端安全 21 题   | 安全 · 03 CSP 与安全响应头                                                                             | `/doc/security-csp-headers`             |
+| 前端安全 21 题   | 安全 · 04 点击劫持与 iframe 安全                                                                       | `/doc/security-clickjacking-iframe`     |
+| 前端安全 21 题   | 安全 · 05 传输层：HTTPS、中间人、网络劫持与 SRI                                                        | `/doc/security-transport-https`         |
+| 前端安全 21 题   | 安全 · 06 鉴权体系与数据安全                                                                           | `/doc/security-auth-data`               |
+| 前端安全 21 题   | 安全 · 07 跨域与 WebSocket 安全                                                                        | `/doc/security-cors-websocket`          |
+| 前端安全 21 题   | 安全 · 08 工程化落地：SQL 注入、供应链与检查清单                                                       | `/doc/security-supply-chain`            |
+| 算法 19 题       | 算法 19 题 · 总览与索引                                                                                | `/doc/algo-overview`                    |
+| 算法 19 题       | 算法 · 01 复杂度分析与递归（尾调用）                                                                   | `/doc/algo-complexity-recursion`        |
+| 算法 19 题       | 算法 · 02 基础排序：冒泡 / 选择 / 插入 / 希尔                                                          | `/doc/algo-basic-sorts`                 |
+| 算法 19 题       | 算法 · 03 进阶排序：归并 / 快排 / 堆排                                                                 | `/doc/algo-advanced-sorts`              |
+| 算法 19 题       | 算法 · 04 线性排序：计数 / 桶 / 基数                                                                   | `/doc/algo-linear-sorts`                |
+| 算法 19 题       | 算法 · 05 链表与堆：合并 K 个升序链表                                                                  | `/doc/algo-linked-list-heap`            |
+| 算法 19 题       | 算法 · 06 哈希与缓存：LRU                                                                              | `/doc/algo-hash-lru`                    |
+| 算法 19 题       | 算法 · 07 字符串与双指针                                                                               | `/doc/algo-string-two-pointers`         |
+| 算法 19 题       | 算法 · 08 概率与随机：洗牌与最优停止                                                                   | `/doc/algo-probability-random`          |
+| 计算机网络 71 题 | 计算机网络 71 题 · 总览与索引                                                                          | `/doc/network-overview`                 |
+| 计算机网络 71 题 | 网络 · 01 分层模型与数据封装（题 45）                                                                  | `/doc/network-layering-encapsulation`   |
+| 计算机网络 71 题 | 网络 · 02 从输入 URL 到页面展示（题 2、6、22、29、41、63、71 + DNS 题 64）                             | `/doc/network-url-to-page`              |
+| 计算机网络 71 题 | 网络 · 03 TCP 连接管理：三次握手与四次挥手（题 3、4、28、32、37、56）                                  | `/doc/network-tcp-handshake`            |
+| 计算机网络 71 题 | 网络 · 04 TCP 可靠传输 · 流量控制 · 拥塞控制（题 61）                                                  | `/doc/network-tcp-reliability`          |
+| 计算机网络 71 题 | 网络 · 05 TCP 与 UDP（题 5、42、53、67）                                                               | `/doc/network-tcp-udp`                  |
+| 计算机网络 71 题 | 网络 · 06 HTTP 报文 · 方法 · 状态码 · 头部（题 7、11、12、15、16、18、19、21、31、36、46、49、51、70） | `/doc/network-http-message`             |
+| 计算机网络 71 题 | 网络 · 07 HTTP 版本演进：HTTP/1.0 → 1.1 → 2 → 3（题 1、14、57）                                        | `/doc/network-http-versions`            |
+| 计算机网络 71 题 | 网络 · 08 HTTP 缓存（题 8、10、20、23、35、38、40、43、58、60、62、65、69）                            | `/doc/network-http-cache`               |
+| 计算机网络 71 题 | 网络 · 09 HTTPS 与 TLS（题 13、17、30、34、39、47、48、59、66）                                        | `/doc/network-https-tls`                |
+| 计算机网络 71 题 | 网络 · 10 跨域与 CORS（题 9、24、25、26、27、44、50、52、54、55、68）                                  | `/doc/network-cors`                     |
+| 计算机网络 71 题 | 网络 · 11 WebSocket 与实时通信（题 33、70）                                                            | `/doc/network-websocket`                |
 
 ### 新增一篇教程
 
