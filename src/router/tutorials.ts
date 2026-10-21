@@ -189,6 +189,44 @@ export const categories: TutorialCategory[] = [
       { id: 'network-websocket', title: '网络 · 11 WebSocket 与实时通信（题 33、70）' },
     ],
   },
+  {
+    dir: 'typescript',
+    title: 'TypeScript 46 题',
+    items: [
+      { id: 'typescript-overview', title: 'TypeScript 46 题 · 总览与索引' },
+      {
+        id: 'typescript-language-overview',
+        title: 'TS · 01 语言全景与工程价值（题 2、27、34、46）',
+      },
+      {
+        id: 'typescript-basic-types-assertion',
+        title: 'TS · 02 类型系统基础：原始类型 · 联合 · 断言（题 20、30、17、4、39、31、44）',
+      },
+      {
+        id: 'typescript-any-unknown-never-narrowing',
+        title: 'TS · 03 any / unknown / never / void 与类型收窄（题 21、22、36、7、19、23）',
+      },
+      { id: 'typescript-interface-vs-type', title: 'TS · 04 interface 与 type（题 37、35）' },
+      { id: 'typescript-generics-overload', title: 'TS · 05 泛型与方法重载（题 3、5）' },
+      {
+        id: 'typescript-class-oop',
+        title: 'TS · 06 类与面向对象（题 8、38、40、32、28、41）',
+      },
+      { id: 'typescript-decorator-mixin', title: 'TS · 07 装饰器与 mixin（题 42、43）' },
+      {
+        id: 'typescript-enum-declare-module',
+        title: 'TS · 08 枚举 · declare · namespace 与 module（题 26、25、33、1、45）',
+      },
+      {
+        id: 'typescript-tsconfig-sourcemap',
+        title: 'TS · 09 工程化：tsconfig 与 sourcemap（题 24、29）',
+      },
+      {
+        id: 'typescript-handwritten',
+        title: 'TS · 10 手写实现题 10 道（题 6、9、10、11、12、13、14、15、16、18）',
+      },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */
