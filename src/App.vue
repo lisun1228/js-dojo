@@ -15,8 +15,23 @@
             :key="group.title"
             class="menu-group"
           >
-            <p class="group-title">{{ group.title }}</p>
-            <ul class="tree">
+            <button
+              type="button"
+              class="group-title"
+              :aria-expanded="isExpanded(group.title)"
+              @click="toggle(group.title)"
+            >
+              <span>{{ group.title }}</span>
+              <span
+                class="chevron"
+                :class="{ collapsed: !isExpanded(group.title) }"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <ul
+              v-show="isExpanded(group.title)"
+              class="tree"
+            >
               <li
                 v-for="item in group.items"
                 :key="item.path"
@@ -44,7 +59,8 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import BackToTop from './components/BackToTop.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import { tutorialMenus } from './router'
@@ -62,6 +78,32 @@ const menus = [
   // 教程分类来自 src/router/tutorials.ts，改分类只改那一处
   ...tutorialMenus,
 ]
+
+/* ---------- 分组折叠 ---------- */
+
+// 记录展开状态，默认全部收起；进入页面时只展开当前路由所在分组
+const expanded = ref<Record<string, boolean>>({})
+
+const isExpanded = (title: string) => expanded.value[title] === true
+
+const toggle = (title: string) => {
+  expanded.value[title] = !isExpanded(title)
+}
+
+const route = useRoute()
+
+// 路由首次匹配完成前（START_LOCATION）为空，避免误展开「开始」分组
+const currentPath = computed(() => (route.matched.length ? route.path : ''))
+
+watch(
+  currentPath,
+  (path) => {
+    if (!path) return
+    const current = menus.find((group) => group.items.some((item) => item.path === path))
+    if (current) expanded.value[current.title] = true
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>
@@ -111,12 +153,55 @@ const menus = [
   box-sizing: border-box;
 }
 
+.menu-group {
+  margin-bottom: 16px;
+}
+
+/* 分组标题兼折叠开关 */
 .group-title {
-  margin: 0 0 6px;
-  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
   font-size: 13px;
   color: var(--text);
   opacity: 0.7;
+  cursor: pointer;
+  transition:
+    opacity 0.2s,
+    background 0.2s;
+}
+
+.group-title:hover {
+  background: var(--accent-bg);
+  opacity: 1;
+}
+
+.group-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 折叠箭头：默认朝下，收起时朝右 */
+.chevron {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s;
+}
+
+.chevron.collapsed {
+  transform: rotate(-45deg);
 }
 
 .tree {
@@ -126,7 +211,7 @@ const menus = [
   /* 相邻条目的 hover / 选中背景不要贴在一起 */
   gap: 4px;
   list-style: none;
-  margin: 0 0 16px;
+  margin: 6px 0 0;
   padding: 0 0 0 12px;
 }
 
