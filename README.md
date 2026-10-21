@@ -111,6 +111,7 @@ src/
 │   ├── design-patterns/     # 设计模式
 │   ├── vue/                 # Vue
 │   ├── es6/                 # ES6 三十二题
+│   ├── performance/         # 性能优化 25 题
 │   └── js-principles/       # JS 原理
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
@@ -152,34 +153,42 @@ tutorials.ts（分类 + 教程清单）
 
 ### 现有教程
 
-| 分类         | 教程                                                 | 路由                                    |
-| ------------ | ---------------------------------------------------- | --------------------------------------- |
-| 设计模式     | 装饰器 + @语法糖                                     | `/doc/decorator`                        |
-| 设计模式     | 适配器模式                                           | `/doc/adapter`                          |
-| 设计模式     | 策略模式                                             | `/doc/strategy`                         |
-| 设计模式     | 单例模式                                             | `/doc/singleton`                        |
-| Vue          | Props / 插槽 / $attrs                                | `/doc/props-slots`                      |
-| Vue          | Proxy 与响应式                                       | `/doc/proxy-reactive`                   |
-| Vue          | 响应式原理 effect                                    | `/doc/reactive-effect`                  |
-| Vue          | Vue3 Diff算法原理（面试版）                          | `/doc/diff-algorithm`                   |
-| Vue          | Pinia 与 Vuex 完全指南                               | `/doc/pinia-vuex`                       |
-| Vue          | Vue 中 keep-alive 详解与面试回答模板                 | `/doc/keep-alive`                       |
-| Vue          | Vue 插槽 slot 详解与面试回答                         | `/doc/slots`                            |
-| Vue          | Vue 自定义指令详解与面试回答                         | `/doc/custom-directive`                 |
-| Vue          | Vue 路由模式详解与面试回答                           | `/doc/router-mode`                      |
-| Vue          | Vue 路由守卫详解与面试回答                           | `/doc/router-guard`                     |
-| Vue          | Vue 3 高频面试题详解与答题模板                       | `/doc/vue3-interview`                   |
-| ES6 三十二题 | ES6 三十二题 · 分册索引与「新特性」总览              | `/doc/es6-overview`                     |
-| ES6 三十二题 | 分册 01 · 变量、作用域、闭包与 this                  | `/doc/es6-variables-scope-closure-this` |
-| ES6 三十二题 | 分册 02 · 对象、原型与继承                           | `/doc/es6-object-prototype-inheritance` |
-| ES6 三十二题 | 分册 03 · 响应式原理：Proxy 与 Object.defineProperty | `/doc/es6-reactivity-proxy`             |
-| ES6 三十二题 | 分册 04 · 异步：Promise、async/await 与事件循环      | `/doc/es6-async-event-loop`             |
-| ES6 三十二题 | 分册 05 · 模块与工程化：ESM vs CommonJS、HMR         | `/doc/es6-module-engineering`           |
-| ES6 三十二题 | 分册 06 · 集合、迭代与数组扩展                       | `/doc/es6-collections-iteration`        |
-| ES6 三十二题 | 分册 07 · 类型转换与隐式规则                         | `/doc/es6-type-coercion`                |
-| JS 原理      | 事件传播与停止                                       | `/doc/event-propagation`                |
-| JS 原理      | 手写 call / bind                                     | `/doc/call-bind`                        |
-| JS 原理      | 原型与原型链                                         | `/doc/prototype-chain`                  |
+| 分类           | 教程                                                  | 路由                                    |
+| -------------- | ----------------------------------------------------- | --------------------------------------- |
+| 设计模式       | 装饰器 + @语法糖                                      | `/doc/decorator`                        |
+| 设计模式       | 适配器模式                                            | `/doc/adapter`                          |
+| 设计模式       | 策略模式                                              | `/doc/strategy`                         |
+| 设计模式       | 单例模式                                              | `/doc/singleton`                        |
+| Vue            | Props / 插槽 / $attrs                                 | `/doc/props-slots`                      |
+| Vue            | Proxy 与响应式                                        | `/doc/proxy-reactive`                   |
+| Vue            | 响应式原理 effect                                     | `/doc/reactive-effect`                  |
+| Vue            | Vue3 Diff算法原理（面试版）                           | `/doc/diff-algorithm`                   |
+| Vue            | Pinia 与 Vuex 完全指南                                | `/doc/pinia-vuex`                       |
+| Vue            | Vue 中 keep-alive 详解与面试回答模板                  | `/doc/keep-alive`                       |
+| Vue            | Vue 插槽 slot 详解与面试回答                          | `/doc/slots`                            |
+| Vue            | Vue 自定义指令详解与面试回答                          | `/doc/custom-directive`                 |
+| Vue            | Vue 路由模式详解与面试回答                            | `/doc/router-mode`                      |
+| Vue            | Vue 路由守卫详解与面试回答                            | `/doc/router-guard`                     |
+| Vue            | Vue 3 高频面试题详解与答题模板                        | `/doc/vue3-interview`                   |
+| ES6 三十二题   | ES6 三十二题 · 分册索引与「新特性」总览               | `/doc/es6-overview`                     |
+| ES6 三十二题   | 分册 01 · 变量、作用域、闭包与 this                   | `/doc/es6-variables-scope-closure-this` |
+| ES6 三十二题   | 分册 02 · 对象、原型与继承                            | `/doc/es6-object-prototype-inheritance` |
+| ES6 三十二题   | 分册 03 · 响应式原理：Proxy 与 Object.defineProperty  | `/doc/es6-reactivity-proxy`             |
+| ES6 三十二题   | 分册 04 · 异步：Promise、async/await 与事件循环       | `/doc/es6-async-event-loop`             |
+| ES6 三十二题   | 分册 05 · 模块与工程化：ESM vs CommonJS、HMR          | `/doc/es6-module-engineering`           |
+| ES6 三十二题   | 分册 06 · 集合、迭代与数组扩展                        | `/doc/es6-collections-iteration`        |
+| ES6 三十二题   | 分册 07 · 类型转换与隐式规则                          | `/doc/es6-type-coercion`                |
+| JS 原理        | 事件传播与停止                                        | `/doc/event-propagation`                |
+| JS 原理        | 手写 call / bind                                      | `/doc/call-bind`                        |
+| JS 原理        | 原型与原型链                                          | `/doc/prototype-chain`                  |
+| 性能优化 25 题 | 性能优化 25 题 · 总览与索引                           | `/doc/perf-overview`                    |
+| 性能优化 25 题 | 性能 · 01 指标体系与监控                              | `/doc/perf-metrics-monitoring`          |
+| 性能优化 25 题 | 性能 · 02 加载与网络：缓存 / CDN / HTTP2 / 资源优先级 | `/doc/perf-loading-network`             |
+| 性能优化 25 题 | 性能 · 03 首屏优化：从 SSR 到关键路径                 | `/doc/perf-first-screen`                |
+| 性能优化 25 题 | 性能 · 04 渲染优化：渲染流水线与重排重绘              | `/doc/perf-rendering`                   |
+| 性能优化 25 题 | 性能 · 05 图片与资源优化：懒加载                      | `/doc/perf-images-lazy-load`            |
+| 性能优化 25 题 | 性能 · 06 JS 引擎与内存：V8 优化与内存泄漏            | `/doc/perf-js-engine-memory`            |
+| 性能优化 25 题 | 性能 · 07 Webpack：打包原理 / 构建优化 / HMR          | `/doc/perf-webpack`                     |
 
 ### 新增一篇教程
 

@@ -90,6 +90,23 @@ export const categories: TutorialCategory[] = [
       { id: 'prototype-chain', title: '原型与原型链', demo: 'PrototypeChainDemo' },
     ],
   },
+  {
+    dir: 'performance',
+    title: '性能优化 25 题',
+    items: [
+      { id: 'perf-overview', title: '性能优化 25 题 · 总览与索引' },
+      { id: 'perf-metrics-monitoring', title: '性能 · 01 指标体系与监控' },
+      {
+        id: 'perf-loading-network',
+        title: '性能 · 02 加载与网络：缓存 / CDN / HTTP2 / 资源优先级',
+      },
+      { id: 'perf-first-screen', title: '性能 · 03 首屏优化：从 SSR 到关键路径' },
+      { id: 'perf-rendering', title: '性能 · 04 渲染优化：渲染流水线与重排重绘' },
+      { id: 'perf-images-lazy-load', title: '性能 · 05 图片与资源优化：懒加载' },
+      { id: 'perf-js-engine-memory', title: '性能 · 06 JS 引擎与内存：V8 优化与内存泄漏' },
+      { id: 'perf-webpack', title: '性能 · 07 Webpack：打包原理 / 构建优化 / HMR' },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */
