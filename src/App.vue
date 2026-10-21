@@ -121,6 +121,10 @@ const menus = [
 
 .tree {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  /* 相邻条目的 hover / 选中背景不要贴在一起 */
+  gap: 4px;
   list-style: none;
   margin: 0 0 16px;
   padding: 0 0 0 12px;
