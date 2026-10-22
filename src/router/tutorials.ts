@@ -336,6 +336,21 @@ export const categories: TutorialCategory[] = [
       { id: 'css-engineering-loading', title: 'CSS · 07 工程化与样式加载' },
     ],
   },
+  {
+    dir: 'html',
+    title: 'HTML 57 题',
+    items: [
+      { id: 'html-overview', title: 'HTML 57 题 · 总览与索引' },
+      { id: 'html-basics-document-structure', title: 'HTML · 01 基础概念与文档结构' },
+      { id: 'html-semantics-elements-seo', title: 'HTML · 02 语义化、元素分类与 SEO' },
+      { id: 'html-forms-a11y-data-attributes', title: 'HTML · 03 表单、无障碍与自定义属性' },
+      { id: 'html-head-resources', title: 'HTML · 04 文档头部与资源引用' },
+      { id: 'html-script-loading-rendering', title: 'HTML · 05 脚本加载与渲染链路' },
+      { id: 'html-storage-cache-offline', title: 'HTML · 06 存储、缓存与离线' },
+      { id: 'html5-features-overview', title: 'HTML · 07 HTML5 新特性全景' },
+      { id: 'html-non-html-questions', title: 'HTML · 08 题单里的非 HTML 题' },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */

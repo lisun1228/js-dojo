@@ -123,6 +123,7 @@ src/
 │   ├── nodejs/              # Node.js 27 题
 │   ├── mini-program/        # 小程序 9 题
 │   ├── css/                 # CSS 61 题精讲
+│   ├── html/                # HTML 57 题
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
@@ -292,6 +293,15 @@ tutorials.ts（分类 + 教程清单）
 | CSS 61 题精讲     | CSS · 05 响应式与移动端适配                                                                            | `/doc/css-responsive-mobile`                  |
 | CSS 61 题精讲     | CSS · 06 动画与渲染性能                                                                                | `/doc/css-animation-rendering`                |
 | CSS 61 题精讲     | CSS · 07 工程化与样式加载                                                                              | `/doc/css-engineering-loading`                |
+| HTML 57 题        | HTML 57 题 · 总览与索引                                                                                | `/doc/html-overview`                          |
+| HTML 57 题        | HTML · 01 基础概念与文档结构                                                                           | `/doc/html-basics-document-structure`         |
+| HTML 57 题        | HTML · 02 语义化、元素分类与 SEO                                                                       | `/doc/html-semantics-elements-seo`            |
+| HTML 57 题        | HTML · 03 表单、无障碍与自定义属性                                                                     | `/doc/html-forms-a11y-data-attributes`        |
+| HTML 57 题        | HTML · 04 文档头部与资源引用                                                                           | `/doc/html-head-resources`                    |
+| HTML 57 题        | HTML · 05 脚本加载与渲染链路                                                                           | `/doc/html-script-loading-rendering`          |
+| HTML 57 题        | HTML · 06 存储、缓存与离线                                                                             | `/doc/html-storage-cache-offline`             |
+| HTML 57 题        | HTML · 07 HTML5 新特性全景                                                                             | `/doc/html5-features-overview`                |
+| HTML 57 题        | HTML · 08 题单里的非 HTML 题                                                                           | `/doc/html-non-html-questions`                |
 
 ### 新增一篇教程
 
