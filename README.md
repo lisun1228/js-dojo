@@ -103,7 +103,8 @@ commitlint 规范参考文档：<https://blog.csdn.net/weixin_41447256/article/d
 
 ```
 build/
-└── mermaid.ts               # Vite 插件：构建期把 mermaid 代码块渲染成内联 SVG
+├── mermaid.ts               # Vite 插件：构建期把 mermaid 代码块渲染成内联 SVG
+└── search-index.ts          # Vite 插件：构建期生成全文检索索引（virtual:search-index）
 
 src/
 ├── docs/                    # 教程正文，按分类分目录（目录名 = tutorials.ts 的 dir）

@@ -152,18 +152,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import type { DocItem } from '../docs'
+import type { IndexedSection } from 'virtual:search-index'
 import { navMenus } from '../config/nav-menus'
-import { slugify } from '../utils/slugify'
 
 /** 正文按二级标题切成的检索单元 */
-interface Section {
-  docId: string
-  docTitle: string
-  heading: string
-  /** 标题锚点；文首（无二级标题前）为空，表示跳到文档顶部 */
-  anchor: string
-  text: string
+interface Section extends IndexedSection {
   textLower: string
 }
 
@@ -226,52 +219,15 @@ const matchMenus = (keyword: string): SearchResult[] => {
 
 /* ---------- 正文索引 ---------- */
 
-// 正文是随 DocView 懒加载的大 chunk，用户真正开始搜索时再拉取，避免拖慢首屏
-let sections: Section[] | null = null
+// 索引由 build/search-index.ts 在构建期生成，是独立 chunk：
+// 只有用户真正输入关键词时才加载，不再把全部正文打进主路径
+let sectionsPromise: Promise<Section[]> | null = null
 
-const buildSections = (docs: DocItem[]): Section[] => {
-  const list: Section[] = []
-  for (const doc of docs) {
-    let heading = ''
-    let anchor = ''
-    let skip = false
-    let buffer: string[] = []
-
-    const flush = () => {
-      const text = buffer.join('\n').trim()
-      if (skip || !text) return
-      list.push({
-        docId: doc.id,
-        docTitle: doc.title,
-        heading: heading || doc.title,
-        anchor,
-        text,
-        textLower: text.toLowerCase(),
-      })
-    }
-
-    for (const line of doc.content.split('\n')) {
-      const matched = /^##\s+(.+?)\s*$/.exec(line)
-      if (matched) {
-        flush()
-        heading = matched[1]
-        anchor = slugify(heading)
-        // 目录本身只是一串锚点链接，命中它没有意义
-        skip = heading === '目录'
-        buffer = []
-      } else {
-        buffer.push(line)
-      }
-    }
-    flush()
-  }
-  return list
-}
-
-const ensureSections = async () => {
-  if (sections) return
-  const { docs } = await import('../docs')
-  sections = buildSections(docs)
+const ensureSections = (): Promise<Section[]> => {
+  sectionsPromise ??= import('virtual:search-index').then(({ default: indexed }) =>
+    indexed.map((section) => ({ ...section, textLower: section.text.toLowerCase() })),
+  )
+  return sectionsPromise
 }
 
 /** 去掉 markdown 标记，让结果摘要读起来像正文 */
@@ -297,9 +253,9 @@ const buildSnippet = (section: Section, keyword: string, index: number) => {
   }
 }
 
-const matchContent = (keyword: string): SearchResult[] => {
+const matchContent = (keyword: string, list: Section[]): SearchResult[] => {
   const found: SearchResult[] = []
-  for (const section of sections ?? []) {
+  for (const section of list) {
     const index = section.textLower.indexOf(keyword)
     const headingHit = section.heading.toLowerCase().includes(keyword)
     if (index === -1 && !headingHit) continue
@@ -328,9 +284,9 @@ let searchToken = 0
 const runSearch = async (keyword: string, token: number) => {
   loading.value = true
   try {
-    await ensureSections()
+    const indexed = await ensureSections()
     if (token !== searchToken) return
-    contentResults.value = matchContent(keyword)
+    contentResults.value = matchContent(keyword, indexed)
     activeIndex.value = 0
   } finally {
     if (token === searchToken) loading.value = false

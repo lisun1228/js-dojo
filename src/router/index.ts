@@ -45,4 +45,17 @@ router.beforeEach((_to, from) => {
   if (from.matched.length) scrollPositions.set(from.fullPath, window.scrollY)
 })
 
+router.beforeEach(async (to) => {
+  if (to.name !== 'doc') return
+  // 正文按篇分包，导航完成前先加载好，DocView 首帧即有内容：
+  // 否则滚动位置恢复和搜索结果锚点跳转都会因为页面高度不足而失效。
+  // 动态 import 让 docs 装配层不进入首页首包。
+  try {
+    const { loadDocContent } = await import('../docs')
+    await loadDocContent(String(to.params.id))
+  } catch {
+    // 分包加载失败时交给 DocView 展示提示，不阻断导航
+  }
+})
+
 export default router

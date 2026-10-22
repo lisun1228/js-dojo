@@ -1,33 +1,56 @@
 <template>
   <article
-    v-if="doc"
+    v-if="content !== undefined"
     class="doc"
   >
-    <!-- 正文：来自 src/docs/<分类目录>/<id>.md -->
-    <MarkdownView :content="doc.content" />
+    <!-- 正文：来自 src/docs/<分类目录>/<id>.md，路由守卫已完成加载 -->
+    <MarkdownView :content="content" />
     <!-- 交互演示：来自 src/components/demos/<demo>.vue -->
     <component
-      :is="doc.demoComponent"
-      v-if="doc.demoComponent"
+      :is="meta?.demoComponent"
+      v-if="meta?.demoComponent"
     />
   </article>
+
+  <p
+    v-else-if="!meta"
+    class="missing"
+  >
+    未找到教程：{{ id }}
+  </p>
 
   <p
     v-else
     class="missing"
   >
-    未找到教程：{{ id }}
+    正在加载教程…
   </p>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import MarkdownView from '../components/MarkdownView.vue'
-import { getDoc } from '../docs'
+import { getDocContent, getDocMeta, loadDocContent } from '../docs'
 
 const props = defineProps<{ id: string }>()
 
-const doc = computed(() => getDoc(props.id))
+const meta = computed(() => getDocMeta(props.id))
+const content = ref<string>()
+
+// 正常导航时路由守卫已把正文加载进缓存，这里同步取到；
+// 守卫未命中（如直接挂载）时再兜底加载一次
+watch(
+  () => props.id,
+  async (id) => {
+    content.value = getDocContent(id)
+    if (content.value !== undefined) return
+
+    const loaded = await loadDocContent(id).catch(() => undefined)
+    // 等待期间可能已经切到另一篇，丢弃过期结果
+    if (id === props.id) content.value = loaded
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>
