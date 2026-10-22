@@ -34,6 +34,7 @@ import css from 'highlight.js/lib/languages/css'
 import markdown from 'highlight.js/lib/languages/markdown'
 
 import ImagePreview from './ImagePreview.vue'
+import { slugify } from '../utils/slugify'
 
 hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('js', javascript)
@@ -71,15 +72,8 @@ const md = new MarkdownIt({
 
 /**
  * 给标题生成 GitHub 风格锚点 id，正文里写的 [目录](#xxx) 才能跳转。
- * 规则：转小写、去掉标点、空格换成 -（保留中英文与数字）。
+ * 规则与搜索结果跳转共用，见 src/utils/slugify.ts。
  */
-const slugify = (text: string) =>
-  text
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
-    .replace(/\s/g, '-')
-
 md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
   const inline = tokens[idx + 1]
   const text = inline?.type === 'inline' ? inline.content : ''

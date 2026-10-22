@@ -10,6 +10,9 @@
     >
       <h1 class="title">JS 道场</h1>
 
+      <!-- 搜索菜单与笔记正文，选中结果直接跳转 -->
+      <DocSearch class="header-search" />
+
       <div class="header-actions">
         <!-- 导航显隐：收起后宽度归零，内容区自动撑满 -->
         <button
@@ -126,6 +129,7 @@ import { ref } from 'vue'
 import { RouterView } from 'vue-router'
 import AiSearch from './components/AiSearch.vue'
 import BackToTop from './components/BackToTop.vue'
+import DocSearch from './components/DocSearch.vue'
 import SideNav from './components/SideNav.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import { useImmersiveMode } from './composables/useImmersiveMode'
@@ -268,6 +272,19 @@ const { immersive, toggle: toggleImmersive } = useImmersiveMode()
     right: 12px;
     padding: 6px 12px;
     font-size: 13px;
+  }
+}
+
+/* 窄屏放不下标题 + 搜索 + 主题切换，搜索框单独占一行 */
+@media (max-width: 860px) {
+  .header {
+    flex-wrap: wrap;
+  }
+
+  .header-search {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
   }
 }
 </style>

@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { tutorialMenus } from '../router'
+import { navMenus } from '../config/nav-menus'
 
 // 拖拽宽度的上下限，App.vue 初始宽度也落在这个区间内
 const MIN_WIDTH = 160
@@ -75,19 +75,8 @@ const KEYBOARD_STEP = 16
 const props = defineProps<{ width: number; visible: boolean }>()
 const emit = defineEmits<{ (event: 'update:width', width: number): void }>()
 
-// 左侧导航菜单，按分组构成树状结构
-const menus = [
-  {
-    title: '开始',
-    items: [{ title: '首页', path: '/' }],
-  },
-  {
-    title: '路由演示',
-    items: [{ title: '404 兜底', path: '/abc' }],
-  },
-  // 教程分类来自 src/router/tutorials.ts，改分类只改那一处
-  ...tutorialMenus,
-]
+// 左侧导航菜单，按分组构成树状结构；数据同时供顶部搜索使用
+const menus = navMenus
 
 /* ---------- 分组折叠 ---------- */
 
