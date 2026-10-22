@@ -53,6 +53,9 @@
       </main>
     </div>
 
+    <!-- 划词后浮出 AI 对话入口 -->
+    <AiSearch />
+
     <!-- 页面滚动超过一定距离后出现 -->
     <BackToTop />
   </div>
@@ -61,6 +64,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
+import AiSearch from './components/AiSearch.vue'
 import BackToTop from './components/BackToTop.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import { tutorialMenus } from './router'
