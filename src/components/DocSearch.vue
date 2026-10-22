@@ -105,7 +105,11 @@
             >
               <span class="option-head">
                 <span class="option-title">{{ item.title }}</span>
-                <span class="option-meta">{{ item.breadcrumb }}</span>
+                <span
+                  v-if="item.breadcrumb"
+                  class="option-meta"
+                  >{{ item.breadcrumb }}</span
+                >
               </span>
             </button>
           </template>
@@ -153,7 +157,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { IndexedSection } from 'virtual:search-index'
-import { navMenus } from '../config/nav-menus'
+import { isNavGroup, navMenus } from '../config/nav-menus'
 
 /** 正文按二级标题切成的检索单元 */
 interface Section extends IndexedSection {
@@ -196,23 +200,26 @@ const results = computed(() => [...menuResults.value, ...contentResults.value])
 
 const matchMenus = (keyword: string): SearchResult[] => {
   const found: SearchResult[] = []
-  for (const group of navMenus) {
-    for (const item of group.items) {
-      const hit =
-        item.title.toLowerCase().includes(keyword) || group.title.toLowerCase().includes(keyword)
-      if (!hit) continue
-      found.push({
-        key: `menu:${item.path}`,
-        title: item.title,
-        breadcrumb: group.title,
-        path: item.path,
-        anchor: '',
-        before: '',
-        match: '',
-        after: '',
-      })
-      if (found.length >= MAX_MENU_RESULTS) return found
-    }
+  // 平铺成「条目 + 所属分组」，顶层链接的分组为空
+  const entries = navMenus.flatMap((entry) =>
+    isNavGroup(entry)
+      ? entry.items.map((item) => ({ item, group: entry.title }))
+      : [{ item: entry, group: '' }],
+  )
+  for (const { item, group } of entries) {
+    const hit = item.title.toLowerCase().includes(keyword) || group.toLowerCase().includes(keyword)
+    if (!hit) continue
+    found.push({
+      key: `menu:${item.path}`,
+      title: item.title,
+      breadcrumb: group,
+      path: item.path,
+      anchor: '',
+      before: '',
+      match: '',
+      after: '',
+    })
+    if (found.length >= MAX_MENU_RESULTS) return found
   }
   return found
 }

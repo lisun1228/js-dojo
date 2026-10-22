@@ -9,41 +9,55 @@
       class="sidebar-inner"
       :style="{ width: `${width}px` }"
     >
-      <div
-        v-for="group in menus"
-        :key="group.title"
-        class="menu-group"
+      <template
+        v-for="entry in menus"
+        :key="isNavGroup(entry) ? entry.title : entry.path"
       >
-        <button
-          type="button"
-          class="group-title"
-          :aria-expanded="isExpanded(group.title)"
-          @click="toggle(group.title)"
+        <div
+          v-if="isNavGroup(entry)"
+          class="menu-group"
         >
-          <span>{{ group.title }}</span>
-          <span
-            class="chevron"
-            :class="{ collapsed: !isExpanded(group.title) }"
-            aria-hidden="true"
-          ></span>
-        </button>
-        <ul
-          v-show="isExpanded(group.title)"
-          class="tree"
-        >
-          <li
-            v-for="item in group.items"
-            :key="item.path"
-            class="tree-item"
+          <button
+            type="button"
+            class="group-title"
+            :aria-expanded="isExpanded(entry.title)"
+            @click="toggle(entry.title)"
           >
-            <RouterLink
-              :to="item.path"
-              class="tree-link"
-              >{{ item.title }}</RouterLink
+            <span>{{ entry.title }}</span>
+            <span
+              class="chevron"
+              :class="{ collapsed: !isExpanded(entry.title) }"
+              aria-hidden="true"
+            ></span>
+          </button>
+          <ul
+            v-show="isExpanded(entry.title)"
+            class="tree"
+          >
+            <li
+              v-for="item in entry.items"
+              :key="item.path"
+              class="tree-item"
             >
-          </li>
-        </ul>
-      </div>
+              <RouterLink
+                :to="item.path"
+                class="tree-link"
+                >{{ item.title }}</RouterLink
+              >
+            </li>
+          </ul>
+        </div>
+        <div
+          v-else
+          class="menu-group"
+        >
+          <RouterLink
+            :to="entry.path"
+            class="tree-link"
+            >{{ entry.title }}</RouterLink
+          >
+        </div>
+      </template>
     </div>
 
     <!-- 拖拽手柄：左右拖动调整宽度，聚焦后可用左右方向键微调 -->
@@ -65,7 +79,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { navMenus } from '../config/nav-menus'
+import { isNavGroup, navMenus } from '../config/nav-menus'
 
 // 拖拽宽度的上下限，App.vue 初始宽度也落在这个区间内
 const MIN_WIDTH = 160
@@ -98,8 +112,11 @@ watch(
   currentPath,
   (path) => {
     if (!path) return
-    const current = menus.find((group) => group.items.some((item) => item.path === path))
-    if (current) expanded.value[current.title] = true
+    // 顶层单条链接没有分组，也就没有可展开的父节点
+    const current = menus.find(
+      (entry) => isNavGroup(entry) && entry.items.some((item) => item.path === path),
+    )
+    if (current && isNavGroup(current)) expanded.value[current.title] = true
   },
   { immediate: true },
 )

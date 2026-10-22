@@ -224,8 +224,8 @@ const startPath = tutorialPath(firstCategory.items[0].id)
 
 .btn.primary {
   background: var(--accent);
-  /* 各主题的强调色都偏亮，统一用黑字保证对比度 */
-  color: #000;
+  color: #fff;
+  font-weight: 600;
 }
 
 .btn.primary:hover {
