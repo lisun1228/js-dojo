@@ -116,6 +116,7 @@ src/
 │   ├── performance/         # 性能优化 25 题
 │   ├── security/            # 前端安全 21 题
 │   ├── algorithms/          # 算法 19 题
+│   ├── programming/         # 编程题 50 题
 │   ├── network/             # 计算机网络 71 题
 │   ├── typescript/          # TypeScript 46 题
 ├── components/
@@ -224,6 +225,14 @@ tutorials.ts（分类 + 教程清单）
 | 算法 19 题        | 算法 · 06 哈希与缓存：LRU                                                                              | `/doc/algo-hash-lru`                          |
 | 算法 19 题        | 算法 · 07 字符串与双指针                                                                               | `/doc/algo-string-two-pointers`               |
 | 算法 19 题        | 算法 · 08 概率与随机：洗牌与最优停止                                                                   | `/doc/algo-probability-random`                |
+| 编程题 50 题      | 编程题 50 题 · 总览与索引                                                                              | `/doc/programming-overview`                   |
+| 编程题 50 题      | 编程 01｜闭包与高阶函数                                                                                | `/doc/programming-closure-hof`                |
+| 编程题 50 题      | 编程 02｜this 绑定与原型链                                                                             | `/doc/programming-this-prototype`             |
+| 编程题 50 题      | 编程 03｜Promise 核心实现                                                                              | `/doc/programming-promise`                    |
+| 编程题 50 题      | 编程 04｜并发控制与异步调度                                                                            | `/doc/programming-concurrency`                |
+| 编程题 50 题      | 编程 05｜数组、字符串与排序                                                                            | `/doc/programming-array-string-sort`          |
+| 编程题 50 题      | 编程 06｜深拷贝与对象处理                                                                              | `/doc/programming-deep-clone`                 |
+| 编程题 50 题      | 编程 07｜数据结构与 DOM                                                                                | `/doc/programming-data-structure-dom`         |
 | 计算机网络 71 题  | 计算机网络 71 题 · 总览与索引                                                                          | `/doc/network-overview`                       |
 | 计算机网络 71 题  | 网络 · 01 分层模型与数据封装（题 45）                                                                  | `/doc/network-layering-encapsulation`         |
 | 计算机网络 71 题  | 网络 · 02 从输入 URL 到页面展示（题 2、6、22、29、41、63、71 + DNS 题 64）                             | `/doc/network-url-to-page`                    |

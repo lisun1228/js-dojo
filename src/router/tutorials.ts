@@ -180,6 +180,20 @@ export const categories: TutorialCategory[] = [
     ],
   },
   {
+    dir: 'programming',
+    title: '编程题 50 题',
+    items: [
+      { id: 'programming-overview', title: '编程题 50 题 · 总览与索引' },
+      { id: 'programming-closure-hof', title: '编程 01｜闭包与高阶函数' },
+      { id: 'programming-this-prototype', title: '编程 02｜this 绑定与原型链' },
+      { id: 'programming-promise', title: '编程 03｜Promise 核心实现' },
+      { id: 'programming-concurrency', title: '编程 04｜并发控制与异步调度' },
+      { id: 'programming-array-string-sort', title: '编程 05｜数组、字符串与排序' },
+      { id: 'programming-deep-clone', title: '编程 06｜深拷贝与对象处理' },
+      { id: 'programming-data-structure-dom', title: '编程 07｜数据结构与 DOM' },
+    ],
+  },
+  {
     dir: 'network',
     title: '计算机网络 71 题',
     items: [
