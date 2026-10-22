@@ -120,6 +120,7 @@ src/
 │   ├── network/             # 计算机网络 71 题
 │   ├── typescript/          # TypeScript 46 题
 │   ├── engineering/         # 前端工程化 34 题
+│   ├── nodejs/              # Node.js 27 题
 │   ├── mini-program/        # 小程序 9 题
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
@@ -267,6 +268,16 @@ tutorials.ts（分类 + 教程清单）
 | 前端工程化 34 题  | 工程化 06｜规范与质量保障                                                                              | `/doc/engineering-lint-quality`               |
 | 前端工程化 34 题  | 工程化 07｜CI/CD、Docker 与部署                                                                        | `/doc/engineering-cicd-deploy`                |
 | 前端工程化 34 题  | 工程化 08｜Git 工作流                                                                                  | `/doc/engineering-git-workflow`               |
+| Node.js 27 题     | Node.js 27 题｜总览与索引                                                                              | `/doc/node-overview`                          |
+| Node.js 27 题     | Node 01｜运行时全景与全局对象                                                                          | `/doc/node-runtime-globals`                   |
+| Node.js 27 题     | Node 02｜事件循环与 EventEmitter                                                                       | `/doc/node-event-loop-eventemitter`           |
+| Node.js 27 题     | Node 03｜模块系统：CommonJS 与 ES Module                                                               | `/doc/node-modules-cjs-esm`                   |
+| Node.js 27 题     | Node 04｜Stream、Buffer 与 fs                                                                          | `/doc/node-stream-buffer-fs`                  |
+| Node.js 27 题     | Node 05｜Express 与 Koa 中间件                                                                         | `/doc/node-express-koa-middleware`            |
+| Node.js 27 题     | Node 06｜服务端实战：JWT、文件上传、分页                                                               | `/doc/node-server-jwt-upload-pagination`      |
+| Node.js 27 题     | Node 07｜多进程、进程通信与 pm2                                                                        | `/doc/node-multiprocess-pm2`                  |
+| Node.js 27 题     | Node 08｜性能监控与调试                                                                                | `/doc/node-performance-debugging`             |
+| Node.js 27 题     | Node 09｜npm 与包管理                                                                                  | `/doc/node-npm-package-management`            |
 | 小程序 9 题       | 小程序面试题 · 总览与索引                                                                              | `/doc/mini-program-overview`                  |
 | 小程序 9 题       | 小程序 · 01 架构与双线程模型                                                                           | `/doc/mini-program-architecture`              |
 | 小程序 9 题       | 小程序 · 02 工程结构与 WXSS 样式体系                                                                   | `/doc/mini-program-structure-wxss`            |

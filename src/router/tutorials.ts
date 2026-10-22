@@ -293,6 +293,25 @@ export const categories: TutorialCategory[] = [
     ],
   },
   {
+    dir: 'nodejs',
+    title: 'Node.js 27 题',
+    items: [
+      { id: 'node-overview', title: 'Node.js 27 题｜总览与索引' },
+      { id: 'node-runtime-globals', title: 'Node 01｜运行时全景与全局对象' },
+      { id: 'node-event-loop-eventemitter', title: 'Node 02｜事件循环与 EventEmitter' },
+      { id: 'node-modules-cjs-esm', title: 'Node 03｜模块系统：CommonJS 与 ES Module' },
+      { id: 'node-stream-buffer-fs', title: 'Node 04｜Stream、Buffer 与 fs' },
+      { id: 'node-express-koa-middleware', title: 'Node 05｜Express 与 Koa 中间件' },
+      {
+        id: 'node-server-jwt-upload-pagination',
+        title: 'Node 06｜服务端实战：JWT、文件上传、分页',
+      },
+      { id: 'node-multiprocess-pm2', title: 'Node 07｜多进程、进程通信与 pm2' },
+      { id: 'node-performance-debugging', title: 'Node 08｜性能监控与调试' },
+      { id: 'node-npm-package-management', title: 'Node 09｜npm 与包管理' },
+    ],
+  },
+  {
     dir: 'mini-program',
     title: '小程序 9 题',
     items: [
