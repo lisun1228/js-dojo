@@ -277,6 +277,21 @@ export const categories: TutorialCategory[] = [
       },
     ],
   },
+  {
+    dir: 'engineering',
+    title: '前端工程化 34 题',
+    items: [
+      { id: 'engineering-overview', title: '前端工程化 34 题｜总览与索引' },
+      { id: 'engineering-panorama-scaffold', title: '工程化 01｜工程化全景与脚手架' },
+      { id: 'engineering-webpack', title: '工程化 02｜Webpack 原理与插件开发' },
+      { id: 'engineering-vite', title: '工程化 03｜Vite 与新一代构建工具' },
+      { id: 'engineering-babel-ast', title: '工程化 04｜Babel 与 AST' },
+      { id: 'engineering-tree-shaking', title: '工程化 05｜产物优化与 Tree Shaking' },
+      { id: 'engineering-lint-quality', title: '工程化 06｜规范与质量保障' },
+      { id: 'engineering-cicd-deploy', title: '工程化 07｜CI/CD、Docker 与部署' },
+      { id: 'engineering-git-workflow', title: '工程化 08｜Git 工作流' },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */

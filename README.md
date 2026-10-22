@@ -119,6 +119,7 @@ src/
 │   ├── programming/         # 编程题 50 题
 │   ├── network/             # 计算机网络 71 题
 │   ├── typescript/          # TypeScript 46 题
+│   ├── engineering/         # 前端工程化 34 题
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
@@ -256,6 +257,15 @@ tutorials.ts（分类 + 教程清单）
 | TypeScript 46 题  | TS · 08 枚举 · declare · namespace 与 module（题 26、25、33、1、45）                                   | `/doc/typescript-enum-declare-module`         |
 | TypeScript 46 题  | TS · 09 工程化：tsconfig 与 sourcemap（题 24、29）                                                     | `/doc/typescript-tsconfig-sourcemap`          |
 | TypeScript 46 题  | TS · 10 手写实现题 10 道（题 6、9、10、11、12、13、14、15、16、18）                                    | `/doc/typescript-handwritten`                 |
+| 前端工程化 34 题  | 前端工程化 34 题｜总览与索引                                                                           | `/doc/engineering-overview`                   |
+| 前端工程化 34 题  | 工程化 01｜工程化全景与脚手架                                                                          | `/doc/engineering-panorama-scaffold`          |
+| 前端工程化 34 题  | 工程化 02｜Webpack 原理与插件开发                                                                      | `/doc/engineering-webpack`                    |
+| 前端工程化 34 题  | 工程化 03｜Vite 与新一代构建工具                                                                       | `/doc/engineering-vite`                       |
+| 前端工程化 34 题  | 工程化 04｜Babel 与 AST                                                                                | `/doc/engineering-babel-ast`                  |
+| 前端工程化 34 题  | 工程化 05｜产物优化与 Tree Shaking                                                                     | `/doc/engineering-tree-shaking`               |
+| 前端工程化 34 题  | 工程化 06｜规范与质量保障                                                                              | `/doc/engineering-lint-quality`               |
+| 前端工程化 34 题  | 工程化 07｜CI/CD、Docker 与部署                                                                        | `/doc/engineering-cicd-deploy`                |
+| 前端工程化 34 题  | 工程化 08｜Git 工作流                                                                                  | `/doc/engineering-git-workflow`               |
 
 ### 新增一篇教程
 
