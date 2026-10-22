@@ -5,6 +5,17 @@
 
 ---
 
+## 目录
+
+- [本册速查](#本册速查)
+- [7.1 React 应用有哪些性能优化手段？](#71-react-应用有哪些性能优化手段)
+- [7.2 React.memo 有什么用？为什么有时不生效？](#72-reactmemo-有什么用为什么有时不生效)
+- [7.3 shouldComponentUpdate 和 PureComponent 有什么用？](#73-shouldcomponentupdate-和-purecomponent-有什么用)
+- [7.4 useMemo 和 useCallback 有什么区别？](#74-usememo-和-usecallback-有什么区别)
+- [本册自测](#本册自测)
+
+---
+
 ## 本册速查
 
 | 考点 | 合并自 | 一句话答案 |

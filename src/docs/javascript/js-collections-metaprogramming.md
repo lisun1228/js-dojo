@@ -6,6 +6,21 @@
 
 ---
 
+## 目录
+
+- [7.1 一句话结论](#71-一句话结论)
+- [7.2 Map vs Object](#72-map-vs-object)
+- [7.3 Set](#73-set)
+- [7.4 WeakMap / WeakSet](#74-weakmap--weakset)
+- [7.5 Symbol](#75-symbol)
+- [7.6 Proxy vs defineProperty★ 本册重点](#76-proxy-vs-defineproperty-本册重点)
+- [7.7 Reflect](#77-reflect)
+- [7.8 常见坑](#78-常见坑)
+- [7.9 答题模板](#79-答题模板)
+- [7.10 速记卡](#710-速记卡)
+
+---
+
 ## 7.1 一句话结论
 
 **`Map`/`Set` 是「真正的集合」**（键可以是任意类型、保持插入顺序、可迭代），`Object`/`Array` 是为了性能放弃了一部分语义。

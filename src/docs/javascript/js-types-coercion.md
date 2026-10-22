@@ -6,6 +6,23 @@
 
 ---
 
+## 目录
+
+- [1.1 一句话结论](#11-一句话结论)
+- [1.2 `==` 的完整规则](#12--的完整规则)
+- [1.3 `===` 与 `Object.is`](#13--与-objectis)
+- [1.4 浮点数精度](#14-浮点数精度)
+- [1.5 `typeof`](#15-typeof)
+- [1.6 `instanceof`](#16-instanceof)
+- [1.7 `null` vs `undefined`](#17-null-vs-undefined)
+- [1.8 `NaN`](#18-nan)
+- [1.9 `ToPrimitive`：对象怎么转原始值](#19-toprimitive对象怎么转原始值)
+- [1.10 常见坑](#110-常见坑)
+- [1.11 答题模板](#111-答题模板)
+- [1.12 速记卡](#112-速记卡)
+
+---
+
 ## 1.1 一句话结论
 
 JS 的类型转换由规范的**抽象操作**控制：`ToPrimitive` / `ToNumber` / `ToString` / `ToBoolean`。

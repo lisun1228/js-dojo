@@ -6,6 +6,17 @@ Vue 3 响应式的核心是三个角色：
 - **targetMap**：`WeakMap<target, Map<key, Set<effect>>>`，记录「哪个对象的哪个属性」被「哪些 effect」依赖
 - **effect(fn)**：执行 `fn` 并收集依赖；数据变化时由 `trigger` 重新执行
 
+---
+
+## 目录
+
+- [track（收集依赖）](#track收集依赖)
+- [trigger（触发更新）](#trigger触发更新)
+- [用 Proxy 把两者串起来](#用-proxy-把两者串起来)
+- [effect](#effect)
+
+---
+
 ## track（收集依赖）
 
 在 `get` 阶段，把当前的 `activeEffect` 记录到 `targetMap` 对应 key 的 `Set` 里。

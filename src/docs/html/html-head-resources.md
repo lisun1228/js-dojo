@@ -6,6 +6,22 @@
 
 ---
 
+## 目录
+
+- [4.1 一句话结论](#41-一句话结论)
+- [4.2 meta 标签](#42-meta-标签)
+- [4.3 viewport](#43-viewport)
+- [4.4 link 标签与 `@import`](#44-link-标签与-import)
+- [4.5 img 的 `alt` 与 `title`](#45-img-的-alt-与-title)
+- [4.6 img 的 `loading` 属性](#46-img-的-loading-属性)
+- [4.7 favicon](#47-favicon)
+- [4.8 页面上展示 PDF](#48-页面上展示-pdf)
+- [4.9 `src` 与 `href` 的区别](#49-src-与-href-的区别)
+- [4.10 MIME 类型](#410-mime-类型)
+- [4.11 速记卡](#411-速记卡)
+
+---
+
 ## 4.1 一句话结论
 
 `<head>` 里的东西分两类：**「告诉浏览器怎么处理这个文档」（meta/charset/viewport/DOCTYPE）** 和 **「告诉浏览器去拿哪些外部资源、以什么优先级拿」（link/script/preload）**。`<img>` 与 `src/href` 的问题本质是「**这个资源是替换当前内容，还是被当前内容引用**」。

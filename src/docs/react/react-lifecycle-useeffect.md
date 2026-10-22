@@ -5,6 +5,17 @@
 
 ---
 
+## 目录
+
+- [本册速查](#本册速查)
+- [3.1 React 的生命周期是怎样的？调用顺序是什么？](#31-react-的生命周期是怎样的调用顺序是什么)
+- [3.2 useEffect 的依赖数组怎么用？怎么模拟 componentDidMount？](#32-useeffect-的依赖数组怎么用怎么模拟-componentdidmount)
+- [3.3 useEffect 的返回值（清理函数）有什么用？](#33-useeffect-的返回值清理函数有什么用)
+- [3.4 useEffect 和 useLayoutEffect 有什么区别？](#34-useeffect-和-uselayouteffect-有什么区别)
+- [本册自测](#本册自测)
+
+---
+
 ## 本册速查
 
 | 考点 | 合并自 | 一句话答案 |

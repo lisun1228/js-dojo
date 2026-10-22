@@ -5,6 +5,22 @@
 
 ---
 
+## 目录
+
+- [3.0 这一册的共同内核：状态机 + 微任务队列](#30-这一册的共同内核状态机--微任务队列)
+- [3.1 手写完整 Promise](#31-手写完整-promise)
+- [3.2 Promise.all](#32-promiseall)
+- [3.3 Promise.race](#33-promiserace)
+- [3.4 Promise.allSettled](#34-promiseallsettled)
+- [3.5 Promise.any](#35-promiseany)
+- [3.6 Promise.finally](#36-promisefinally)
+- [3.7 Promise.retry](#37-promiseretry)
+- [3.8 本册追问总表](#38-本册追问总表)
+- [3.9 速记卡](#39-速记卡)
+- [3.10 自测](#310-自测)
+
+---
+
 ## 3.0 这一册的共同内核：状态机 + 微任务队列
 
 所有 Promise 手写题都围绕两件事：

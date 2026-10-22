@@ -1,5 +1,15 @@
 # 手写 call 与 bind
 
+---
+
+## 目录
+
+- [手写 call](#手写-call)
+- [手写 bind](#手写-bind)
+- [测试](#测试)
+
+---
+
 ## 手写 call
 
 `fn.call(ctx, arg1, arg2)` 会把 `fn` 内部的 `this` 指向 `ctx` 并**立即执行**。思路：

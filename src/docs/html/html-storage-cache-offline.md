@@ -7,6 +7,16 @@
 
 ---
 
+## 目录
+
+- [6.1 一句话结论](#61-一句话结论)
+- [6.2 Cookie / localStorage / sessionStorage](#62-cookie--localstorage--sessionstorage)
+- [6.3 HTML5 离线缓存：AppCache 与 Service Worker](#63-html5-离线缓存appcache-与-service-worker)
+- [6.4 HTTP 缓存](#64-http-缓存)
+- [6.5 速记卡](#65-速记卡)
+
+---
+
 ## 6.1 一句话结论
 
 **浏览器有四种存数据的地方，区别在「谁能读到、多大、同步还是异步、会不会跟着请求跑」**：
