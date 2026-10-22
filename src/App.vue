@@ -1,57 +1,117 @@
 <template>
-  <div class="layout">
-    <!-- 头部总标题 + 主题切换 -->
-    <header class="header">
+  <div
+    class="layout"
+    :class="{ immersive }"
+  >
+    <!-- 头部总标题 + 布局控制 + 主题切换；沉浸阅读时整体隐藏 -->
+    <header
+      v-if="!immersive"
+      class="header"
+    >
       <h1 class="title">JS 道场</h1>
-      <ThemeSwitcher />
+
+      <div class="header-actions">
+        <!-- 导航显隐：收起后宽度归零，内容区自动撑满 -->
+        <button
+          type="button"
+          class="icon-button"
+          :aria-pressed="sidebarVisible"
+          :title="sidebarVisible ? '隐藏导航' : '显示导航'"
+          :aria-label="sidebarVisible ? '隐藏导航' : '显示导航'"
+          @click="sidebarVisible = !sidebarVisible"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect
+              x="3"
+              y="4"
+              width="18"
+              height="16"
+              rx="2"
+            />
+            <path d="M9 4v16" />
+          </svg>
+        </button>
+
+        <!-- 一键全屏：隐藏头尾、进入浏览器全屏，只看正文 -->
+        <button
+          type="button"
+          class="icon-button"
+          title="全屏阅读"
+          aria-label="全屏阅读"
+          @click="toggleImmersive"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+            <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+            <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+          </svg>
+        </button>
+
+        <ThemeSwitcher />
+      </div>
     </header>
 
     <div class="container">
-      <!-- 左侧树状导航 -->
-      <aside class="sidebar">
-        <div class="sidebar-inner">
-          <div
-            v-for="group in menus"
-            :key="group.title"
-            class="menu-group"
-          >
-            <button
-              type="button"
-              class="group-title"
-              :aria-expanded="isExpanded(group.title)"
-              @click="toggle(group.title)"
-            >
-              <span>{{ group.title }}</span>
-              <span
-                class="chevron"
-                :class="{ collapsed: !isExpanded(group.title) }"
-                aria-hidden="true"
-              ></span>
-            </button>
-            <ul
-              v-show="isExpanded(group.title)"
-              class="tree"
-            >
-              <li
-                v-for="item in group.items"
-                :key="item.path"
-                class="tree-item"
-              >
-                <RouterLink
-                  :to="item.path"
-                  class="tree-link"
-                  >{{ item.title }}</RouterLink
-                >
-              </li>
-            </ul>
-          </div>
-        </div>
-      </aside>
+      <!-- 左侧树状导航：可拖拽调宽、可整体收起 -->
+      <SideNav
+        v-model:width="navWidth"
+        :visible="sidebarVisible && !immersive"
+      />
 
       <main class="content">
         <RouterView />
       </main>
     </div>
+
+    <!-- 沉浸阅读时保留退出入口；Esc 或浏览器全屏退出也会同步恢复 -->
+    <Transition name="fade">
+      <button
+        v-if="immersive"
+        type="button"
+        class="exit-immersive"
+        title="退出全屏（Esc）"
+        @click="toggleImmersive"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+          <path d="M16 3v3a2 2 0 0 0 2 2h3" />
+          <path d="M8 21v-3a2 2 0 0 0-2-2H3" />
+          <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+        </svg>
+        <span>退出全屏</span>
+      </button>
+    </Transition>
 
     <!-- 划词后浮出 AI 对话入口 -->
     <AiSearch />
@@ -62,52 +122,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { ref } from 'vue'
+import { RouterView } from 'vue-router'
 import AiSearch from './components/AiSearch.vue'
 import BackToTop from './components/BackToTop.vue'
+import SideNav from './components/SideNav.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
-import { tutorialMenus } from './router'
+import { useImmersiveMode } from './composables/useImmersiveMode'
 
-// 左侧导航菜单，按分组构成树状结构
-const menus = [
-  {
-    title: '开始',
-    items: [{ title: '首页', path: '/' }],
-  },
-  {
-    title: '路由演示',
-    items: [{ title: '404 兜底', path: '/abc' }],
-  },
-  // 教程分类来自 src/router/tutorials.ts，改分类只改那一处
-  ...tutorialMenus,
-]
+// 侧边栏初始宽度；可拖拽范围（160 ~ 480）在 SideNav 内部约束
+const navWidth = ref(240)
+const sidebarVisible = ref(true)
 
-/* ---------- 分组折叠 ---------- */
-
-// 记录展开状态，默认全部收起；进入页面时只展开当前路由所在分组
-const expanded = ref<Record<string, boolean>>({})
-
-const isExpanded = (title: string) => expanded.value[title] === true
-
-const toggle = (title: string) => {
-  expanded.value[title] = !isExpanded(title)
-}
-
-const route = useRoute()
-
-// 路由首次匹配完成前（START_LOCATION）为空，避免误展开「开始」分组
-const currentPath = computed(() => (route.matched.length ? route.path : ''))
-
-watch(
-  currentPath,
-  (path) => {
-    if (!path) return
-    const current = menus.find((group) => group.items.some((item) => item.path === path))
-    if (current) expanded.value[current.title] = true
-  },
-  { immediate: true },
-)
+const { immersive, toggle: toggleImmersive } = useImmersiveMode()
 </script>
 
 <style scoped>
@@ -134,135 +161,46 @@ watch(
   letter-spacing: 1px;
 }
 
-.container {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
-
-/* ---------- 左侧导航 ---------- */
-.sidebar {
-  flex: none;
-  width: 200px;
-  border-right: 1px solid var(--border);
-}
-
-/* 导航内容 sticky：页头滚出视口后，导航停在顶部不再跟着滚动 */
-.sidebar-inner {
-  position: sticky;
-  top: 0;
-  max-height: 100svh;
-  padding: 16px 12px;
-  overflow-y: auto;
-  box-sizing: border-box;
-}
-
-.menu-group {
-  margin-bottom: 16px;
-}
-
-/* 分组标题兼折叠开关 */
-.group-title {
+.header-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  margin: 0;
-  padding: 6px 10px;
-  border: 0;
+  gap: 12px;
+}
+
+/* 导航开关 / 全屏按钮，与主题切换保持同一行高 */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
   border-radius: 6px;
   background: none;
-  font: inherit;
-  font-size: 13px;
   color: var(--text);
-  opacity: 0.7;
   cursor: pointer;
   transition:
-    opacity 0.2s,
-    background 0.2s;
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s;
 }
 
-.group-title:hover {
+.icon-button:hover {
   background: var(--accent-bg);
-  opacity: 1;
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
-.group-title:focus-visible {
+.icon-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* 折叠箭头：默认朝下，收起时朝右 */
-.chevron {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  margin-right: 2px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg);
-  transition: transform 0.2s;
-}
-
-.chevron.collapsed {
-  transform: rotate(-45deg);
-}
-
-.tree {
-  position: relative;
+.container {
+  flex: 1;
   display: flex;
-  flex-direction: column;
-  /* 相邻条目的 hover / 选中背景不要贴在一起 */
-  gap: 4px;
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0 0 0 12px;
-}
-
-/* 树状竖线 */
-.tree::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 2px;
-  bottom: 2px;
-  border-left: 1px dashed var(--border);
-}
-
-.tree-item {
-  position: relative;
-}
-
-/* 树状横线 */
-.tree-item::before {
-  content: '';
-  position: absolute;
-  left: -12px;
-  top: 50%;
-  width: 8px;
-  border-top: 1px dashed var(--border);
-}
-
-.tree-link {
-  display: block;
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 15px;
-  color: var(--text-h);
-  text-decoration: none;
-  transition:
-    background 0.2s,
-    color 0.2s;
-}
-
-.tree-link:hover {
-  background: var(--accent-bg);
-}
-
-.tree-link.router-link-active {
-  background: var(--accent-bg);
-  color: var(--accent);
-  font-weight: 600;
+  min-height: 0;
 }
 
 /* ---------- 右侧内容 ---------- */
@@ -271,5 +209,65 @@ watch(
   min-width: 0;
   padding: 20px 24px;
   overflow: auto;
+}
+
+/* 沉浸阅读：没有头部与导航，正文左右留白稍大一点更好读 */
+.immersive .content {
+  padding: 28px 32px;
+}
+
+/* 沉浸阅读下的退出入口，固定在右上角 */
+.exit-immersive {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.exit-immersive:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.exit-immersive:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+@media (max-width: 640px) {
+  .content,
+  .immersive .content {
+    padding: 16px;
+  }
+
+  .exit-immersive {
+    top: 12px;
+    right: 12px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
 }
 </style>
