@@ -120,6 +120,7 @@ src/
 │   ├── network/             # 计算机网络 71 题
 │   ├── typescript/          # TypeScript 46 题
 │   ├── engineering/         # 前端工程化 34 题
+│   ├── mini-program/        # 小程序 9 题
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
@@ -266,6 +267,11 @@ tutorials.ts（分类 + 教程清单）
 | 前端工程化 34 题  | 工程化 06｜规范与质量保障                                                                              | `/doc/engineering-lint-quality`               |
 | 前端工程化 34 题  | 工程化 07｜CI/CD、Docker 与部署                                                                        | `/doc/engineering-cicd-deploy`                |
 | 前端工程化 34 题  | 工程化 08｜Git 工作流                                                                                  | `/doc/engineering-git-workflow`               |
+| 小程序 9 题       | 小程序面试题 · 总览与索引                                                                              | `/doc/mini-program-overview`                  |
+| 小程序 9 题       | 小程序 · 01 架构与双线程模型                                                                           | `/doc/mini-program-architecture`              |
+| 小程序 9 题       | 小程序 · 02 工程结构与 WXSS 样式体系                                                                   | `/doc/mini-program-structure-wxss`            |
+| 小程序 9 题       | 小程序 · 03 事件系统与页面间通信                                                                       | `/doc/mini-program-events-communication`      |
+| 小程序 9 题       | 小程序 · 04 优劣势与选型对比                                                                           | `/doc/mini-program-pros-cons`                 |
 
 ### 新增一篇教程
 

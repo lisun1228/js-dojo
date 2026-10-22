@@ -292,6 +292,17 @@ export const categories: TutorialCategory[] = [
       { id: 'engineering-git-workflow', title: '工程化 08｜Git 工作流' },
     ],
   },
+  {
+    dir: 'mini-program',
+    title: '小程序 9 题',
+    items: [
+      { id: 'mini-program-overview', title: '小程序面试题 · 总览与索引' },
+      { id: 'mini-program-architecture', title: '小程序 · 01 架构与双线程模型' },
+      { id: 'mini-program-structure-wxss', title: '小程序 · 02 工程结构与 WXSS 样式体系' },
+      { id: 'mini-program-events-communication', title: '小程序 · 03 事件系统与页面间通信' },
+      { id: 'mini-program-pros-cons', title: '小程序 · 04 优劣势与选型对比' },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */
