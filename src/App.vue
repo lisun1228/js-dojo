@@ -75,11 +75,39 @@
       </div>
     </header>
 
+    <!-- 导航显隐开关：固定贴在侧边栏右缘，滚到任意位置都能切换 -->
+    <button
+      v-if="!immersive"
+      type="button"
+      class="sidebar-toggle"
+      :class="{ 'no-transition': navResizing }"
+      :style="{ left: `${sidebarVisible ? navWidth : 0}px` }"
+      :aria-expanded="sidebarVisible"
+      :title="sidebarVisible ? '隐藏导航' : '显示导航'"
+      :aria-label="sidebarVisible ? '隐藏导航' : '显示导航'"
+      @click="sidebarVisible = !sidebarVisible"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path :d="sidebarVisible ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'" />
+      </svg>
+    </button>
+
     <div class="container">
       <!-- 左侧树状导航：可拖拽调宽、可整体收起 -->
       <SideNav
         v-model:width="navWidth"
         :visible="sidebarVisible && !immersive"
+        @resizing="navResizing = $event"
       />
 
       <main class="content">
@@ -137,6 +165,8 @@ import { useImmersiveMode } from './composables/useImmersiveMode'
 // 侧边栏初始宽度；可拖拽范围（160 ~ 480）在 SideNav 内部约束
 const navWidth = ref(240)
 const sidebarVisible = ref(true)
+// 拖拽调宽期间关掉开关的 left 过渡，保证手柄跟手
+const navResizing = ref(false)
 
 const { immersive, toggle: toggleImmersive } = useImmersiveMode()
 </script>
@@ -197,6 +227,48 @@ const { immersive, toggle: toggleImmersive } = useImmersiveMode()
 }
 
 .icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- 常驻的导航开关 ---------- */
+/* 固定贴在侧边栏右缘，脱离文档流：滚动位置不受影响，也不会随页头滚走 */
+.sidebar-toggle {
+  position: fixed;
+  top: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition:
+    left 0.2s ease,
+    background 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+
+/* 拖拽调宽时手柄要跟手，关掉 left 过渡 */
+.sidebar-toggle.no-transition {
+  transition: none;
+}
+
+.sidebar-toggle:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.sidebar-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

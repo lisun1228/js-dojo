@@ -87,7 +87,10 @@ const MAX_WIDTH = 480
 const KEYBOARD_STEP = 16
 
 const props = defineProps<{ width: number; visible: boolean }>()
-const emit = defineEmits<{ (event: 'update:width', width: number): void }>()
+const emit = defineEmits<{
+  (event: 'update:width', width: number): void
+  (event: 'resizing', resizing: boolean): void
+}>()
 
 // 左侧导航菜单，按分组构成树状结构；数据同时供顶部搜索使用
 const menus = navMenus
@@ -139,6 +142,7 @@ const onPointerMove = (event: PointerEvent) => {
 
 const stopResize = () => {
   resizing.value = false
+  emit('resizing', false)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', stopResize)
   window.removeEventListener('pointercancel', stopResize)
@@ -149,6 +153,7 @@ const stopResize = () => {
 const startResize = (event: PointerEvent) => {
   event.preventDefault()
   resizing.value = true
+  emit('resizing', true)
   startX = event.clientX
   startWidth = props.width
   // 拖动期间锁定光标与选中，避免误选正文
