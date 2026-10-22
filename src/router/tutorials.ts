@@ -91,6 +91,42 @@ export const categories: TutorialCategory[] = [
     ],
   },
   {
+    dir: 'javascript',
+    title: 'JavaScript 323 题',
+    items: [
+      { id: 'js-overview', title: 'JavaScript 323 题 · 总览与索引' },
+      {
+        id: 'js-types-coercion',
+        title: 'JS · 01 类型判断与类型转换（题 1、14、31~34、80、95~98）',
+      },
+      {
+        id: 'js-scope-closure-this',
+        title: 'JS · 02 作用域 · 闭包 · this · 执行上下文（题 2、3、4、35、77、79、83~85、99）',
+      },
+      { id: 'js-prototype-inheritance', title: 'JS · 03 原型链与继承（题 5、13、15、78）' },
+      { id: 'js-event-loop', title: 'JS · 04 事件循环（题 6、76、81、82）' },
+      { id: 'js-promise-async', title: 'JS · 05 Promise 与 async/await（题 7、8、17、47、52）' },
+      { id: 'js-es6-syntax', title: 'JS · 06 ES6+ 语法特性（题 10、16、36~42、53、100）' },
+      {
+        id: 'js-collections-metaprogramming',
+        title: 'JS · 07 集合与元编程（题 43~46、48~52）',
+      },
+      { id: 'js-memory-gc', title: 'JS · 08 内存管理与垃圾回收（题 19、20、86、87）' },
+      {
+        id: 'js-dom-events-browser',
+        title: 'JS · 09 DOM 事件与浏览器边界（题 21~30、88~94）',
+      },
+      {
+        id: 'js-handwritten-functions',
+        title: 'JS · 10 手写实现（上）· 函数与工具（题 11、12、57~63、71、73~75）',
+      },
+      {
+        id: 'js-handwritten-async-data',
+        title: 'JS · 11 手写实现（下）· 异步与数据处理（题 9、54~56、64~70、72）',
+      },
+    ],
+  },
+  {
     dir: 'performance',
     title: '性能优化 25 题',
     items: [

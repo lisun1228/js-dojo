@@ -1,0 +1,695 @@
+# JS · 03 原型链与继承（题 5、13、15、78）
+
+> 本册覆盖：原型与原型链（题 5、78）、`new` 做了什么（题 13）、继承方式（题 15）
+> 题单全部写「同 ES6 文档第 X 题」——那份文档不在工作区。题 15 只列了四个名字（「原型链继承、构造函数继承、组合继承、class extends」），**没说每个方案解决什么问题、留了什么缺陷**。
+> 本册的核心是**五种继承方式的演进逻辑**：每个方案都是在修上一个方案的 bug。
+
+---
+
+## 3.1 一句话结论
+
+**每个对象都有一个内部槽 `[[Prototype]]` 指向另一个对象（或 `null`）**，访问属性时如果自己没有，就沿着这条链往上找——这就是原型链。
+**`new F()` 做四件事**：创建新对象 → 把它的 `[[Prototype]]` 指向 `F.prototype` → 用新对象当 `this` 执行 `F` → 返回（如果 `F` 返回对象就用它，否则用新对象）。
+**继承的本质是把「子类实例的原型链」接到「父类原型」上**，五种方案的区别只在「怎么接」和「有没有副作用」。
+
+---
+
+## 3.2 三个最容易混的概念
+
+### 3.2.1 `prototype` / `__proto__` / `[[Prototype]]`
+
+| 名字 | 是什么 | 谁有 | 规范地位 |
+|---|---|---|---|
+| **`[[Prototype]]`** | **内部槽**，指向原型对象 | **所有对象** | 规范定义的「真身」 |
+| **`__proto__`** | 访问 `[[Prototype]]` 的**访问器属性** | 继承自 `Object.prototype` | **历史遗留（Annex B）**，不推荐直接用 |
+| **`prototype`** | 一个**普通属性**，值是对象 | **只有函数**（箭头函数除外） | 标准属性，但语义特殊 |
+
+**关键区分**：
+
+```
+函数 F
+├── F.prototype        ← 一个普通对象，将来当「实例的原型」
+│   └── constructor    ← 指回 F
+└── [[Prototype]]      ← F 自己的原型（即 Function.prototype）
+
+实例 f = new F()
+└── [[Prototype]]      ← 指向 F.prototype
+```
+
+**实测验证**：
+
+```js
+function Foo() {}
+const f = new Foo();
+
+f.__proto__ === Foo.prototype              // true  ← 实例的原型是函数的 prototype
+Object.getPrototypeOf(f) === Foo.prototype // true  ← 推荐用这个
+Foo.prototype.constructor === Foo          // true  ← 反向指回
+Foo.__proto__ === Function.prototype       // true  ← 函数自己的原型是 Function.prototype
+Foo.prototype.__proto__ === Object.prototype  // true  ← 原型对象的原型是 Object.prototype
+```
+
+### 3.2.2 推荐用 `Object.getPrototypeOf` / `Object.setPrototypeOf`
+
+```js
+// ❌ 不推荐（Annex B，性能差，且可以被禁用）
+obj.__proto__
+
+// ✅ 推荐
+Object.getPrototypeOf(obj)
+Object.setPrototypeOf(obj, proto)     // 也慢，能不用就不用
+Object.create(proto)                  // 创建时指定，最快
+```
+
+**为什么 `__proto__` 不推荐**：
+- 它是 `Object.prototype` 上的一个**访问器属性**，通过原型链继承来的
+- 如果对象是 `Object.create(null)` 创建的，就没有 `__proto__`
+- 性能上，`Object.setPrototypeOf` 会让 V8 的隐藏类失效（对象被「去优化」）
+
+### 3.2.3 `constructor` 是什么
+
+**`F.prototype.constructor === F` 只是一个「约定」，不是语言保证。**
+
+```js
+function Foo() {}
+Foo.prototype.constructor === Foo       // true（引擎自动设置的）
+
+// 但你可以改掉它
+Foo.prototype = {};
+Foo.prototype.constructor === Foo       // false（变成 Object 了）
+```
+
+**这就是「为什么继承时要手动写 `Sub.prototype.constructor = Sub`」的原因**——因为 `Sub.prototype = ...` 覆盖了原来的对象，`constructor` 丢了。
+
+**`constructor` 的用途**：只是「从实例反查构造函数」，业务代码里很少用，**但很多库会检查它**（比如判断类型、序列化）。
+
+---
+
+## 3.3 原型链查找
+
+### 3.3.1 查找过程
+
+```js
+function A() {}
+A.prototype.fromA = 'A';
+
+function B() {}
+B.prototype = Object.create(A.prototype);
+B.prototype.constructor = B;
+B.prototype.fromB = 'B';
+
+const b = new B();
+
+b.fromB;        // 'B'      第 1 层：自己（实际在 B.prototype 上）
+b.fromA;        // 'A'      第 2 层：B.prototype.__proto__ = A.prototype
+b.toString;     // function 第 3 层：A.prototype.__proto__ = Object.prototype
+```
+
+**实测原型链长度**（从 `b` 数到 `null`）：**4 层**
+
+```
+b
+  → B.prototype
+    → A.prototype
+      → Object.prototype
+        → null          （4 个对象 + 1 个 null）
+```
+
+### 3.3.2 读 vs 写：一个关键差异
+
+```js
+const parent = { shared: 'p' };
+const child = Object.create(parent);
+
+// 读：沿原型链找
+child.shared;                        // 'p'   ✅
+
+// 写：在「自己」上创建属性，不动原型
+child.shared = 'set-on-child';
+parent.shared;                       // 'p'        ← 原型没变
+child.shared;                        // 'set-on-child'
+Object.hasOwn(child, 'shared');      // true       ← 现在自己有这个属性了
+```
+
+**这就是「原型链上的属性是共享的，但赋值会遮蔽」**。
+
+**⚠️ 但如果原型上的属性是「访问器（getter/setter）」，赋值会触发 setter**：
+
+```js
+const parent = {
+  _v: 1,
+  get v() { return this._v; },
+  set v(x) { console.log('setter'); this._v = x; },
+};
+const child = Object.create(parent);
+child.v = 2;         // 打印 'setter'  ← 走的是原型的 setter，但仍在自己身上创建 _v
+```
+
+**这个行为在 ES6 `class` 字段里有个大坑**——见 TS 册的 `useDefineForClassFields`。
+
+### 3.3.3 `in` vs `hasOwnProperty`
+
+```js
+const parent = { a: 1 };
+const child = Object.create(parent);
+child.b = 2;
+
+'a' in child;                            // true   ← in 会查原型链
+'b' in child;                            // true
+Object.hasOwn(child, 'a');               // false  ← 只查自己（ES2022，推荐）
+Object.hasOwn(child, 'b');               // true
+child.hasOwnProperty('a');               // false  ← 老写法，可能被覆盖
+```
+
+**推荐 `Object.hasOwn`（ES2022）**——因为 `obj.hasOwnProperty` 可能被对象自己覆盖，或者对象是 `Object.create(null)` 时根本不存在。
+
+---
+
+## 3.4 `new` 做了什么（题 13）
+
+### 3.4.1 四步（必须背）
+
+```js
+new Foo(args)
+```
+
+| 步 | 动作 |
+|---|---|
+| **①** | 创建一个**新对象** `obj`（空对象） |
+| **②** | 把 `obj.[[Prototype]]` 设为 **`Foo.prototype`** |
+| **③** | 用 `obj` 作为 `this`，执行 `Foo` 的函数体（传入 `args`） |
+| **④** | 如果 `Foo` 返回的是**对象**，就返回它；否则返回 `obj` |
+
+**第 ④ 步是关键**：`return` 原始值会被忽略。
+
+**实测验证**：
+
+```js
+function ReturnsObj() { this.a = 1; return { b: 2 }; }
+new ReturnsObj();        // { b: 2 }        ← 返回对象，覆盖了新对象
+                         // 注意：{ a: 1 } 那个新对象被丢弃了
+
+function ReturnsPrim() { this.a = 1; return 42; }
+new ReturnsPrim();       // { a: 1 }        ← 返回原始值，被忽略
+
+function ReturnsNull() { this.a = 1; return null; }
+new ReturnsNull();       // { a: 1 }        ← null 也算原始值，被忽略
+```
+
+### 3.4.2 手写 `new`（完整版见 10 册）
+
+```js
+function myNew(Ctor, ...args) {
+  // ① 创建对象，② 设置原型
+  const obj = Object.create(Ctor.prototype);
+  // ③ 执行构造函数
+  const result = Ctor.apply(obj, args);
+  // ④ 返回值判断
+  return result !== null && (typeof result === 'object' || typeof result === 'function')
+    ? result
+    : obj;
+}
+```
+
+**为什么第 ④ 步要判 `function`**：因为 `new` 的规范里，返回值只要是「对象」，就包括函数。
+
+```js
+function F() { return function () {}; }
+new F();      // 返回那个函数（typeof 'function'）
+```
+
+### 3.4.3 `new` 的三个坑
+
+```js
+// ① 构造函数里 return 对象会「丢掉 this」
+function A() { this.x = 1; return { y: 2 }; }
+new A();        // { y: 2 }  ← this.x 白设了
+
+// ② 构造函数不用 new 也能调用（但 this 就错了）
+function B() { this.x = 1; }
+B();            // 非严格：this 是 globalThis，污染全局！
+const b = new B();   // ✅ 正确
+
+// ③ 箭头函数和 class 方法不能 new
+const arrow = () => {};
+new arrow();    // TypeError: arrow is not a constructor
+```
+
+**第 ② 条是「构造函数首字母大写 + 用 `new`」这个约定的由来**——只是为了提醒人别忘写 `new`。
+
+**更稳的做法**（防止忘写 `new`）：
+
+```js
+function Safe(name) {
+  if (!(this instanceof Safe)) return new Safe(name);   // 自动补 new
+  this.name = name;
+}
+Safe('a');        // 自动 new，不污染全局
+```
+
+---
+
+## 3.5 五种继承方式的演进（题 15）
+
+> **核心思路：每一个方案都在修上一个方案的缺陷。** 记住「谁修了谁的什么 bug」，这条线就通了。
+
+### 3.5.1 ① 原型链继承
+
+```js
+function Parent() {
+  this.name = 'parent';
+  this.list = [1, 2, 3];        // ← 引用类型
+}
+Parent.prototype.say = function () { return 'say'; };
+
+function Child() {}
+Child.prototype = new Parent();  // 子类原型 = 父类实例
+
+const c1 = new Child();
+const c2 = new Child();
+c1.list.push(4);
+console.log(c2.list);            // [1, 2, 3, 4]  ← ⚠️ 被污染了！
+```
+
+**问题**：
+
+| 问题 | 说明 |
+|---|---|
+| **① 引用属性被所有实例共享** | 因为 `list` 在 `Child.prototype` 上（父类实例上），所有子类实例共享同一个数组 |
+| **② 创建子类时无法给父类传参** | `new Parent()` 是写死的，不能传不同参数 |
+| **③ 无法实现多继承** | 原型链只有一条 |
+
+**实测确认**：`c2.list.length === 2` → 实际是 `4`（被 `c1` 改了）。
+
+### 3.5.2 ② 构造函数继承（借用构造函数）
+
+```js
+function Parent(name) {
+  this.name = name;
+  this.list = [1, 2, 3];
+}
+Parent.prototype.say = function () { return 'say'; };
+
+function Child(name) {
+  Parent.call(this, name);       // ← 在子类里「借用」父类构造函数
+}
+
+const c1 = new Child('a');
+const c2 = new Child('b');
+c1.list.push(4);
+console.log(c2.list);            // [1, 2, 3]  ✅ 不共享了
+console.log(c1.name, c2.name);   // 'a' 'b'    ✅ 能传参了
+console.log(c1.say);             // undefined  ← ⚠️ 拿不到原型方法！
+```
+
+**解决了**：引用共享、传参。
+**新问题**：
+
+| 问题 | 说明 |
+|---|---|
+| **① 拿不到父类原型上的方法** | 因为只「借用」了构造函数体，没接原型链 |
+| **② 每次创建实例都要执行一次父构造函数** | 性能略差（但这是必须的） |
+
+**实测确认**：`typeof c2.say === 'undefined'`。
+
+### 3.5.3 ③ 组合继承（原型链 + 构造函数）
+
+```js
+function Parent(name) {
+  this.name = name;
+  this.list = [1, 2, 3];
+}
+Parent.prototype.say = function () { return 'say'; };
+
+function Child(name) {
+  Parent.call(this, name);        // 第 1 次调父构造：初始化实例属性
+}
+Child.prototype = new Parent();   // 第 2 次调父构造：接原型链
+Child.prototype.constructor = Child;
+
+const c1 = new Child('a');
+c1.list.push(4);
+console.log(new Child('b').list);   // [1,2,3]  ✅ 不共享
+console.log(c1.say());              // 'say'    ✅ 有原型方法
+console.log(c1 instanceof Parent);  // true     ✅
+```
+
+**解决了**：前两个方案的问题。
+**新问题**：
+
+| 问题 | 说明 |
+|---|---|
+| **父构造函数被调用两次** | 一次 `Parent.call`，一次 `new Parent()`。第二次调用的副作用（比如计数器、事件监听）会多执行一次 |
+| **子类原型上多了无用的实例属性** | `Child.prototype` 上有 `name`、`list`（被实例属性遮蔽了，白占内存） |
+
+**这就是「组合继承是 JS 最常用的继承模式，但不是最优」的原因。**
+
+### 3.5.4 ④ 寄生组合继承（最优方案）
+
+```js
+function Parent(name) {
+  this.name = name;
+  this.list = [1, 2, 3];
+}
+Parent.prototype.say = function () { return 'say'; };
+
+function Child(name) {
+  Parent.call(this, name);                    // 只调一次父构造
+}
+// 关键：用 Object.create 接原型链，不调父构造函数
+Child.prototype = Object.create(Parent.prototype);
+Child.prototype.constructor = Child;
+
+const c1 = new Child('a');
+c1.list.push(4);
+console.log(new Child('b').list);   // [1,2,3]  ✅
+console.log(c1.say());              // 'say'    ✅
+console.log(c1 instanceof Parent);  // true     ✅
+console.log(Child.prototype.name);  // undefined ✅ 原型上干净了
+```
+
+**`Object.create(Parent.prototype)` 的作用**：创建一个空对象，`[[Prototype]]` 指向 `Parent.prototype`——**不执行 `Parent` 的构造函数**。
+
+**这就是 ES5 时代的最优解**，也是 `Babel` 编译 `class` 时生成的代码。
+
+### 3.5.5 ⑤ `class extends`（ES6）
+
+```js
+class Parent {
+  constructor(name) {
+    this.name = name;
+    this.list = [1, 2, 3];
+  }
+  say() { return 'say'; }
+  static staticSay() { return 'static'; }
+}
+
+class Child extends Parent {
+  constructor(name, age) {
+    super(name);          // 必须先调 super
+    this.age = age;
+  }
+  say() {
+    return super.say() + '!';
+  }
+}
+```
+
+**`class` 不是纯语法糖**，有四个本质区别：
+
+| 差异 | ES5 函数 | `class` |
+|---|---|---|
+| **必须 `new` 调用** | 不用 `new` 也能调（污染全局） | **不 `new` 直接报 TypeError** |
+| **严格模式** | 看上下文 | **内部强制严格** |
+| **方法不可枚举** | 挂在 prototype 上，可枚举 | **`enumerable: false`** |
+| **没有变量提升** | 函数声明提升 | **class 有 TDZ，不提升** |
+| **`super`** | 没有 | ✅ 有（还支持 `super.xxx()` 调父类方法） |
+| **静态继承** | 需手动 `Sub.__proto__ = Parent` | ✅ **自动**（`Object.setPrototypeOf(Sub, Parent)`） |
+
+**`class extends` 的「双向原型」**（实测确认）：
+
+```js
+class Base { static s() { return 's'; } }
+class Sub extends Base {}
+
+Object.getPrototypeOf(Sub) === Base;                        // true  ← 静态继承
+Object.getPrototypeOf(Sub.prototype) === Base.prototype;    // true  ← 实例继承
+Sub.s();                                                    // 's'   ← 能访问父类静态方法
+```
+
+**这是 `class` 比 ES5 继承强的地方**：静态方法自动继承，ES5 要手动设 `Sub.__proto__ = Parent`。
+
+### 3.5.6 五种方案速查表
+
+| 方案 | 引用共享 | 能传参 | 有原型方法 | 父构造调用次数 | 评价 |
+|---|---|---|---|---|---|
+| ① 原型链 | ❌ **共享** | ❌ | ✅ | 1 | 最原始，有致命缺陷 |
+| ② 构造函数 | ✅ | ✅ | ❌ **没有** | 1 | 只借实现，断链 |
+| ③ 组合 | ✅ | ✅ | ✅ | **2** | 可用，但浪费 |
+| ④ **寄生组合** | ✅ | ✅ | ✅ | **1** | **ES5 最优** |
+| ⑤ `class` | ✅ | ✅ | ✅ | 1 | **现代标准** |
+
+**一句话演进逻辑**：
+
+```
+原型链继承：能复用，但引用共享 + 不能传参
+    ↓ 用「借用构造函数」修
+构造函数继承：引用不共享了，但丢了原型方法
+    ↓ 两个都用
+组合继承：都有了，但父构造调两次
+    ↓ 用 Object.create 接原型链
+寄生组合继承：完美（ES5 最优）
+    ↓ 语法层面统一
+class extends：本质是寄生组合 + 更严格的语义
+```
+
+---
+
+## 3.6 `class` 编译后长什么样（能答出来很加分）
+
+```js
+class Child extends Parent {
+  constructor(name) {
+    super(name);
+    this.age = 1;
+  }
+}
+```
+
+**Babel / TS 编译到 ES5 后（简化）**：
+
+```js
+function Child(name) {
+  var _this;
+  // super(name) 的等价物
+  _this = _Parent.call(this, name) || this;
+  _this.age = 1;
+  return _this;
+}
+
+// 关键：静态继承
+_inherits(Child, Parent);
+```
+
+```js
+function _inherits(subClass, superClass) {
+  // ① 实例继承：Sub.prototype = Object.create(Parent.prototype)
+  subClass.prototype = Object.create(superClass && superClass.prototype, {
+    constructor: { value: subClass, enumerable: false, writable: true, configurable: true },
+  });
+  // ② 静态继承：Object.setPrototypeOf(Sub, Parent)
+  if (superClass) _setPrototypeOf(subClass, superClass);
+}
+```
+
+**`_inherits` 就两步：`Object.create` + `setPrototypeOf`**——正好对应上面说的「双向原型」。
+
+**注意 `_Parent.call(this, name) || this` 这个 `|| this`**：
+- 如果父构造返回对象，就用那个对象（对应 `new` 的第 ④ 步）
+- 否则用 `this`
+
+---
+
+## 3.7 六个必须知道的原型细节
+
+### 3.7.1 `Object.create(null)` 没有原型
+
+```js
+const bare = Object.create(null);
+
+Object.getPrototypeOf(bare);      // null      ← 实测
+bare.toString;                    // undefined ← 连 toString 都没有
+bare instanceof Object;           // false     ← 实测
+```
+
+**用途**：创建「纯净的字典对象」，避免原型链污染（比如 `__proto__`、`constructor` 这些键）。
+
+```js
+// 反例：普通对象当字典，'toString' 这种键会有坑
+const dict = {};
+'toString' in dict;               // true  ← 因为继承自 Object.prototype！
+Object.hasOwn(dict, 'toString');  // false
+
+// 正解
+const safeDict = Object.create(null);
+'toString' in safeDict;           // false ✅
+```
+
+**这也是 `Map` 比 `Object` 更适合做字典的原因之一**（见 07 册）。
+
+### 3.7.2 改 `prototype` 会让 `instanceof` 失效
+
+```js
+function F() {}
+const inst = new F();
+const oldProto = F.prototype;
+
+F.prototype = {};                 // 换掉原型
+inst instanceof F;                // false   ← 实测
+Object.getPrototypeOf(inst) === oldProto;  // true  ← 实例的原型没变
+```
+
+**为什么**：`instanceof` 检查的是「`inst` 的原型链上有没有 `F.prototype` 这个**当前的**对象」。你换了 `F.prototype`，旧实例的原型链上就没有它了。
+
+### 3.7.3 `Object.prototype` 是原型链的终点
+
+```js
+Object.prototype.__proto__;       // null  ← 实测
+```
+
+**所以原型链一定以 `null` 结束**，不会无限循环。
+
+**`instanceof` 手写的循环条件必须判断 `null`**：
+
+```js
+function myInstanceof(obj, Ctor) {
+  if (obj === null || (typeof obj !== 'object' && typeof obj !== 'function')) return false;
+  let proto = Object.getPrototypeOf(obj);
+  while (proto) {                       // ← proto 为 null 时退出
+    if (proto === Ctor.prototype) return true;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return false;
+}
+```
+
+### 3.7.4 内置构造函数的原型链
+
+```js
+Object.getPrototypeOf([]) === Array.prototype;              // true
+Object.getPrototypeOf(Array.prototype) === Object.prototype; // true
+Object.getPrototypeOf(Function.prototype) === Object.prototype; // true
+Object.getPrototypeOf(Object.prototype) === null;           // true
+```
+
+**所以 `[] instanceof Object` 是 `true`**——数组也是对象。
+
+### 3.7.5 `Function` 自己指向自己
+
+```js
+Function.__proto__ === Function.prototype;   // true   ← 唯一自指的
+Function.prototype.__proto__ === Object.prototype;  // true
+```
+
+**这是原型链里唯一一个「自环」**：`Function` 的 `[[Prototype]]` 就是它自己的 `prototype`。
+
+### 3.7.6 `instanceof` 可以被 `Symbol.hasInstance` 改写
+
+```js
+class Even {
+  static [Symbol.hasInstance](n) { return n % 2 === 0; }
+}
+2 instanceof Even;      // true   ← 完全自定义了
+3 instanceof Even;      // false
+```
+
+**内置的例子**：`[].concat()` 用 `Symbol.isConcatSpreadable`，`instanceof` 用 `Symbol.hasInstance`。
+
+---
+
+## 3.8 常见坑
+
+| 坑 | 正确说法 |
+|---|---|
+| 混用 `prototype` 和 `__proto__` | `prototype` 是**函数才有**的属性；`__proto__` 是**对象都有**的原型访问器 |
+| 说「`__proto__` 是标准」 | 它是 **Annex B 的遗留特性**，推荐 `Object.getPrototypeOf` |
+| 说「`constructor` 靠得住」 | 只是约定，改 `prototype` 就会丢，所以继承时要手动补 |
+| 说「给原型属性赋值会改原型」 | ❌ 会在**自己**身上创建属性（遮蔽）；除非原型上是 setter |
+| 说「`in` 和 `hasOwnProperty` 一样」 | `in` 查原型链，`hasOwn` 只查自己 |
+| 说「组合继承是最优」 | 父构造调两次；**寄生组合**才最优 |
+| 说「class 是纯语法糖」 | 有五个本质区别（必须 new、严格模式、方法不可枚举、TDZ、静态继承） |
+| 说「ES5 能实现静态继承」 | 能，但要手动 `Sub.__proto__ = Parent`；class 自动做 |
+| 说「原型链不会有循环」 | 正常不会（终点是 null），但 `Object.setPrototypeOf(a, b); Object.setPrototypeOf(b, a)` 会抛 TypeError |
+| 用普通对象当字典 | `'toString' in {}` 是 true；用 `Object.create(null)` 或 `Map` |
+
+---
+
+## 3.9 答题模板
+
+### 30 秒版（题 5：原型与原型链）
+
+> 每个对象都有内部槽 `[[Prototype]]` 指向另一个对象。访问属性时先看自己有没有，没有就沿 `[[Prototype]]` 往上找，直到 `null`——这条链就是原型链。
+> 要区分三个东西：`[[Prototype]]` 是内部槽（真身），`__proto__` 是访问它的遗留访问器，`prototype` 是**只有函数才有**的普通属性，将来作为实例的原型。
+> 所以 `f.__proto__ === F.prototype`，而 `F.__proto__ === Function.prototype`。原型链终点是 `Object.prototype.__proto__ === null`。
+
+### 30 秒版（题 13：`new` 做了什么）
+
+> 四步：① 创建一个新对象；② 把它的 `[[Prototype]]` 指向 `Foo.prototype`；③ 用这个新对象当 `this` 执行 `Foo`；④ 如果 `Foo` 返回的是对象就返回它，否则返回新对象。
+> 第 ④ 步是关键，`return` 原始值会被忽略。所以手写 `new` 就是 `Object.create(Ctor.prototype)` + `apply` + 判断返回值。
+
+### 2 分钟版（题 15：继承方式，串起来讲）
+
+> 我按「每个方案修了上一个什么 bug」来讲，这样最好记。
+>
+> **原型链继承**是 `Child.prototype = new Parent()`。能复用父类方法和属性，但有两个致命问题：一是**引用类型属性被所有实例共享**（因为它在子类原型上），二是**创建子类时不能给父类传参**。
+>
+> **构造函数继承**用 `Parent.call(this, name)` 解决这两个问题——每个实例有自己的属性副本，也能传参了。但新问题是**拿不到父类原型上的方法**，因为只借用了函数体、没接原型链。
+>
+> **组合继承**把两个都用上：`Parent.call(this)` 初始化实例属性，`Child.prototype = new Parent()` 接原型链。这样引用不共享、能传参、也有原型方法。但**父构造函数被调用了两次**——一次 `Parent.call`，一次 `new Parent()`。如果父构造有副作用（比如计数、绑事件），就会多执行一次；而且子类原型上会多出一份无用的实例属性。
+>
+> **寄生组合继承**是 ES5 的最优解：用 `Object.create(Parent.prototype)` 替代 `new Parent()`。`Object.create` 只创建对象并设原型，**不执行构造函数**，所以父构造只调一次，原型上也干净了。这也是 Babel 编译 class 时生成的代码。
+>
+> **class extends** 语法上统一了，但它**不是纯语法糖**，有五个本质区别：必须 `new` 调用（否则 TypeError）、内部强制严格模式、方法不可枚举、有 TDZ 不提升、**自动静态继承**。最后一条特别值得一提：`Object.getPrototypeOf(Sub) === Base`，所以子类能直接访问父类的静态方法；ES5 要手动设 `Sub.__proto__ = Parent`。Babel 里的 `_inherits` 就是这两步：`Object.create` 接实例原型 + `setPrototypeOf` 接静态原型。
+
+### 追问表
+
+| 追问 | 回答要点 |
+|---|---|
+| `prototype` 和 `__proto__` 区别 | 前者只有函数有，是「将来当实例原型」的属性；后者是访问 `[[Prototype]]` 的遗留访问器 |
+| `__proto__` 是标准吗 | Annex B 遗留特性，推荐 `Object.getPrototypeOf` |
+| `constructor` 可靠吗 | 只是约定，改 `prototype` 就丢了 |
+| 给原型上的属性赋值会改原型吗 | 不会，会在自己身上创建属性（除非是 setter） |
+| `in` 和 `hasOwnProperty` 区别 | 前者查原型链，后者只查自己 |
+| `new` 的四步 | 建对象 → 设原型 → 执行 → 判断返回值 |
+| `new` 返回原始值会怎样 | 被忽略，返回新对象 |
+| 五种继承哪个最优 | 寄生组合（ES5）/ class（现代） |
+| 组合继承的缺陷 | 父构造调两次，原型上有冗余实例属性 |
+| `class` 是语法糖吗 | 不是，五个本质区别 |
+| class 的静态继承怎么实现 | `Object.setPrototypeOf(Sub, Base)`，Babel 的 `_inherits` 做了 |
+| `Object.create(null)` 有什么用 | 纯字典，避免原型链污染；没有 `toString`，`instanceof Object` 为 false |
+| 改 `prototype` 后 `instanceof` 失效吗 | 会，因为检查的是当前 `F.prototype` |
+| 原型链的终点 | `Object.prototype.__proto__ === null` |
+| 为什么 `[] instanceof Object` 是 true | 数组也是对象，原型链经过 `Object.prototype` |
+
+---
+
+## 3.10 速记卡
+
+```
+三个概念
+  [[Prototype]]  内部槽，所有对象都有
+  __proto__      访问器（Annex B 遗留），推荐 Object.getPrototypeOf
+  prototype      只有函数有，作为「实例的原型」
+  f.__proto__ === F.prototype；F.__proto__ === Function.prototype
+  Foo.prototype.__proto__ === Object.prototype；Object.prototype.__proto__ === null
+
+new 四步
+  ① 建对象 ② 设 [[Prototype]] = Ctor.prototype ③ 以 obj 为 this 执行 ④ 返回对象则用它，否则用 obj
+  ★ return 原始值被忽略；return 函数也算对象
+
+原型链读写
+  读：沿链找；写：在自己身上创建（遮蔽），不改原型
+  例外：原型上是 setter 时会触发 setter
+  in 查链；Object.hasOwn 只查自己
+
+五种继承（演进主线）
+  ① 原型链：Child.prototype = new Parent()
+     ✗ 引用共享 ✗ 不能传参
+  ② 构造函数：Parent.call(this)
+     ✓ 不共享 ✓ 能传参  ✗ 拿不到原型方法
+  ③ 组合：两个都用
+     ✓ 全都有  ✗ 父构造调两次 + 原型冗余
+  ④ 寄生组合：Object.create(Parent.prototype)  ← ES5 最优
+     ✓ 全都有且父构造只调一次
+  ⑤ class extends：本质寄生组合 + 更严格语义
+
+class 不是纯语法糖（五个区别）
+  必须 new / 强制严格 / 方法不可枚举 / 有 TDZ / 自动静态继承
+  Babel 的 _inherits：Object.create + setPrototypeOf（双向原型）
+
+原型细节
+  Object.create(null)：无原型，无 toString，instanceof Object 为 false
+  改 F.prototype → 旧实例 instanceof F 变 false
+  Function.__proto__ === Function.prototype（唯一自环）
+  Symbol.hasInstance 可改写 instanceof
+```
