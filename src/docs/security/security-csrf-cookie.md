@@ -8,10 +8,10 @@
 
 ## 目录
 
-- [1. CSRF 是什么（题 19 上半）](#1-csrf-是什么题-19-上半)
-- [2. CSRF 的四种防御（题 19 下半）](#2-csrf-的四种防御题-19-下半)
-- [3. SameSite（题 10 / 11）](#3-samesite题-10--11)
-- [4. HttpOnly（题 12）](#4-httponly题-12)
+- [1. CSRF 是什么（上半）](#1-csrf-是什么上半)
+- [2. CSRF 的四种防御（下半）](#2-csrf-的四种防御下半)
+- [3. SameSite](#3-samesite)
+- [4. HttpOnly](#4-httponly)
 - [5. Secure / Domain / Path / Cookie 前缀](#5-secure--domain--path--cookie-前缀)
 - [6. 现代最佳实践：Token 该放哪](#6-现代最佳实践token-该放哪)
 - [7. 几个容易忽略的变种](#7-几个容易忽略的变种)
@@ -22,7 +22,7 @@
 
 ---
 
-## 1. CSRF 是什么（题 19 上半）
+## 1. CSRF 是什么（上半）
 
 ### 1.1 一句话结论
 
@@ -95,7 +95,7 @@ flowchart LR
 
 ---
 
-## 2. CSRF 的四种防御（题 19 下半）
+## 2. CSRF 的四种防御（下半）
 
 ```mermaid
 flowchart TD
@@ -260,7 +260,7 @@ function checkOrigin(req, res, next) {
 
 ---
 
-## 3. SameSite（题 10 / 11）
+## 3. SameSite
 
 ### 3.1 一句话结论
 
@@ -363,7 +363,7 @@ Chrome 有一个叫 "**Lax-allowing-unsafe**" 的机制：**新设置的 Cookie�
 
 ---
 
-## 4. HttpOnly（题 12）
+## 4. HttpOnly
 
 ### 4.1 一句话结论
 

@@ -1,6 +1,6 @@
-# JS · 07 集合与元编程（题 43~46、48~52）
+# JS · 07 集合与元编程
 
-> 本册覆盖：Map vs Object（题 43）、Set（题 44）、WeakMap/WeakSet（题 45）、Symbol（题 46）、Reflect（题 48）、Proxy（题 49）、`defineProperty`（题 50）、装饰器（题 51）、迭代器（题 52）
+> 本册覆盖：Map vs Object、Set、WeakMap/WeakSet、Symbol、Reflect、Proxy、`defineProperty`、装饰器、迭代器
 > 题单：题 43 给了 3 条对比（键任意/插入顺序/size），题 45「同 ES6 文档第 18 题」（不存在），题 48「和 Proxy 拦截器一一对应」（太简），题 49/50「同 ES6 文档」（不存在）。
 > 本册的核心是 **Proxy vs defineProperty 的四个缺陷**——这是「为什么 Vue 3 换 Proxy」的标准答案，也是元编程这块唯一的高频考点。
 
@@ -14,7 +14,7 @@
 
 ---
 
-## 7.2 Map vs Object（题 43）
+## 7.2 Map vs Object
 
 ### 7.2.1 七个维度对比（全部实测）
 
@@ -150,7 +150,7 @@ new Map(JSON.parse(str));
 
 ---
 
-## 7.3 Set（题 44）
+## 7.3 Set
 
 ### 7.3.1 核心特性
 
@@ -236,7 +236,7 @@ new Set([...A, ...B].filter(x => !(A.has(x) && B.has(x))));
 
 ---
 
-## 7.4 WeakMap / WeakSet（题 45）
+## 7.4 WeakMap / WeakSet
 
 ### 7.4.1 三个「没有」
 
@@ -374,7 +374,7 @@ key = null;         // ← 唯一的强引用没了
 
 ---
 
-## 7.5 Symbol（题 46）
+## 7.5 Symbol
 
 ### 7.5.1 三个特性
 
@@ -494,7 +494,7 @@ Symbol.keyFor(Symbol('x'));                    // undefined  ← 非全局的没
 
 ---
 
-## 7.6 Proxy vs defineProperty（题 49、50）★ 本册重点
+## 7.6 Proxy vs defineProperty★ 本册重点
 
 ### 7.6.1 `defineProperty` 的用法
 
@@ -677,7 +677,7 @@ const p = new Proxy(map, {
 
 ---
 
-## 7.7 Reflect（题 48）
+## 7.7 Reflect
 
 ### 7.7.1 为什么需要 Reflect
 
@@ -764,13 +764,13 @@ Object.getOwnPropertyDescriptor(proto, 'x').get.call(proto);   // undefined  ❌
 
 ## 7.9 答题模板
 
-### 30 秒版（题 43：Map vs Object）
+### 30 秒版（Map vs Object）
 
 > 七个差异，最关键三个：**键的类型**——Map 可以是任意类型（对象、NaN），Object 只能是 string/Symbol；**顺序**——Map 严格保持插入顺序，Object 会把整数键提前并排序；**可迭代和 size**——Map 本身可迭代且有 O(1) 的 size，Object 要 `Object.keys().length`。
 > 另外 Map 没有原型链污染（`'toString' in {}` 是 true 但 `map.has('toString')` 是 false），但 Map 不能 `JSON.stringify`（返回 `{}`）。
 > 所以：需要非字符串键、严格顺序、频繁增删 → Map；需要序列化/简单配置对象 → Object。
 
-### 30 秒版（题 49、50：Proxy vs defineProperty）
+### 30 秒版（Proxy vs defineProperty）
 
 > `defineProperty` 有四个致命缺陷：**无法监听新增和删除属性**（所以要 `Vue.set`）、**无法监听数组索引和 length**（所以要重写 7 个数组方法）、**必须递归遍历所有属性**（初始化慢）、**只能定义一次**。
 > Proxy 全都解决了：13 个 trap 能拦 `get`/`set`/`has`/`deleteProperty` 等，而且是**惰性代理**——只在访问到某一层时才代理那一层，初始化很快。Vue 3 就是因此从 `defineProperty` 换成 Proxy。
@@ -817,7 +817,7 @@ Object.getOwnPropertyDescriptor(proto, 'x').get.call(proto);   // undefined  ❌
 ## 7.10 速记卡
 
 ```
-Map vs Object（题 43）
+Map vs Object
   键类型：任意 / string+Symbol（其他转字符串）
   ★ 顺序：插入顺序 / 整数键提前并排序（{3,1,2} → '1','2','3'）
   size：O(1) / Object.keys().length（O(n)）
@@ -826,25 +826,25 @@ Map vs Object（题 43）
   序列化：JSON 返回 {} / 正常
   选型：非字符串键/严格顺序/频繁增删 → Map；序列化/配置对象 → Object
 
-Set（题 44）
+Set
   SameValueZero：NaN==自己，0==-0；两个 {} 不合并
   O(1) has；可迭代；保持插入顺序
   交并差要手写（ES2025 才有原生）
   ★ 数组去重首选 [...new Set(arr)]；indexOf 去重会丢掉所有 NaN
 
-WeakMap / WeakSet（题 45）
+WeakMap / WeakSet
   ★ 无 size / 无 clear / 不可迭代 —— 逻辑必然（能枚举就等于强引用）
   key 必须是对象
   用途：DOM 关联数据、memoize、私有数据、★ Vue3 依赖收集、打标记
   注意：GC 时机不确定，不能依赖立刻回收
 
-Symbol（题 46）
+Symbol
   唯一（Symbol('a') !== Symbol('a')）；Symbol.for 走全局注册表
   作键时：不在 Object.keys / for...in / JSON，但在 Reflect.ownKeys
   用途：避免冲突、协议钩子、模拟私有
   内置：iterator / asyncIterator / toPrimitive / hasInstance / toStringTag / species
 
-Proxy vs defineProperty（题 49、50）★
+Proxy vs defineProperty★
   defineProperty 四缺陷：
     ① 不能监听新增/删除（要 Vue.set）
     ② 不能监听数组索引和 length（要重写 7 个方法）
@@ -857,7 +857,7 @@ Proxy vs defineProperty（题 49、50）★
   Proxy 拦不住：typeof / === / 内部槽（Map/Set/Date 要 bind）
   代价：不支持 IE；proxy !== target（Vue3 用 toRaw）
 
-Reflect（题 48）
+Reflect
   对象操作的函数式版本，与 13 trap 一一对应
   优势：返回 boolean 不抛错 / 支持 receiver / 函数式
   ★ trap 里必须用 Reflect.get(t, k, receiver)，否则 getter 的 this 会错

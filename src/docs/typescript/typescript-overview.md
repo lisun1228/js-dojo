@@ -23,7 +23,7 @@
 
 | # | 文件 | 内容 | 覆盖题号 |
 |---|---|---|---|
-| 01 | [TS · 01 语言全景与工程价值（题 2、27、34、46）](/doc/typescript-language-overview) | 超集、**类型擦除的真实边界**、结构化类型系统、TS vs JS、为什么用 TS | 2、27、34、46 |
+| 01 | [TS · 01 语言全景与工程价值](/doc/typescript-language-overview) | 超集、**类型擦除的真实边界**、结构化类型系统、TS vs JS、为什么用 TS | 2、27、34、46 |
 | 02 | [TS · 02 类型系统基础：原始类型 · 联合 · 断言](/doc/typescript-basic-types-assertion) | 8 种原始类型、`object` vs `Object` vs `{}`、元组、字面量类型、`as const`、类型断言 | 20、30、17、4、39、31、44 |
 | 03 | [TS · 03 any / unknown / never / void 与类型收窄](/doc/typescript-any-unknown-never-narrowing) | `any` 的传染性、`unknown` 为什么安全、`never` 的穷尽检查、`is` 守卫、`asserts` | 21、22、36、7、19、23 |
 | 04 | [TS · 04 interface 与 type](/doc/typescript-interface-vs-type) | 两者 7 个维度差异、声明合并的用途、性能差异、类类型接口、`implements` vs `extends` | 37、35 |

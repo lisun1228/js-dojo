@@ -1,6 +1,6 @@
-# JS · 05 Promise 与 async/await（题 7、8、17、47、52）
+# JS · 05 Promise 与 async/await
 
-> 本册覆盖：Promise 三种状态（题 7）、`all` / `race`（题 17）、`async/await` 原理（题 8）、Generator（题 47）、迭代器（题 52）
+> 本册覆盖：Promise 三种状态、`all` / `race`、`async/await` 原理、Generator、迭代器
 > 题单的答案：题 7「同 ES6 文档第 10 题」（不存在）、题 8「Generator + 自动执行器的语法糖」（**已过时**）、题 17「同 ES6 文档第 8 题」（不存在）。
 > **题 8 那句话在 2018 年之后就不准确了**——V8 7.x 起改用基于 CPS 的状态机，不再依赖 Generator。本册会讲清。
 
@@ -13,7 +13,7 @@
 
 ---
 
-## 5.2 Promise 三种状态（题 7）
+## 5.2 Promise 三种状态
 
 ### 5.2.1 状态机
 
@@ -188,7 +188,7 @@ fetchData()
 
 ---
 
-## 5.4 四个静态方法的差异（题 17）
+## 5.4 四个静态方法的差异
 
 ### 5.4.1 对比表（全部实测）
 
@@ -293,7 +293,7 @@ try {
 
 ---
 
-## 5.5 `async/await` 原理（题 8）
+## 5.5 `async/await` 原理
 
 ### 5.5.1 题单的说法已经过时
 
@@ -637,7 +637,7 @@ console.log('sync');
 
 ---
 
-## 5.8 Generator 与迭代器（题 47、52）
+## 5.8 Generator 与迭代器
 
 ### 5.8.1 Generator 是什么
 
@@ -671,7 +671,7 @@ g.next(20);      // 返回 { value: 30, done: true }
 for (const v of gen()) { }   // for...of 遍历
 ```
 
-### 5.8.2 迭代器协议（题 52）
+### 5.8.2 迭代器协议
 
 **一个对象只要实现了 `[Symbol.iterator]` 方法（返回一个迭代器），就是「可迭代的」。**
 
@@ -760,18 +760,18 @@ const obj = {
 
 ## 5.10 答题模板
 
-### 30 秒版（题 7：Promise 三种状态）
+### 30 秒版（Promise 三种状态）
 
 > `pending`、`fulfilled`、`rejected`。两条铁律：**状态不可逆**，一旦敲定再调 `resolve`/`reject` 都无效；**只能从 pending 转移**，不能从 fulfilled 到 rejected。
 > 补充两点容易错的：`new Promise` 的 executor 是**同步执行**的，只有 `then` 的回调才异步；`resolve` 一个 Promise 会「吸收」它的状态，这也是 `async` 函数 `return Promise` 时不嵌套的原因。
 
-### 30 秒版（题 8：async/await 原理）
+### 30 秒版（async/await 原理）
 
 > **语义上**可以理解为 Generator + 自动执行器：`await` 相当于 `yield`，自动执行器在 Promise settled 后调 `next()` 恢复。
 > **但实现上**，现代 V8（7.x 起）已经不用 Generator 了，改成基于 CPS 的显式状态机，省掉 Generator 的包装和 `next()` 开销，性能大约提升 2 倍。Babel 编译到 ES5 时输出的 `_asyncToGenerator` 还是 Generator 方案的模拟。
 > `async` 函数总是返回 Promise，`await` 会让出控制权把后续代码放进微任务。
 
-### 2 分钟版（题 17：四个静态方法）
+### 2 分钟版（四个静态方法）
 
 > 我按「什么时候 resolve、什么时候 reject、空数组怎么办」三个维度对比。
 >
@@ -813,7 +813,7 @@ const obj = {
 ## 5.11 速记卡
 
 ```
-Promise 三态（题 7）
+Promise 三态
   pending → fulfilled / rejected，★不可逆
   executor 同步执行；then 回调异步
   resolve(promise) 会「吸收」状态
@@ -826,7 +826,7 @@ then 链三机制
   ★ 链越长，到 catch 越晚（影响输出顺序）
   finally 不改变结果
 
-四个静态方法（题 17）
+四个静态方法
            resolve 条件        reject 条件        空数组
   all      全部 fulfilled      任一 rejected       []
   race     第一个 settled      第一个 settled      永久 pending
@@ -835,7 +835,7 @@ then 链三机制
   ★ all 快速失败但其他 Promise 仍在跑
   ★ race ≠ any（settled vs fulfilled）
 
-async/await 原理（题 8）
+async/await 原理
   语义：Generator + 自动执行器（await ≈ yield）
   实现：V8 7.x 起是 CPS 状态机，不再用 Generator（性能提升约 2 倍）
   Babel 的 _asyncToGenerator 仍是 Generator 模拟
@@ -850,7 +850,7 @@ async/await 原理（题 8）
   循环里 await 条件判断
   忘记 catch → Node 15+ 进程退出
 
-Generator / 迭代器（题 47、52）
+Generator / 迭代器
   可暂停恢复 / next(v) 双向通信 / throw(e) 注入错误
   可迭代 = 有 [Symbol.iterator]
   ★ for...of 被 break 会调 return() 清理

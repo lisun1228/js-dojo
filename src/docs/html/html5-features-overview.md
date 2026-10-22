@@ -1,6 +1,6 @@
 # HTML · 07 HTML5 新特性全景
 
-> 本册覆盖：HTML5 有哪些新特性（题 20）、Web Worker（题 10）、WebSocket（题 23）
+> 本册覆盖：HTML5 有哪些新特性、Web Worker、WebSocket
 > 「HTML5 新特性」是最典型的「背清单」题——**背清单只能拿及格分，按场景归类才能拿高分**。
 > Web Worker 的核心考点是「**为什么不能操作 DOM**」和「**数据怎么传才不卡**」；WebSocket 的核心考点是「**和 SSE / 长轮询怎么选**」和「**心跳重连怎么做**」。
 
@@ -12,7 +12,7 @@ HTML5 不是一个「版本」，而是**一组能力的集合**（现在已经�
 
 ---
 
-## 7.2 HTML5 新特性全景（题 20）
+## 7.2 HTML5 新特性全景
 
 ### 7.2.1 先说答题策略
 
@@ -136,7 +136,7 @@ input.addEventListener('input', () => {
 
 ---
 
-## 7.3 Web Worker（题 10）
+## 7.3 Web Worker
 
 ### 7.3.1 一句话回答
 
@@ -357,7 +357,7 @@ class WorkerPool {
 
 ---
 
-## 7.4 WebSocket（题 23）
+## 7.4 WebSocket
 
 > 完整版（握手细节、帧协议、CSWSH 安全、Nginx 配置）见工作区 `计算机网络-71题/网络-11-WebSocket与实时通信.md`。本节只给「HTML5 新特性」语境下的答法。
 

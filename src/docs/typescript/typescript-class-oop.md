@@ -1,6 +1,6 @@
-# TS · 06 类与面向对象（题 8、38、40、32、28、41）
+# TS · 06 类与面向对象
 
-> 本册覆盖：访问修饰符（原题 8）、类的特性（题 38、40）、继承（题 32）、方法重写（题 28）、getter/setter（题 41）
+> 本册覆盖：访问修饰符、类的特性、继承、方法重写、getter/setter
 > 题单把 `readonly` 列为「访问修饰符」——**这是错的**，它不是修饰符。更重要的是题单没说：**TS 的 `private` 是假的，编译后运行时能访问**。这一条是这类题的必问点。
 
 ---
@@ -13,7 +13,7 @@ TS 的类在 JS 类的基础上加了**四类**东西：
 
 ---
 
-## 6.2 类的完整语法清单（题 38 的答法）
+## 6.2 类的完整语法清单（答法）
 
 **题 38 是「罗列题」，按四组说最清晰。**
 
@@ -90,7 +90,7 @@ class User {
 
 ---
 
-## 6.3 访问修饰符（题 8，含一个必须纠正的点）
+## 6.3 访问修饰符（含一个必须纠正的点）
 
 ### 6.3.1 三个真正的访问修饰符
 
@@ -290,7 +290,7 @@ class A {
 
 ---
 
-## 6.4 继承（题 32）
+## 6.4 继承
 
 ### 6.4.1 基本用法
 
@@ -395,7 +395,7 @@ class Derived extends Base {
 
 ---
 
-## 6.5 方法重写（题 28）
+## 6.5 方法重写
 
 ### 6.5.1 基本规则
 
@@ -479,7 +479,7 @@ class Derived extends Base {
 
 ---
 
-## 6.6 getter / setter（题 41）
+## 6.6 getter / setter
 
 ### 6.6.1 基本用法
 
@@ -684,13 +684,13 @@ Object.keys(new A());     // ['normal']  ← getter 是原型上的，不在实�
 
 ## 6.8 答题模板
 
-### 30 秒版（题 8：访问修饰符）
+### 30 秒版（访问修饰符）
 
 > TS 有四个：`public` 默认、`private` 只有本类、`protected` 本类和子类、还有 `readonly`——**但 `readonly` 严格说不是访问修饰符**，它控制的是「能否赋值」，可以和前三个组合使用。
 > **最关键的一点：`private` 和 `protected` 只在编译期检查，编译后修饰符完全消失，运行时 `(obj as any).x` 照样能访问。** 要真正的运行时隔离要用 ES2022 的 `#x` 私有字段，它连 `as any` 都绕不过，会抛 SyntaxError。
 > 另外还有 `static`（属于类不属于实例）和参数属性 `constructor(private x: string)` 这个语法糖。
 
-### 30 秒版（题 28：方法重写）
+### 30 秒版（方法重写）
 
 > 子类重新定义父类的同名方法。TS 会对类型做检查：**参数必须更宽松或相同（逆变），返回值必须更窄或相同（协变）**——这是里氏替换原则的要求，因为父类能接受的东西子类必须也能接受。
 > 补充两点：TS 4.3 加了 `override` 关键字，显式标记重写，配合 `noImplicitOverride` 能防止「父类方法改名后子类方法悄悄失效」；另外 TS 里**方法参数是双变的**（不是严格的逆变），这是为了兼容 JS 的数组方法，属于故意的不健全。
@@ -742,7 +742,7 @@ Object.keys(new A());     // ['normal']  ← getter 是原型上的，不在实�
 成员清单
   属性 / 可选属性 / readonly / 方法 / static / getter-setter / #私有 / 索引签名
 
-访问控制（题 8）
+访问控制
   public（默认）/ private（本类）/ protected（本类+子类）
   ★ readonly 不是访问修饰符（控制能否赋值，可组合）
   ★ private 只在编译期！运行时完全可访问
@@ -754,17 +754,17 @@ Object.keys(new A());     // ['normal']  ← getter 是原型上的，不在实�
   constructor(private name: string) → 自动生成 this.name = name
   不能用 static，不能用 #
 
-继承（题 32）
+继承
   单继承 + super()（必须先调用才能用 this）
   ★ 父类构造函数执行时子类字段还没初始化 → 访问得到 undefined
   extends 后面可以是表达式 → mixin 的基础
 
-重写（题 28）
+重写
   参数逆变（更宽或相同）+ 返回值协变（更窄或相同）= 里氏替换
   ★ TS 方法参数实际是「双变」（故意不健全，为兼容数组方法）
   override 关键字 + noImplicitOverride 防「父类改名后静默失效」
 
-getter/setter（题 41）
+getter/setter
   只有 getter = 永远只读（比 readonly 更强）
   TS 4.3+ getter 和 setter 可以有不同类型（setter 宽、getter 窄）
   ★ useDefineForClassFields: true → [[Define]] 语义，绕过父类 setter

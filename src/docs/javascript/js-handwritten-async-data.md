@@ -1,6 +1,6 @@
-# JS · 11 手写实现（下）· 异步与数据处理（题 9、54~56、64~70、72）
+# JS · 11 手写实现（下）· 异步与数据处理
 
-> 本册覆盖：Promise 全实现（题 54）、`Promise.all`（题 55）、`Promise.retry`（题 72）、并发限制（题 70）、深拷贝（题 9、56）、数组去重（题 64）、扁平化（题 65）、千分位（题 66）、URL 解析（题 67）、括号匹配（题 69）、LRU（题 68）
+> 本册覆盖：Promise 全实现、`Promise.all`、`Promise.retry`、并发限制、深拷贝、数组去重、扁平化、千分位、URL 解析、括号匹配、LRU
 > **题单这些全部写着「同编程题文档第 X 题」或「同算法文档第 18 题」——那些文档不在工作区。**
 > 所有实现在 Node 22 跑过，**并发限制/深拷贝/去重对比都给实测数据**。
 
@@ -23,7 +23,7 @@
 
 ---
 
-## 11.2 Promise 全实现（题 54）
+## 11.2 Promise 全实现
 
 ### 11.2.1 完整实现
 
@@ -170,7 +170,7 @@ p1 === p2;        // false
 
 ---
 
-## 11.3 `Promise.all`（题 55）
+## 11.3 `Promise.all`
 
 ### 11.3.1 实现
 
@@ -303,7 +303,7 @@ static race(list) {
 
 ---
 
-## 11.4 `Promise.retry`（题 72）
+## 11.4 `Promise.retry`
 
 ### 11.4.1 实现
 
@@ -377,7 +377,7 @@ function retry(fn, times = 3, baseDelay = 100) {
 
 ---
 
-## 11.5 并发限制（题 70）
+## 11.5 并发限制
 
 ### 11.5.1 实现
 
@@ -454,7 +454,7 @@ asyncPool(limit, items, async (item) => {
 
 ---
 
-## 11.6 深拷贝（题 9、56）
+## 11.6 深拷贝
 
 ### 11.6.1 四种方案的对比
 
@@ -594,7 +594,7 @@ const copy = structuredClone(obj);
 
 ---
 
-## 11.7 数组去重（题 64）
+## 11.7 数组去重
 
 ### 11.7.1 五种实现与实测结果
 
@@ -678,7 +678,7 @@ byKey([1, '1'], (v) => `${typeof v}:${v}`);
 
 ---
 
-## 11.8 数组扁平化（题 65）
+## 11.8 数组扁平化
 
 ### 11.8.1 递归版（最直观）
 
@@ -762,7 +762,7 @@ function flattenIter(arr, depth = Infinity) {
 
 ---
 
-## 11.9 千分位（题 66）
+## 11.9 千分位
 
 ### 11.9.1 五种实现
 
@@ -842,7 +842,7 @@ for (let i = 0; i < int.length; i++) { if (i > 0 && (int.length - i) % 3 === 0) 
 
 ---
 
-## 11.10 URL 解析（题 67）
+## 11.10 URL 解析
 
 ### 11.10.1 手写版
 
@@ -924,7 +924,7 @@ u.searchParams.get('x');   // '1'
 
 ---
 
-## 11.11 括号匹配（题 69）
+## 11.11 括号匹配
 
 ### 11.11.1 实现（栈）
 
@@ -998,7 +998,7 @@ function findMismatch(s) {
 
 ---
 
-## 11.12 LRU（题 68）
+## 11.12 LRU
 
 ### 11.12.1 `Map` 版（最简洁）
 
@@ -1111,12 +1111,12 @@ m.set('a', 3);          // 更新值，但【顺序不变】
 
 ## 11.14 答题模板
 
-### 30 秒版（题 54：Promise）
+### 30 秒版（Promise）
 
 > 核心是**状态机 + 回调队列**。三个状态 `pending`/`fulfilled`/`rejected`，一旦敲定不可逆；`then` 把回调存进队列并返回**新 Promise**；状态变化时异步（`queueMicrotask`）执行队列。
 > 六个必答细节：`executor` **同步执行**、要 `try/catch` 捕获同步 throw、状态不可逆、`then` 回调必须**微任务**异步、`then` 的返回值要**递归吸收**（如果是 thenable）、回调不是函数时要**值/错误穿透**。
 
-### 30 秒版（题 56：深拷贝）
+### 30 秒版（深拷贝）
 
 > 递归 + `WeakMap` 缓存循环引用。要特别处理 `Date`（`new Date(getTime())`）、`RegExp`（重建 + 保留 `lastIndex`）、`Map`/`Set`（**先存缓存再递归**）、数组、以及普通对象用 `Object.create(getPrototypeOf(obj))` 保留原型。
 > 遍历要用 `Reflect.ownKeys` 才能拿到 Symbol 键。
@@ -1166,30 +1166,30 @@ m.set('a', 3);          // 更新值，但【顺序不变】
 ## 11.15 速记卡
 
 ```
-Promise（题 54）
+Promise
   状态机 + 回调队列；then 返回新 Promise
   ★ 六细节：executor 同步 / try-catch 包 executor / 状态不可逆
             then 回调用 queueMicrotask / 返回值递归吸收 / 非函数穿透
 
-Promise.all（题 55）
+Promise.all
   ★★ 空数组必须立即 resolve（否则永久 pending）
   ★ 用 for 不用 forEach（稀疏数组）
   ★ results[i] 不用 push（保证顺序）
   ★ .then(onOk, onReject) 不用 .catch（少建一个 Promise）
   四方法空数组：all→[] / allSettled→[] / any→reject / race→永久 pending
 
-retry（题 72）
+retry
   Promise.resolve().then(fn) 才能捕获同步 throw
   指数退避 + 抖动
   ★ 澄清 times 是总次数还是重试次数
 
-asyncPool（题 70）
+asyncPool
   Set 存执行中 + await Promise.race(executing)
   p.then(clean, clean) 成功失败都要删
   ★ 不用 Promise.all 分批（慢任务拖累整批）
   实测：6 任务 limit=2 → 153ms，最大并发 2
 
-深拷贝（题 56）
+深拷贝
   递归 + WeakMap
   ★ Map/Set 要先 cache.set 再递归（否则自引用死循环）
   ★ Reflect.ownKeys 才拿得到 Symbol 键
@@ -1198,35 +1198,35 @@ asyncPool（题 70）
   JSON 方案丢：函数/undefined/Symbol/Map/Set，Date 变字符串，循环引用抛错
   structuredClone：不能拷函数/DOM，不保留原型
 
-数组去重（题 64）
+数组去重
   ★ indexOf 用 ===，会把 NaN 全部丢掉
   ★ Set/includes/Map 用 SameValueZero，保留一个 NaN
   ★ 两个 {} 不会合并（引用比较）
   对象数组按 key 用 Map/Set；key 函数要带类型防 1 和 '1' 冲突
 
-扁平化（题 65）
+扁平化
   递归最简单；迭代用「显式栈 + 索引」
   ★ 别用 push(...arr.reverse())，顺序极易写错
   flat 默认 depth=1，会移除空位
 
-千分位（题 66）
+千分位
   正则：\B(?=(\d{3})+(?!\d))
   ★ 必须拆小数（否则 1234.5678 → 1,234.5,678）
   ★ 循环版必须剥离负号（否则 -123456 → -,123,456）
   生产用 toLocaleString / Intl.NumberFormat
 
-URL 解析（题 67）
+URL 解析
   ★ 排除 #hash
   ★ + 要还原成空格
   ★ decodeURIComponent
   ★ 重复 key 变数组
   生产用 URLSearchParams（getAll 处理重复 key）
 
-括号匹配（题 69）
+括号匹配
   栈；stack.pop() !== map[ch] 同时处理栈空和不匹配
   ★ 最后必须判 stack.length === 0
 
-LRU（题 68）
+LRU
   Map 版：get 时 delete+set 刷新；put 已存在也要先 delete
   ★ capacity = 0 直接 return
   双向链表版：节点必须存 key；哨兵 head/tail

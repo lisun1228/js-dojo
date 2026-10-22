@@ -1,6 +1,6 @@
-# TS · 09 工程化：tsconfig 与 sourcemap（题 24、29）
+# TS · 09 工程化：tsconfig 与 sourcemap
 
-> 本册覆盖：tsconfig.json 的作用与常用配置（原题 24）、sourcemap 映射文件（题 29）
+> 本册覆盖：tsconfig.json 的作用与常用配置、sourcemap 映射文件
 > 题单只列了 6 个配置项，**没提 `strict` 到底包含哪几个开关**——而这恰恰是最高频的追问。
 > sourcemap 那题只说「调试时能看到 TS 源码」，没说**生产环境的安全风险**和 `hidden-source-map` 的正确用法。
 
@@ -349,7 +349,7 @@ module.exports = {
 
 ---
 
-## 9.4 sourcemap（题 29）
+## 9.4 sourcemap
 
 ### 9.4.1 是什么
 
@@ -561,12 +561,12 @@ build: { sourcemap: false }
 
 ## 9.7 答题模板
 
-### 30 秒版（题 24：tsconfig）
+### 30 秒版（tsconfig）
 
 > `tsconfig.json` 是 TS 项目的编译配置，分四块：**文件范围**（`include`/`exclude`/`files`）、**目标与模块**（`target`/`module`/`moduleResolution`/`lib`）、**严格性**（`strict` 及其子开关）、**输出**（`outDir`/`declaration`/`sourceMap`/`noEmit`）。还有 `extends` 继承、`paths` 路径别名、`references` 项目引用。
 > 现代前端项目的一个典型特征是 **`noEmit: true`**——因为转译交给 Vite/esbuild，`tsc` 只负责类型检查，这样快很多。另外 `isolatedModules: true` 也是必开的，因为单文件转译器看不到跨文件类型信息。
 
-### 30 秒版（题 29：sourcemap）
+### 30 秒版（sourcemap）
 
 > sourcemap 是 `.map` 文件，记录「编译后代码位置 → 源码位置」的映射，让浏览器 DevTools 里能直接看 TS 源码、打断点、看错误堆栈指向原始行。
 > 核心字段是 `mappings`（VLQ 编码的位置映射），可选的 `sourcesContent` 会带上源码原文。
@@ -632,7 +632,7 @@ tsconfig 四块
   skipLibCheck: true（避免三方 .d.ts 冲突）
   ★ paths 只影响类型解析 → 打包工具必须单独配 alias
 
-sourcemap（题 29）
+sourcemap
   核心字段 mappings（VLQ）；sourcesContent 可选带源码
   三种：sourceMap（独立）/ inlineSourceMap（内联，增大 js）/ inlineSources（含源码）
   ★ 独立 .map 不影响用户下载（DevTools 才请求）

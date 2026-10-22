@@ -5,7 +5,7 @@
 
 ---
 
-## 1.1 说说你对 Node.js 的理解（题 17）
+## 1.1 说说你对 Node.js 的理解
 
 ### 题单答案的问题
 
@@ -137,7 +137,7 @@ UV_THREADPOOL_SIZE=8    1个=15ms   2个=17ms   4个=17ms   8个=31ms
 
 ---
 
-## 1.2 Node.js 有哪些全局对象（题 16）
+## 1.2 Node.js 有哪些全局对象
 
 ### 题单答案的问题
 
@@ -261,7 +261,7 @@ const __dirname = dirname(__filename);
 
 ---
 
-## 1.3 process 的理解（题 15）
+## 1.3 process 的理解
 
 ### 题单答案的问题
 

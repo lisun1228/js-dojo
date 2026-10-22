@@ -21,7 +21,7 @@
 
 ---
 
-## 4.2 Stream（题 12）
+## 4.2 Stream
 
 ### 一句话结论
 
@@ -281,7 +281,7 @@ for await (const chunk of fs.createReadStream(file)) {
 
 ---
 
-## 4.3 Buffer（题 13）
+## 4.3 Buffer
 
 ### 一句话结论
 
@@ -438,7 +438,7 @@ JSON.stringify({ data: Buffer.from('hi') })
 
 ---
 
-## 4.4 fs 模块（题 14）
+## 4.4 fs 模块
 
 ### 一句话结论
 

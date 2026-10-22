@@ -264,7 +264,7 @@ function bad2() {
 
 ---
 
-## 2.8 EventEmitter（题 11）
+## 2.8 EventEmitter
 
 ### 题单答案的问题
 

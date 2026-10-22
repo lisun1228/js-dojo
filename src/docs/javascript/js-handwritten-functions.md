@@ -1,6 +1,6 @@
-# JS · 10 手写实现（上）· 函数与工具（题 11、12、57~63、71、73~75）
+# JS · 10 手写实现（上）· 函数与工具
 
-> 本册覆盖：防抖（题 11、57）、节流（题 11、58）、`call`/`apply`/`bind`（题 12、61）、`new`（题 62）、`instanceof`（题 63）、柯里化（题 59）、`compose`（题 71）、发布订阅（题 60）、`reduce`（题 73）、`add(1)(2)(3)`（题 75）、`setTimeout` 实现 `setInterval`（题 74）
+> 本册覆盖：防抖、节流、`call`/`apply`/`bind`、`new`、`instanceof`、柯里化、`compose`、发布订阅、`reduce`、`add(1)(2)(3)`、`setTimeout` 实现 `setInterval`
 > **题单这 12 道全部写着「同编程题文档第 X 题」——那份文档不在工作区**，所以本册从零实现。
 > 所有实现在 Node 22 跑过，**防抖/节流还给实测执行次数**。
 
@@ -239,7 +239,7 @@ function throttle(fn, wait = 300) {
 
 ---
 
-## 10.4 `call` / `apply` / `bind`（题 12、61）
+## 10.4 `call` / `apply` / `bind`
 
 ### 10.4.1 三者区别（先答清语义）
 
@@ -384,7 +384,7 @@ b2();          // 1  ← 只有第一次生效！
 
 ---
 
-## 10.5 `new`（题 62）
+## 10.5 `new`
 
 ### 10.5.1 四步
 
@@ -444,7 +444,7 @@ C();            // TypeError: Class constructor C cannot be invoked without 'new
 
 ---
 
-## 10.6 `instanceof`（题 63）
+## 10.6 `instanceof`
 
 ### 10.6.1 实现
 
@@ -492,7 +492,7 @@ Object.create(null) instanceof Object;   // false  ← 没有原型链
 
 ---
 
-## 10.7 柯里化（题 59）
+## 10.7 柯里化
 
 ### 10.7.1 基础版（按参数个数）
 
@@ -599,7 +599,7 @@ curry(fn)(1)(_, 3)(2);     // 占位符被后续参数填上
 
 ---
 
-## 10.8 `compose` / `pipe`（题 71）
+## 10.8 `compose` / `pipe`
 
 ### 10.8.1 实现
 
@@ -660,7 +660,7 @@ export default function applyMiddleware(...middlewares) {
 
 ---
 
-## 10.9 发布订阅（题 60）
+## 10.9 发布订阅
 
 ### 10.9.1 实现
 
@@ -775,7 +775,7 @@ emitter.off('x', h1);                 // 得自己保存 h1
 
 ---
 
-## 10.10 `reduce`（题 73）
+## 10.10 `reduce`
 
 ### 10.10.1 实现
 
@@ -843,13 +843,13 @@ arr.reduce((acc, cur, index, array) => {}, init);
 
 ---
 
-## 10.11 `add(1)(2)(3)`（题 75）
+## 10.11 `add(1)(2)(3)`
 
 **见 10.7.2**（已并入柯里化）。核心是 `valueOf` / `toString`。
 
 ---
 
-## 10.12 `setTimeout` 实现 `setInterval`（题 74）
+## 10.12 `setTimeout` 实现 `setInterval`
 
 ### 10.12.1 为什么要这个
 
@@ -982,14 +982,14 @@ function preciseInterval(fn, delay) {
 
 ## 10.14 答题模板
 
-### 30 秒版（题 11：防抖节流）
+### 30 秒版（防抖节流）
 
 > **防抖**是「事件停止触发 `wait` 毫秒后才执行一次」——适合搜索联想、表单校验。
 > **节流**是「`wait` 毫秒内最多执行一次」——适合滚动、拖拽。
 > 防抖的关键是「每次触发都清掉上一个定时器」；节流有三种实现：时间戳版（首执行、丢末次）、定时器版（末执行、首延迟）、合体版（首末都执行，推荐）。
 > 两个都必须用 `fn.apply(this, args)` 保留 `this` 和参数，还要提供 `cancel` 方法供组件卸载时清理。
 
-### 30 秒版（题 61：`call`/`apply`/`bind` 手写）
+### 30 秒版（`call`/`apply`/`bind` 手写）
 
 > `call` 的核心是「把函数临时挂到目标对象上当方法调用」——用 `Symbol` 作键避免属性覆盖，`Object.defineProperty` 设 `enumerable: false`，用完 `delete` 清理。
 > `apply` 就是把数组展开后调 `call`。
@@ -1043,7 +1043,7 @@ function preciseInterval(fn, delay) {
 ## 10.15 速记卡
 
 ```
-防抖（题 11、57）
+防抖
   语义：停止触发 wait 后执行一次
   实现：每次 clearTimeout 再 setTimeout
   ★ fn.apply(this, args) 保 this 和参数
@@ -1051,57 +1051,57 @@ function preciseInterval(fn, delay) {
   ★ cancel：卸载时清理
   实测：100ms 内 10 次 → 执行 1 次（参数是最后一次）
 
-节流（题 58）
+节流
   语义：wait 内最多执行一次
   三版：时间戳（首执行丢末次）/ 定时器（末执行首延迟）/ 合体（首末都执行）
   ★ 合体版用 remaining = wait - (now - last) 计算补齐
   实测：100ms 内 10 次 → 2 次；1000ms 每 50ms → 11 次
 
-call / apply（题 61）
+call / apply
   核心：把函数临时挂到 ctx 上当方法
   ★ Symbol 作键避免覆盖 + enumerable: false + delete 清理
   ★ ctx = ctx ?? globalThis（非严格下 null 指向全局）
   apply = myCall(ctx, ...args)
 
-bind（题 61）
+bind
   返回新函数，要处理两件事：
   ★ new 调用时 ctx 失效：this instanceof Bound ? this : ctx
   ★ Bound.prototype = Object.create(target.prototype) 保 instanceof
   ★ bind 只能绑一次，再 bind 新 ctx 被忽略
 
-new（题 62）
+new
   ① Object.create(Ctor.prototype) ② apply ③ 返回对象/函数则用它，否则用 obj
   ★ 必须判 'function'；必须排除 null
 
-instanceof（题 63）
+instanceof
   沿 Object.getPrototypeOf 找，while (proto) 判 null 终止
   ★ 原始值直接 false
   ★ 不用 __proto__（遗留特性）
   限制：不能跨 realm / 可被 Symbol.hasInstance 改写 / 改 prototype 会失效
 
-柯里化（题 59）+ add(1)(2)(3)（题 75）
+柯里化+ add(1)(2)(3)
   curry：args.length >= fn.length 则执行
   ★ fn.length 不含默认值/rest 参数
   add：递归 + ★ valueOf/toString 让隐式转换拿值
   ★ add(1)(2)(3) === 6 是 false（=== 不转换）
   若要求 add(1)(2)(3)()，则不需要 valueOf
 
-compose / pipe（题 71）
+compose / pipe
   compose = reduceRight（右到左）；pipe = reduce（左到右）
   ★ 空参数返回恒等函数（reduce 初值传 x）
   Redux 的 applyMiddleware 就是 compose
 
-发布订阅（题 60）
+发布订阅
   on 返回 unsubscribe（比返回 this 实用）；once 先摘再执行
   ★ emit 必须 slice() 拷贝，否则回调里 off 会跳过元素
   ★ 用 Map 不用普通对象（避免原型链干扰）
   发布订阅 = 观察者 + 事件中心
 
-reduce（题 73）
+reduce
   ★ 用 arguments.length < 2 判断，不能 init === undefined
   空数组 + 无初始值 → TypeError
 
-setTimeout → setInterval（题 74）
+setTimeout → setInterval
   理由：setInterval 回调超时会【堆积】+ 累积漂移
   实现：tick 里先 fn() 再 setTimeout，加 stopped 标记
   ★ 精确间隔用 next += delay（补偿耗时），不是 next = now + delay

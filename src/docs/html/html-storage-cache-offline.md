@@ -1,6 +1,6 @@
 # HTML · 06 存储、缓存与离线
 
-> 本册覆盖：Cookie / sessionStorage / localStorage（题 7、11，重复 2 次）、HTML5 离线缓存与本地缓存的区别（题 17）、HTTP 缓存（题 29）
+> 本册覆盖：Cookie / sessionStorage / localStorage（重复 2 次）、HTML5 离线缓存与本地缓存的区别、HTTP 缓存
 > 这 4 道题覆盖了「**浏览器把东西存在哪**」的全部答案，分三个层次：
 > **① 应用数据**（Cookie / Storage / IndexedDB）→ **② 代码与资源**（Service Worker / HTTP 缓存）→ **③ 已死的方案**（AppCache）
 > 题 17 的题单答案有一处概念错位：把 AppCache 的对照物说成了「HTTP 缓存」，实际应该是 **Service Worker**。
@@ -22,7 +22,7 @@ IndexedDB      GB 级  异步、事务         ← 离线数据、大量结构�
 
 ---
 
-## 6.2 Cookie / localStorage / sessionStorage（题 7、11）
+## 6.2 Cookie / localStorage / sessionStorage
 
 ### 6.2.1 一句话回答
 
@@ -208,7 +208,7 @@ window.addEventListener('storage', (e) => {
 
 ---
 
-## 6.3 HTML5 离线缓存：AppCache 与 Service Worker（题 17）
+## 6.3 HTML5 离线缓存：AppCache 与 Service Worker
 
 ### 6.3.1 一句话回答
 
@@ -396,7 +396,7 @@ self.addEventListener('fetch', (e) => {
 
 ---
 
-## 6.4 HTTP 缓存（题 29）
+## 6.4 HTTP 缓存
 
 > 这一节只给「能过面试」的深度。**深水区（Cache-Control 全指令、ETag 强弱、F5 与 Ctrl+F5 的差异、`stale-while-revalidate`）请直接看工作区里的 `计算机网络-71题/网络-08-HTTP缓存.md`。**
 

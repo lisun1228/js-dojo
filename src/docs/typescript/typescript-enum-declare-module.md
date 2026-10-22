@@ -1,6 +1,6 @@
-# TS · 08 枚举 · declare · namespace 与 module（题 26、25、33、1、45）
+# TS · 08 枚举 · declare · namespace 与 module
 
-> 本册覆盖：枚举（原题 26）、`declare` 关键字（题 25、33）、命名空间与模块的区别（题 1、45）
+> 本册覆盖：枚举、`declare` 关键字、命名空间与模块的区别
 > 题单说「数字枚举有双向映射，有运行时代码」——**方向对，但没给编译产物**。而 enum 最值得讲的是「**它的问题**」和「**现代为什么用 `as const` 替代**」。
 > namespace 那题也一样：题单只说「TS 早期组织代码的方式」，没说**它编译成 IIFE、为什么被淘汰、现在还剩什么用途**。
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 8.2 枚举（题 26）
+## 8.2 枚举
 
 ### 8.2.1 三种枚举
 
@@ -257,7 +257,7 @@ const u: Status = Status.Idle;  // ✅ 字面量也有提示
 
 ---
 
-## 8.3 `declare` 关键字（题 25、33）
+## 8.3 `declare` 关键字
 
 ### 8.3.1 一句话作用
 
@@ -419,7 +419,7 @@ npm i -D @types/node @types/lodash
 
 ---
 
-## 8.4 namespace（题 1）
+## 8.4 namespace
 
 ### 8.4.1 语法
 
@@ -528,7 +528,7 @@ declare namespace MyLib {
 
 ---
 
-## 8.5 module（题 1、45）
+## 8.5 module
 
 ### 8.5.1 什么是模块
 
@@ -614,7 +614,7 @@ export type { User };
 
 ---
 
-## 8.6 namespace vs module 完整对比（题 1 的核心）
+## 8.6 namespace vs module 完整对比（核心）
 
 | 维度 | `namespace` | `module`（ES Module） |
 |---|---|---|
@@ -655,14 +655,14 @@ export type { User };
 
 ## 8.8 答题模板
 
-### 30 秒版（题 26：枚举）
+### 30 秒版（枚举）
 
 > `enum` 定义一组命名常量，支持数字枚举（自动递增）和字符串枚举。
 > **关键点是它会生成运行时代码**：数字枚举编译成一个 IIFE，而且有**双向映射**——`Direction.Up` 是 1，`Direction[1]` 是 'Up'，因为编译产物用 `Direction[Direction["Up"] = 1] = "Up"` 这种嵌套赋值。字符串枚举只有正向映射。
 > 另外 `const enum` 会被内联、不生成对象，但在 `isolatedModules` 下不能跨文件用。
 > enum 有三个问题：生成代码、**不能被 tree-shaking**、数字枚举类型不安全。所以新项目我倾向用 `as const` 对象加联合类型替代。
 
-### 30 秒版（题 1：namespace vs module）
+### 30 秒版（namespace vs module）
 
 > `namespace` 是 TS 早期的模块化方案，编译成**立即执行函数（IIFE）**，把变量封在函数作用域里，只把 `export` 的挂到返回的对象上。
 > `module` 是 **ES Module 标准**，一个文件一个模块，用 `import/export`，编译后保持模块语义（或转成 CJS）。
@@ -712,7 +712,7 @@ export type { User };
 ## 8.9 速记卡
 
 ```
-enum（题 26）
+enum
   数字枚举：IIFE + ★双向映射（E[E["A"]=1]="A"）
   字符串枚举：只有正向
   const enum：内联成字面量，无对象；isolatedModules 下跨文件不可用
@@ -720,7 +720,7 @@ enum（题 26）
   现代替代：const S = {...} as const
            type S = typeof S[keyof typeof S]
 
-declare（题 25、33）
+declare
   「运行时存在，我不实现」→ ★完全不生成代码
   六形式：变量 / 函数 / 类 / namespace / module / global
   .d.ts = 只含 declare 的文件
@@ -728,7 +728,7 @@ declare（题 25、33）
   ★ .d.ts 忘加 export {} → 所有类型变全局 → 冲突
   declare module 'foo' vs 模块增强（要在模块文件里）
 
-namespace vs module（题 1、45）
+namespace vs module
   namespace → IIFE，TS 自创
   module → ES 标准，import/export
   淘汰三因：不能 tree-shaking / 跨文件要 --outFile / 与 ESM 语义混乱

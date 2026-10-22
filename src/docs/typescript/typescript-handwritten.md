@@ -1,4 +1,4 @@
-# TS · 10 手写实现题 10 道（题 6、9、10、11、12、13、14、15、16、18）
+# TS · 10 手写实现题 10 道
 
 > 本册覆盖：sleep、myMap、treePath、product、myAll、sum、mergeArray、firstSingleChar、reverseWord、objToArray
 > 这 10 道占全部 46 题的 22%，但**考的不是 TS 特性，而是「用 TS 写代码 + 算法基本功」**。
@@ -42,7 +42,7 @@
 
 ## 10.3 逐题详解
 
-### 10.3.1 sum（题 13）
+### 10.3.1 sum
 
 **题目**：实现 `sum` 方法。
 
@@ -136,7 +136,7 @@ function sum(...args: [number[]] | number[]): number {
 
 ---
 
-### 10.3.2 mergeArray（题 14）
+### 10.3.2 mergeArray
 
 **题目**：实现 `mergeArray`。
 
@@ -212,7 +212,7 @@ function mergeSorted(a: readonly number[], b: readonly number[]): number[] {
 
 ---
 
-### 10.3.3 sleep（题 6）
+### 10.3.3 sleep
 
 **题目**：实现 `sleep` 方法。
 
@@ -293,7 +293,7 @@ let timer: ReturnType<typeof setTimeout>;
 
 ---
 
-### 10.3.4 myMap（题 9）
+### 10.3.4 myMap
 
 **题目**：实现 `myMap`。
 
@@ -393,7 +393,7 @@ myMap([1, 2], (x) => String(x));    // string[]
 
 ---
 
-### 10.3.5 objToArray（题 18）
+### 10.3.5 objToArray
 
 **题目**：补充 `objToArray` 函数。
 
@@ -479,7 +479,7 @@ entries(o: {}): [string, any][];
 
 ---
 
-### 10.3.6 firstSingleChar（题 15）
+### 10.3.6 firstSingleChar
 
 **题目**：找第一个只出现一次的字符。
 
@@ -580,7 +580,7 @@ function firstSingleCharAscii(s: string): string | null {
 
 ---
 
-### 10.3.7 reverseWord（题 16）【原答案有 bug】
+### 10.3.7 reverseWord【原答案有 bug】
 
 **题目**：反转单词顺序，`'hello world'` → `'world hello'`。
 
@@ -677,7 +677,7 @@ function reverseWord(s: string): string {
 
 ---
 
-### 10.3.8 treePath（题 10）
+### 10.3.8 treePath
 
 **题目**：获取树中从根到目标节点的路径。
 
@@ -794,7 +794,7 @@ function pathByParentId(
 
 ---
 
-### 10.3.9 product（题 11）【原答案类型全丢】
+### 10.3.9 product【原答案类型全丢】
 
 **题目**：实现 `product` 方法（多个数组的笛卡尔积）。
 
@@ -900,7 +900,7 @@ product(a, b, c).length === a.length * b.length * c.length
 
 ---
 
-### 10.3.10 myAll（题 12）【原答案有空数组死锁 bug】
+### 10.3.10 myAll【原答案有空数组死锁 bug】
 
 **题目**：实现 `Promise.all`。
 

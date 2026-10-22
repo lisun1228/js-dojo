@@ -1,6 +1,6 @@
-# TS · 04 interface 与 type（题 37、35）
+# TS · 04 interface 与 type
 
-> 本册覆盖：interface vs type 的差异（原题 37）、类类型接口（题 35）
+> 本册覆盖：interface vs type 的差异、类类型接口
 > 题单给了三个差异（扩展方式、声明合并、能表示什么），**方向对但有两处不准**：
 > ① 「interface 能被 implements，type 不能」——**错**，对象类型的 type 也能被 implements；
 > ② 没说 `extends` 冲突会报错、而 `&` 会静默变成 `never` 这个实战差异。
@@ -408,7 +408,7 @@ type C2 = A2 & B2           → 每次用到 C2 都要重新展开成 { a: 1 } &
 
 ---
 
-## 4.9 类类型接口（题 35）
+## 4.9 类类型接口
 
 ### 4.9.1 基本用法
 
@@ -582,7 +582,7 @@ const u = createWith(User, 'alice', 18);   // ✅ 参数类型也被检查
 
 ## 4.11 答题模板
 
-### 30 秒版（题 37：interface vs type）
+### 30 秒版（interface vs type）
 
 > 描述对象形状时两者 95% 重叠，真正的差异有四条。
 > **第一，能表示的范围**：interface 只能描述对象形状，type 能表示任意类型——联合、元组、原始类型别名、条件类型、映射类型这些只有 type 能做。
@@ -591,7 +591,7 @@ const u = createWith(User, 'alice', 18);   // ✅ 参数类型也被检查
 > **第四，性能**：interface 会创建有名字的类型实体、能被缓存，type 的交叉每次都要重新展开，深嵌套时编辑器会卡。
 > 我的约定是：对象用 interface，其余用 type。
 
-### 30 秒版（题 35：类类型接口）
+### 30 秒版（类类型接口）
 
 > 接口不只约束对象，也能约束类——用 `class Dog implements Animal` 表达「Dog 的实例必须满足 Animal 的形状」。
 > 三个要点：**一是 `implements` 只检查实例侧，不检查静态方法和构造函数**，要约束构造器得单独定义 `new (...) => T` 的接口；**二是 `implements` 编译后完全消失**，不生成任何代码，所以是零运行时成本的；**三是 `implements` 可以多个，`extends` 只能一个，而且 `implements` 不继承实现**。
@@ -656,7 +656,7 @@ type 独有
   ✗「type 不能被 implements」
   ✓ 对象类型、交叉类型都能；只有联合类型和原始类型不能
 
-类类型接口（题 35）
+类类型接口
   implements = 承诺形状，不继承实现，编译后完全消失（零运行时成本）
   只检查实例侧，静态方法和构造函数不检查 → 要写 new (...) => T
   可多个 implements；extends 只能一个

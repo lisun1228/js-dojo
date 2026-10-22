@@ -1,6 +1,6 @@
-# TS · 07 装饰器与 mixin（题 42、43）
+# TS · 07 装饰器与 mixin
 
-> 本册覆盖：装饰器（原题 42）、mixin（题 43）
+> 本册覆盖：装饰器、mixin
 > 题单只说「需要开启 `experimentalDecorators`」——**这句话在 2023 年之后已经不完整了**。
 > **TS 5.0 支持了 TC39 Stage 3 标准装饰器，不需要任何 flag，而且和旧版 `experimentalDecorators` 完全不兼容。** 这是现在最高频的坑，也是本册的重点。
 
@@ -526,7 +526,7 @@ class S {
 
 ---
 
-## 7.7 实际应用场景（题 42 要答的）
+## 7.7 实际应用场景（要答的）
 
 | 场景 | 例子 |
 |---|---|
@@ -585,7 +585,7 @@ deleteAll() {}
 
 ---
 
-## 7.8 mixin（题 43）
+## 7.8 mixin
 
 ### 7.8.1 为什么需要 mixin
 
@@ -747,13 +747,13 @@ new C().value;    // 'A'（外层覆盖内层）
 
 ## 7.10 答题模板
 
-### 30 秒版（题 42：装饰器）
+### 30 秒版（装饰器）
 
 > 装饰器是 `@expression` 语法的特殊声明，本质是**在类定义时被调用的函数**，可以作用于类、方法、属性、访问器、参数。
 > 它可以用来加元信息或改写行为，常见用途是日志、权限校验、缓存、依赖注入——Angular 和 NestJS 的整个架构都靠它。
 > **要补充一个重要变化**：装饰器现在有两套标准。旧版要开 `experimentalDecorators`，签名是 `(target, key, descriptor)`，支持参数装饰器和 `reflect-metadata`，Angular/NestJS 在用。**TS 5.0 加了 TC39 Stage 3 标准装饰器，不需要任何 flag**，签名改成 `(value, context)`，更函数式，但**不支持参数装饰器**。两套完全不兼容。
 
-### 30 秒版（题 43：mixin）
+### 30 秒版（mixin）
 
 > mixin 是「用类工厂实现多继承」的模式，因为 JS/TS 只支持单继承。
 > 核心是一个接收基类、返回继承它并加上新成员的匿名类的函数。类型上要定义 `type Constructor<T> = new (...args: any[]) => T`，然后用 `TBase extends Constructor` 约束——这样 TS 能自动推导出所有成员类型。
@@ -818,7 +818,7 @@ new C().value;    // 'A'（外层覆盖内层）
   emitDecoratorMetadata → __metadata("design:paramtypes", [X])
   限制：泛型/接口/联合类型拿不到
 
-mixin（题 43）
+mixin
   type Constructor<T = {}> = new (...args: any[]) => T
   function M<TBase extends Constructor>(Base: TBase) { return class extends Base { ... } }
   用法：class Smart extends Activatable(Timestamped(User)) {}

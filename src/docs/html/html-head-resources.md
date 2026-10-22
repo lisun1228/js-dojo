@@ -1,8 +1,8 @@
 # HTML · 04 文档头部与资源引用
 
-> 本册覆盖：img 的 alt/title（题 1、25）、meta（题 18）、viewport（题 48）、link 与 link vs @import（题 47、50）、favicon（题 43）、PDF 展示（题 44）、src vs href（题 37）、MIME（题 52）、img 的 loading（题 22）
+> 本册覆盖：img 的 alt/title、meta、viewport、link 与 link vs @import、favicon、PDF 展示、src vs href、MIME、img 的 loading
 > 这是题量最大的一册（11 题），但都是「**小而杂**」的知识点。**它们的共同特征是：答对不难，答全很难。**
-> 题单在这一册有两处明显错误：`src` 的阻塞行为（题 37）、`alt` 与 `title` 的定位（题 1）。
+> 题单在这一册有两处明显错误：`src` 的阻塞行为、`alt` 与 `title` 的定位。
 
 ---
 
@@ -12,7 +12,7 @@
 
 ---
 
-## 4.2 meta 标签（题 18）
+## 4.2 meta 标签
 
 ### 4.2.1 一句话回答
 
@@ -74,7 +74,7 @@
 
 ---
 
-## 4.3 viewport（题 48）
+## 4.3 viewport
 
 ### 4.3.1 一句话回答
 
@@ -158,7 +158,7 @@ body {
 
 ---
 
-## 4.4 link 标签与 `@import`（题 47、50）
+## 4.4 link 标签与 `@import`
 
 ### 4.4.1 一句话回答
 
@@ -212,7 +212,7 @@ body {
 
 **优先级顺序（高 → 低）**：`preload` > `preconnect` > `dns-prefetch` > `prefetch`。
 
-### 4.4.4 `link` vs `@import`（题 50）
+### 4.4.4 `link` vs `@import`
 
 | 维度 | `<link rel="stylesheet">` | `@import` |
 |---|---|---|
@@ -233,7 +233,7 @@ body {
 
 ---
 
-## 4.5 img 的 `alt` 与 `title`（题 1、25）
+## 4.5 img 的 `alt` 与 `title`
 
 ### 4.5.1 一句话回答
 
@@ -341,7 +341,7 @@ body {
 
 ---
 
-## 4.6 img 的 `loading` 属性（题 22）
+## 4.6 img 的 `loading` 属性
 
 ### 4.6.1 一句话回答
 
@@ -446,7 +446,7 @@ body {
 
 ---
 
-## 4.7 favicon（题 43）
+## 4.7 favicon
 
 ### 4.7.1 一句话回答
 
@@ -493,7 +493,7 @@ body {
 
 ---
 
-## 4.8 页面上展示 PDF（题 44）
+## 4.8 页面上展示 PDF
 
 ### 4.8.1 四种方案对比
 
@@ -556,7 +556,7 @@ PDF 需要「自定义 UI / 表单填写 / 批注 / 精准跳页」吗？
 
 ---
 
-## 4.9 `src` 与 `href` 的区别（题 37）
+## 4.9 `src` 与 `href` 的区别
 
 ### 4.9.1 一句话回答
 
@@ -640,7 +640,7 @@ PDF 需要「自定义 UI / 表单填写 / 批注 / 精准跳页」吗？
 
 ---
 
-## 4.10 MIME 类型（题 52）
+## 4.10 MIME 类型
 
 ### 4.10.1 一句话回答
 

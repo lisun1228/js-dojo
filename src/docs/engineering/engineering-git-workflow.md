@@ -19,7 +19,7 @@
 
 ---
 
-## 8.2 merge vs rebase（题 6 / 8）
+## 8.2 merge vs rebase
 
 ### 一句话结论
 
@@ -145,7 +145,7 @@ git push --force-with-lease      # ✅ 安全
 
 > **`--force-with-lease` 是保命的**。它检查的是「远端分支的当前值是否等于我本地记录的 remote-tracking 值」——如果同事推了东西，你本地的 `origin/feature` 还是旧的，检查就会失败，从而保护了同事的提交。
 
-### 选择策略（题 8 的答案）
+### 选择策略（答案）
 
 | 场景 | 用哪个 | 理由 |
 |---|---|---|
@@ -191,7 +191,7 @@ git push --force-with-lease      # ✅ 安全
 
 ---
 
-## 8.3 rebase 冲突怎么解决（题 7 / 34）
+## 8.3 rebase 冲突怎么解决
 
 ### 题单答案的问题
 
@@ -350,7 +350,7 @@ Successfully rebased and updated refs/heads/feat.
 
 ---
 
-## 8.4 Git 常用命令（题 9）
+## 8.4 Git 常用命令
 
 题单只列了 12 个名字。这里按「你会遇到什么问题」重新组织。
 

@@ -1,6 +1,6 @@
-# JS · 09 DOM 事件与浏览器边界（题 21~30、88~94）
+# JS · 09 DOM 事件与浏览器边界
 
-> 本册覆盖：事件委托（题 21）、冒泡捕获（题 22）、阻止冒泡（题 23）、阻止默认行为（题 24）、虚拟列表（题 30）、同源策略（题 25）、跨域（题 26）、JSONP（题 28）、CORS（题 29）、本地存储（题 27）
+> 本册覆盖：事件委托、冒泡捕获、阻止冒泡、阻止默认行为、虚拟列表、同源策略、跨域、JSONP、CORS、本地存储
 > 题单这些题都只有一行答案。**跨域那几题在「计算机网络」分册里已经有 765 行的深度版本**，本册只给速查和「JS 视角的边界」，避免重复。
 > 本册重点补两块题单讲得很浅的：**事件流的「三个阶段」和 `addEventListener` 的对象参数**、**动态高度的虚拟列表**。
 
@@ -15,7 +15,7 @@
 
 ---
 
-## 9.2 事件流三个阶段（题 22）
+## 9.2 事件流三个阶段
 
 ### 9.2.1 题单的答案漏了「目标阶段」
 
@@ -167,7 +167,7 @@ ac.abort();
 
 ---
 
-## 9.3 阻止冒泡 vs 阻止默认行为（题 23、24）
+## 9.3 阻止冒泡 vs 阻止默认行为
 
 ### 9.3.1 三个方法的区别
 
@@ -241,7 +241,7 @@ e.defaultPrevented;   // 是否已经被阻止过
 
 ---
 
-## 9.4 事件委托（题 21）
+## 9.4 事件委托
 
 ### 9.4.1 原理与实现
 
@@ -314,7 +314,7 @@ document.querySelector('ul').addEventListener('click', (e) => {
 
 ---
 
-## 9.5 虚拟列表（题 30）
+## 9.5 虚拟列表
 
 ### 9.5.1 题单的答案只说了一半
 
@@ -502,7 +502,7 @@ container.addEventListener('scroll', () => {
 
 ---
 
-## 9.6 本地存储（题 27）
+## 9.6 本地存储
 
 ### 9.6.1 四方案对比
 
@@ -609,7 +609,7 @@ bc.onmessage = (e) => console.log(e.data);
 
 ---
 
-## 9.7 跨域速查（题 25、26、28、29）
+## 9.7 跨域速查
 
 > **深度内容在「计算机网络-71题 / 网络-10-跨域与CORS」（765 行）**，这里只给 JS 视角的速查。
 
@@ -693,20 +693,20 @@ function jsonp(url, cbName = 'callback') {
 
 ## 9.9 答题模板
 
-### 30 秒版（题 22：冒泡捕获）
+### 30 秒版（冒泡捕获）
 
 > DOM 事件流有**三个阶段**：捕获（从 window 往里到目标的父元素）、目标（事件到达目标元素本身）、冒泡（从目标往外回到 window）。
 > `addEventListener` 第三参数控制在哪一阶段监听：`true` 是捕获，`false`（默认）是冒泡。
 > 一个容易错的细节：**在目标元素上，`capture` 参数不生效**——捕获和冒泡的监听器都按**注册顺序**触发。
 > 第三参数还可以传对象：`{ once, passive, signal }`，其中 `passive: true` 能大幅提升滚动性能（告诉浏览器不用等 JS 确认）。
 
-### 30 秒版（题 21：事件委托）
+### 30 秒版（事件委托）
 
 > 利用冒泡，把子元素的事件统一绑到父元素，通过 `e.target` 定位实际触发的元素。
 > 三个好处：减少监听器数量（省内存）、动态元素自动生效、统一管理。
 > 两个关键点：**不冒泡的事件不能委托**（`focus`/`blur` 要用 `focusin`/`focusout`，`mouseenter`/`mouseleave` 要用 `mouseover`/`mouseout`）；**判断目标要用 `closest()` 而不是 `tagName`**，因为可能点到子元素。
 
-### 2 分钟版（题 30：虚拟列表，讲透动态高度）
+### 2 分钟版（虚拟列表，讲透动态高度）
 
 > 虚拟列表的核心是「只渲染可视区」，但**固定高度和动态高度是完全不同的两个问题**。
 >
@@ -751,34 +751,34 @@ function jsonp(url, cbName = 'callback') {
 ## 9.10 速记卡
 
 ```
-事件流三阶段（题 22）
+事件流三阶段
   捕获（window → 目标父元素）→ 目标（按注册顺序，capture 不生效）→ 冒泡（目标 → window）
   addEventListener 第三参数：true/false 或 { capture, once, passive, signal }
   ★ passive: true 让滚动不等 JS（Chrome 56+ 对 window/document touch/wheel 默认开）
     代价：preventDefault 失效
   ★ signal: ac.signal，abort() 一次性清所有监听
 
-阻止（题 23、24）
+阻止
   preventDefault      → 阻止默认行为，不影响传播
   stopPropagation     → 阻止传播，同元素其他监听器仍执行
   stopImmediatePropagation → 全阻止
   ★ return false 只在 DOM0（onclick）有效
 
-事件委托（题 21）
+事件委托
   利用冒泡 + e.target + closest()
   优点：少监听器 / 动态元素自动生效 / 统一管理
   ★ 不能委托：focus blur mouseenter mouseleave load（不冒泡）
     用 focusin focusout mouseover mouseout 替代
   ★ 判断目标用 closest 不用 tagName
 
-虚拟列表（题 30）
+虚拟列表
   固定高度：总高撑开 + scrollTop/itemHeight 算索引 + 绝对定位 + overscan
   动态高度：估算 → ResizeObserver 测量 → 前缀和 → 二分查找 → 修正重渲染
   ★ 滚动锚定：高度修正时同步调 scrollTop
   ★ 节流用 rAF 不用 setTimeout
   简单方案：CSS content-visibility: auto（但不减少 DOM 节点数）
 
-本地存储（题 27）
+本地存储
              容量     同步   生命周期    随请求发送
   localStorage 5~10MB  同步   永久       否
   sessionStorage 5MB   同步   标签页级   否
@@ -789,7 +789,7 @@ function jsonp(url, cbName = 'callback') {
   ★ sessionStorage 不跨标签
   ★ BroadcastChannel 比 storage 事件更好用
 
-跨域（题 25、26、28、29）→ 详见「计算机网络-71题/网络-10」
+跨域→ 详见「计算机网络-71题/网络-10」
   ★ SOP 限制「读响应」，不限制「发请求」
   四方案：CORS / 代理 / JSONP(只GET,已淘汰) / postMessage
   简单请求三条件（方法 + 安全列表头 + Content-Type 三种）

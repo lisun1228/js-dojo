@@ -1,6 +1,6 @@
-# TS · 03 any / unknown / never / void 与类型收窄（题 21、22、36、7、19、23）
+# TS · 03 any / unknown / never / void 与类型收窄
 
-> 本册覆盖：any vs unknown（原题 21）、unknown 转具体类型（题 22）、never vs void（题 36）、`is` 关键字（题 7）、判断数组类型（题 19、23）
+> 本册覆盖：any vs unknown、unknown 转具体类型、never vs void、`is` 关键字、判断数组类型
 > 这四个特殊类型是「TS 类型系统的边界」：`any` 是**逃生舱**、`unknown` 是**安全版逃生舱**、`never` 是**空集**、`void` 是**无返回**。
 > 题单只说「unknown 更安全」，没说 **`any` 会传染**——这才是最要命的。
 
@@ -364,7 +364,7 @@ function create<T = void>(): T | void { }
 
 **实战里 `void` 类型的变量基本不用**，`void` 只出现在函数返回值位置。
 
-### 3.5.4 `never` vs `void` 完整对比（题 36）
+### 3.5.4 `never` vs `void` 完整对比
 
 | 维度 | `void` | `never` |
 |---|---|---|
@@ -470,7 +470,7 @@ function reducer(state: State, action: Action) {
 
 **这是 Redux / useReducer 的标准写法**，也是 TS 最能提升开发体验的地方——`switch` 到 `'add'` 时，编辑器只会补全 `payload`。
 
-### 3.6.5 自定义守卫 `is`（题 7）
+### 3.6.5 自定义守卫 `is`
 
 ```ts
 function isString(x: unknown): x is string {
@@ -557,7 +557,7 @@ assert(value);    // asserts value
 
 ---
 
-## 3.7 `unknown` 转具体类型的五种方式（题 22）
+## 3.7 `unknown` 转具体类型的五种方式
 
 ### 3.7.1 总表
 
@@ -614,7 +614,7 @@ x?.toString();    // ❌ 报错：'x' 的类型为 'unknown'
 
 ---
 
-## 3.8 判断数组类型（题 19、23）
+## 3.8 判断数组类型
 
 ### 3.8.1 题单的答案，以及它的不足
 
@@ -720,13 +720,13 @@ if (isArray(x)) {
 
 ## 3.10 答题模板
 
-### 30 秒版（题 21：any vs unknown）
+### 30 秒版（any vs unknown）
 
 > `any` 是**关闭类型检查**——任何类型能赋给它，它也能赋给任何类型，而且**会传染**：`any` 参与运算、属性访问、函数返回，结果都是 `any`，一个有 any 的变量能污染整个模块。
 > `unknown` 是**安全的 any**——任何类型能赋给它，但它**只能赋给 any 或 unknown**，而且**不能直接操作**（不能访问属性、不能调用、不能运算），必须先收窄。
 > 所以原则是：能用 `unknown` 就别用 `any`。
 
-### 30 秒版（题 36：never vs void）
+### 30 秒版（never vs void）
 
 > `void` 是「函数正常结束但没有返回值」，实际返回 `undefined`，典型是 `console.log`。
 > `never` 是「函数永远不会正常结束」——要么抛异常，要么死循环。它在类型系统里是**空集**，所以是**所有类型的子类型**（能赋给任何类型），反过来只有 `never` 能赋给 `never`。

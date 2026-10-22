@@ -24,7 +24,7 @@
 
 ---
 
-## 2.1 Webpack 打包原理（题 18）
+## 2.1 Webpack 打包原理
 
 ### 一句话结论
 
@@ -411,7 +411,7 @@ TypeError: add is not a function
 
 ---
 
-## 2.2 loader 和 plugin 的区别（题 17）
+## 2.2 loader 和 plugin 的区别
 
 ### ⚠️ 这题题单是悬空的
 
@@ -551,7 +551,7 @@ pitch() {
 
 ---
 
-## 2.3 Tapable：webpack 的插件系统内核（题 15）
+## 2.3 Tapable：webpack 的插件系统内核
 
 ### 题单答案的问题
 
@@ -795,7 +795,7 @@ P1 执行
 
 ---
 
-## 2.4 手写一个 loader（题 32）
+## 2.4 手写一个 loader
 
 ### 题单答案的问题
 
@@ -910,7 +910,7 @@ module.exports = function asyncLoader(source) {
 
 ---
 
-## 2.5 手写一个 plugin（题 22）
+## 2.5 手写一个 plugin
 
 ### 题单答案的问题
 

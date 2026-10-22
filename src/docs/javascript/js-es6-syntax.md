@@ -1,6 +1,6 @@
-# JS · 06 ES6+ 语法特性（题 10、16、36~42、53、100）
+# JS · 06 ES6+ 语法特性
 
-> 本册覆盖：数组方法（题 10）、ES6 特性总览（题 16）、`arguments`（题 36、100）、rest（题 37）、展开（题 38）、解构（题 39）、模板字符串（题 40）、可选链（题 41）、空值合并（题 42）、`for...of` vs `for...in`（题 53）
+> 本册覆盖：数组方法、ES6 特性总览、`arguments`、rest、展开、解构、模板字符串、可选链、空值合并、`for...of` vs `for...in`
 > 题单这些题基本只有一行「`...args` 收集剩余参数」这种级别。本册把它们讲成「能用、能说出陷阱」的程度。所有行为在 Node 22 实测。
 
 ---
@@ -13,7 +13,7 @@ ES6+ 这一堆语法糖的核心是**减少样板代码**：
 
 ---
 
-## 6.2 数组方法全表（题 10）
+## 6.2 数组方法全表
 
 ### 6.2.1 按「是否改变原数组」分类（这是最重要的分类）
 
@@ -96,7 +96,7 @@ for (const v of sparse) { }       // 遍历 3 次（含 undefined）
 
 ---
 
-## 6.3 `arguments`（题 36、100）
+## 6.3 `arguments`
 
 ### 6.3.1 五个特性
 
@@ -171,7 +171,7 @@ function sum(...nums) {
 
 ---
 
-## 6.4 rest 与展开（题 37、38）
+## 6.4 rest 与展开
 
 ### 6.4.1 语法相同，位置不同
 
@@ -242,7 +242,7 @@ o.b.c;              // 9  ← 原对象被改了！因为 b 是同一个引用
 
 ---
 
-## 6.5 解构（题 39）
+## 6.5 解构
 
 ### 6.5.1 五种解构形式
 
@@ -324,7 +324,7 @@ const { c = 10 } = { c: '' };     // c = ''
 
 ---
 
-## 6.6 模板字符串（题 40）
+## 6.6 模板字符串
 
 ### 6.6.1 三个基本能力
 
@@ -386,7 +386,7 @@ String.raw`C:\path\new`;          // 'C:\\path\\new'（不转义）
 
 ---
 
-## 6.7 可选链与空值合并（题 41、42）
+## 6.7 可选链与空值合并
 
 ### 6.7.1 可选链 `?.` 的三种形式
 
@@ -512,7 +512,7 @@ obj.cache ??= computeExpensiveValue();
 
 ---
 
-## 6.8 `for...of` vs `for...in`（题 53）
+## 6.8 `for...of` vs `for...in`
 
 ### 6.8.1 核心区别
 
@@ -597,7 +597,7 @@ for (const v of iterable) {
 
 ---
 
-## 6.9 ES6 特性总览（题 16）
+## 6.9 ES6 特性总览
 
 **题 16 是「罗列题」，按四组说最清晰。**
 
@@ -686,13 +686,13 @@ for (const v of iterable) {
 
 ## 6.11 答题模板
 
-### 30 秒版（题 53：`for...of` vs `for...in`）
+### 30 秒版（`for...of` vs `for...in`）
 
 > `for...in` 遍历的是**键名**，依据是对象的可枚举属性——而且**会遍历原型链和自定义属性**，所以不能用来遍历数组。
 > `for...of` 遍历的是**值**，依据是 `[Symbol.iterator]`——所以数组、字符串、Map、Set 都能遍历，但**普通对象不能**（报 TypeError），要遍历对象得用 `Object.entries`。
 > 一句话：`for...in` 是「属性枚举」，`for...of` 是「迭代器遍历」。
 
-### 30 秒版（题 41、42：可选链、空值合并）
+### 30 秒版（可选链、空值合并）
 
 > `?.` 在访问链路上遇到 `null`/`undefined` 就**短路整个链**返回 `undefined`，而不是只短路一级——这是它和 `&&` 的关键区别。它只对 `null`/`undefined` 生效，`0`、`''`、`false` 都照常返回。
 > `??` 只在左侧是 `null`/`undefined` 时取默认值，而 `||` 在左侧是任何 falsy 值（`0`、`''`、`false`、`NaN`）时都会取默认值。所以给「可能是 0 的数值」或「可能是空字符串」的字段设默认值，必须用 `??`。
@@ -748,7 +748,7 @@ for (const v of iterable) {
 ## 6.12 速记卡
 
 ```
-数组方法（题 10）
+数组方法
   ★ 9 个改原数组：push pop shift unshift reverse sort splice fill copyWithin
     口诀「推弹移反排剪填拷」
   纯函数：map filter reduce slice concat flat flatMap join find findIndex some every includes
@@ -757,24 +757,24 @@ for (const v of iterable) {
   ★ reduce 不给初始值，空数组抛 TypeError
   ★ map/forEach/reduce 跳过稀疏空位；for...of 不跳
 
-arguments（题 36）
+arguments
   类数组，Array.isArray 为 false，原型是 Object.prototype
   ★ 非严格下与形参双向绑定（有默认值/rest 时不绑定）
   转数组：Array.from / [...arguments]
   现在用 rest 替代
 
-rest vs 展开（题 37、38）
+rest vs 展开
   参数位置 = 收集；调用/字面量位置 = 摊开
   ★ 展开是浅拷贝（嵌套对象仍是同一引用）
   ★ [...'😀a'] 长度 2（码点）；split('') 长度 3（码元）
   ★ {...null} 返回 {}，但 [...null] 报错
 
-解构（题 39）
+解构
   重命名 / 默认值 / 嵌套 / rest / 跳过
   ★ 默认值只在 undefined 时生效（null 不触发）
   ★ 解构 null/undefined 报 TypeError
 
-可选链 / 空值合并（题 41、42）
+可选链 / 空值合并
   ?. 三种：obj?.a / obj?.fn?.() / obj?.[k]
   ★ 只对 null/undefined 短路，且短路【整条链】
   ★ 不能用在赋值左侧、不能直接 new
@@ -782,7 +782,7 @@ rest vs 展开（题 37、38）
   ★ 0 / '' / false / NaN 用 ?? 都不会被替换（|| 会）
   ??= 惰性初始化
 
-for...of vs for...in（题 53）
+for...of vs for...in
   for...in → 键名，枚举属性（含原型链 + 自定义属性）→ 不能遍历数组
   for...of → 值，走 [Symbol.iterator] → 不能遍历普通对象
   对象遍历用 Object.entries

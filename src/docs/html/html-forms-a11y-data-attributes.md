@@ -1,6 +1,6 @@
 # HTML · 03 表单、无障碍与自定义属性
 
-> 本册覆盖：label 的作用（题 3、53，重复 2 次）、`data-*` 的作用（题 19）、`href="javascript:;"`（题 45）
+> 本册覆盖：label 的作用（重复 2 次）、`data-*` 的作用、`href="javascript:;"`
 > 这四道题题单的答案都只有一句话。但它们背后各有一个**能问 10 分钟的深水区**：
 > `label` → 无障碍与「可点击区域」；`data-*` → `dataset` 的命名转换规则；`javascript:;` → 三种伪链接的真实差异（题单这里说错了一半）。
 
@@ -12,7 +12,7 @@
 
 ---
 
-## 3.2 label 的作用（题 3、53）
+## 3.2 label 的作用
 
 ### 3.2.1 一句话回答
 
@@ -172,7 +172,7 @@ f.addEventListener('submit', (e) => {
 
 ---
 
-## 3.3 `data-*` 自定义数据属性（题 19）
+## 3.3 `data-*` 自定义数据属性
 
 ### 3.3.1 一句话回答
 
@@ -342,7 +342,7 @@ document.querySelectorAll('[data-id]').forEach((el) => {
 
 ---
 
-## 3.4 `href="javascript:;"` 是什么（题 45）
+## 3.4 `href="javascript:;"` 是什么
 
 ### 3.4.1 一句话回答
 

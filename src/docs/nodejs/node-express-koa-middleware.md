@@ -36,7 +36,7 @@
 
 ---
 
-## 5.3 洋葱模型（题 23 + 19 + 20，一次讲透）
+## 5.3 洋葱模型（一次讲透）
 
 ### 什么是洋葱模型
 
@@ -154,7 +154,7 @@ if (i === middlewares.length) fn = next;   // 交给外部
 
 因为中间件可能是**同步函数**（不返回 Promise）。包一层保证 `dispatch` 永远返回 Promise，`await` 永远能工作。
 
-### 不调 `await next()` 会怎样（题 19）
+### 不调 `await next()` 会怎样
 
 **实测**：
 
@@ -213,7 +213,7 @@ app.use(async (ctx, next) => {
 
 ---
 
-## 5.4 没有 async/await 时怎么实现（题 20）
+## 5.4 没有 async/await 时怎么实现
 
 ### 题单答案
 
@@ -349,7 +349,7 @@ yield co(fn)(ctx, function () {
 
 ---
 
-## 5.5 Koa 的异常处理（题 21）
+## 5.5 Koa 的异常处理
 
 ### 题单答案
 
@@ -477,7 +477,7 @@ throw err;
 
 ---
 
-## 5.6 Koa vs Express（题 25）
+## 5.6 Koa vs Express
 
 ### 题单答案
 
@@ -577,7 +577,7 @@ app.use(async (ctx) => {
 
 ---
 
-## 5.7 中间件的概念与封装（题 8）
+## 5.7 中间件的概念与封装
 
 ### 题单答案
 
@@ -698,7 +698,7 @@ app.use(router.routes());    // ⑥ 业务路由
 
 ---
 
-## 5.8 body-parser 是什么（题 18）
+## 5.8 body-parser 是什么
 
 ### 题单答案
 
