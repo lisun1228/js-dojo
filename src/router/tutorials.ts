@@ -351,6 +351,22 @@ export const categories: TutorialCategory[] = [
       { id: 'html-non-html-questions', title: 'HTML · 08 题单里的非 HTML 题' },
     ],
   },
+  {
+    dir: 'react',
+    title: 'React 83 题',
+    items: [
+      { id: 'react-overview', title: 'React 00｜索引与去重映射' },
+      { id: 'react-design-virtual-dom', title: 'React 01｜设计思想与虚拟 DOM' },
+      { id: 'react-rendering-fiber-diff', title: 'React 02｜渲染机制：Fiber 与 Diff' },
+      { id: 'react-lifecycle-useeffect', title: 'React 03｜生命周期与 useEffect' },
+      { id: 'react-hooks-principles', title: 'React 04｜Hooks 原理与规范' },
+      { id: 'react-state-management-data-flow', title: 'React 05｜状态管理与数据流' },
+      { id: 'react-events-forms-communication', title: 'React 06｜事件、表单与组件通信' },
+      { id: 'react-performance', title: 'React 07｜性能优化' },
+      { id: 'react-router-code-splitting', title: 'React 08｜路由与代码分割' },
+      { id: 'react-ecosystem-engineering', title: 'React 09｜生态与工程化（延伸补充）' },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */

@@ -124,6 +124,7 @@ src/
 │   ├── mini-program/        # 小程序 9 题
 │   ├── css/                 # CSS 61 题精讲
 │   ├── html/                # HTML 57 题
+│   ├── react/               # React 83 题
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
@@ -302,6 +303,16 @@ tutorials.ts（分类 + 教程清单）
 | HTML 57 题        | HTML · 06 存储、缓存与离线                                                                             | `/doc/html-storage-cache-offline`             |
 | HTML 57 题        | HTML · 07 HTML5 新特性全景                                                                             | `/doc/html5-features-overview`                |
 | HTML 57 题        | HTML · 08 题单里的非 HTML 题                                                                           | `/doc/html-non-html-questions`                |
+| React 83 题       | React 00｜索引与去重映射                                                                               | `/doc/react-overview`                         |
+| React 83 题       | React 01｜设计思想与虚拟 DOM                                                                           | `/doc/react-design-virtual-dom`               |
+| React 83 题       | React 02｜渲染机制：Fiber 与 Diff                                                                      | `/doc/react-rendering-fiber-diff`             |
+| React 83 题       | React 03｜生命周期与 useEffect                                                                         | `/doc/react-lifecycle-useeffect`              |
+| React 83 题       | React 04｜Hooks 原理与规范                                                                             | `/doc/react-hooks-principles`                 |
+| React 83 题       | React 05｜状态管理与数据流                                                                             | `/doc/react-state-management-data-flow`       |
+| React 83 题       | React 06｜事件、表单与组件通信                                                                         | `/doc/react-events-forms-communication`       |
+| React 83 题       | React 07｜性能优化                                                                                     | `/doc/react-performance`                      |
+| React 83 题       | React 08｜路由与代码分割                                                                               | `/doc/react-router-code-splitting`            |
+| React 83 题       | React 09｜生态与工程化（延伸补充）                                                                     | `/doc/react-ecosystem-engineering`            |
 
 ### 新增一篇教程
 
