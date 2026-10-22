@@ -406,6 +406,8 @@ const go = async (result?: SearchResult) => {
 
   await router.push(result.path)
   await nextTick()
+  // 路由的 scrollBehavior 会在同一个 tick 里回到顶部，等它执行完再定位到命中小节
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 
   // 正文标题的 id 与 slugify 一致，能定位到命中的小节
   const target = result.anchor ? document.getElementById(result.anchor) : null
