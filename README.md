@@ -122,6 +122,7 @@ src/
 │   ├── engineering/         # 前端工程化 34 题
 │   ├── nodejs/              # Node.js 27 题
 │   ├── mini-program/        # 小程序 9 题
+│   ├── css/                 # CSS 61 题精讲
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
@@ -283,6 +284,14 @@ tutorials.ts（分类 + 教程清单）
 | 小程序 9 题       | 小程序 · 02 工程结构与 WXSS 样式体系                                                                   | `/doc/mini-program-structure-wxss`            |
 | 小程序 9 题       | 小程序 · 03 事件系统与页面间通信                                                                       | `/doc/mini-program-events-communication`      |
 | 小程序 9 题       | 小程序 · 04 优劣势与选型对比                                                                           | `/doc/mini-program-pros-cons`                 |
+| CSS 61 题精讲     | CSS 61 题精讲 · 索引与去重映射                                                                         | `/doc/css-overview`                           |
+| CSS 61 题精讲     | CSS · 01 基础与盒模型                                                                                  | `/doc/css-basics-box-model`                   |
+| CSS 61 题精讲     | CSS · 02 选择器与层叠                                                                                  | `/doc/css-selectors-cascade`                  |
+| CSS 61 题精讲     | CSS · 03 布局与定位                                                                                    | `/doc/css-layout-position`                    |
+| CSS 61 题精讲     | CSS · 04 居中与常见图形效果                                                                            | `/doc/css-centering-shapes`                   |
+| CSS 61 题精讲     | CSS · 05 响应式与移动端适配                                                                            | `/doc/css-responsive-mobile`                  |
+| CSS 61 题精讲     | CSS · 06 动画与渲染性能                                                                                | `/doc/css-animation-rendering`                |
+| CSS 61 题精讲     | CSS · 07 工程化与样式加载                                                                              | `/doc/css-engineering-loading`                |
 
 ### 新增一篇教程
 

@@ -322,6 +322,20 @@ export const categories: TutorialCategory[] = [
       { id: 'mini-program-pros-cons', title: '小程序 · 04 优劣势与选型对比' },
     ],
   },
+  {
+    dir: 'css',
+    title: 'CSS 61 题精讲',
+    items: [
+      { id: 'css-overview', title: 'CSS 61 题精讲 · 索引与去重映射' },
+      { id: 'css-basics-box-model', title: 'CSS · 01 基础与盒模型' },
+      { id: 'css-selectors-cascade', title: 'CSS · 02 选择器与层叠' },
+      { id: 'css-layout-position', title: 'CSS · 03 布局与定位' },
+      { id: 'css-centering-shapes', title: 'CSS · 04 居中与常见图形效果' },
+      { id: 'css-responsive-mobile', title: 'CSS · 05 响应式与移动端适配' },
+      { id: 'css-animation-rendering', title: 'CSS · 06 动画与渲染性能' },
+      { id: 'css-engineering-loading', title: 'CSS · 07 工程化与样式加载' },
+    ],
+  },
 ]
 
 /** 拍平后的教程清单，带上所属分类目录，供 docs/index.ts 定位 md */
