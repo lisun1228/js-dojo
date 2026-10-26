@@ -199,6 +199,7 @@ tutorials.ts（分类 + 教程清单）
 | JS 原理           | 02｜手写 call / bind                            | `/doc/call-bind`                              |
 | JS 原理           | 03｜原型与原型链                                | `/doc/prototype-chain`                        |
 | JS 原理           | 04｜属性枚举：四种视角对比                      | `/doc/property-enumeration`                   |
+| JS 原理           | 05｜this 指向：new / call / apply / bind        | `/doc/this-binding`                           |
 | CSS 61 题         | 00｜总览与索引                                  | `/doc/css-overview`                           |
 | CSS 61 题         | 01｜基础与盒模型                                | `/doc/css-basics-box-model`                   |
 | CSS 61 题         | 02｜选择器与层叠                                | `/doc/css-selectors-cascade`                  |

@@ -94,6 +94,11 @@ export const categories: TutorialCategory[] = [
         title: '04｜属性枚举：四种视角对比',
         demo: 'PropertyEnumerationDemo',
       },
+      {
+        id: 'this-binding',
+        title: '05｜this 指向：new / call / apply / bind',
+        demo: 'ThisBindingDemo',
+      },
     ],
   },
   {
