@@ -89,6 +89,11 @@ export const categories: TutorialCategory[] = [
       { id: 'event-propagation', title: '01｜事件传播与停止', demo: 'EventPropagationDemo' },
       { id: 'call-bind', title: '02｜手写 call / bind', demo: 'CallBindDemo' },
       { id: 'prototype-chain', title: '03｜原型与原型链', demo: 'PrototypeChainDemo' },
+      {
+        id: 'property-enumeration',
+        title: '04｜属性枚举：四种视角对比',
+        demo: 'PropertyEnumerationDemo',
+      },
     ],
   },
   {
