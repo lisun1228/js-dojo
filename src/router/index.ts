@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { hashTarget } from '../utils/hash'
 
 // 教程分类与清单的唯一数据源在 ./tutorials，这里统一向外导出供侧边栏使用
 export { tutorialMenus } from './tutorials'
@@ -41,6 +42,13 @@ const router = createRouter({
   scrollBehavior: (to, _from, savedPosition) => {
     // 浏览器前进 / 后退优先用历史记录里的位置
     if (savedPosition) return savedPosition
+    // 目录 / 脚注等页内锚点优先交给目标元素，不能被“回到上次位置”覆盖
+    if (to.hash) {
+      const target = hashTarget(to.hash)
+      if (target) return { el: target }
+      // 首屏直链时标题可能还没挂载，交给 DocView 在正文渲染后补一次
+      return false
+    }
     // 侧栏或搜索结果跳转：回到这篇笔记上次停留的位置，没记录过则回顶
     return { top: scrollPositions.get(to.fullPath) ?? 0 }
   },

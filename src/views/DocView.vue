@@ -30,13 +30,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import MarkdownView from '../components/MarkdownView.vue'
 import RelatedKnowledge from '../components/RelatedKnowledge.vue'
 import { getDocContent, getDocMeta, loadDocContent } from '../docs'
+import { hashTarget } from '../utils/hash'
 
 const props = defineProps<{ id: string }>()
 
+const route = useRoute()
 const meta = computed(() => getDocMeta(props.id))
 const content = ref<string>()
 
@@ -51,6 +54,18 @@ watch(
     const loaded = await loadDocContent(id).catch(() => undefined)
     // 等待期间可能已经切到另一篇，丢弃过期结果
     if (id === props.id) content.value = loaded
+  },
+  { immediate: true },
+)
+
+// 路由守则会先加载正文，但首屏直链时标题可能还没挂载：
+// 等 MarkdownView 渲染完再定位一次，避免 /doc/xxx#anchor 落在顶部
+watch(
+  [content, () => route.hash],
+  async () => {
+    if (content.value === undefined || !route.hash) return
+    await nextTick()
+    hashTarget(route.hash)?.scrollIntoView({ block: 'start' })
   },
   { immediate: true },
 )
