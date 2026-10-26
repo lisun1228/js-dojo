@@ -25,7 +25,7 @@
 npm install
 
 npm run dev       # 启动开发服务器（默认 http://localhost:5173）
-npm run build     # 类型检查 + 构建产物（vue-tsc -b && vite build）
+npm run build     # 文档校验 + 类型检查 + 构建产物（check:docs && vue-tsc -b && vite build）
 npm run preview   # 本地预览构建产物
 ```
 
@@ -58,16 +58,19 @@ VS Code 需安装 `Vue.volar`、`dbaeumer.vscode-eslint`、`esbenp.prettier-vsco
 
 **常用命令**
 
-| 命令                   | 说明                             |
-| ---------------------- | -------------------------------- |
-| `npm run lint`         | 全量检查代码规范问题（不改文件） |
-| `npm run lint:fix`     | 全量检查并自动修复可修复的问题   |
-| `npm run format`       | 用 Prettier 格式化全仓文件       |
-| `npm run format:check` | 只校验格式，不做修改             |
+| 命令                   | 说明                                           |
+| ---------------------- | ---------------------------------------------- |
+| `npm run lint`         | 全量检查代码规范问题（不改文件）               |
+| `npm run lint:fix`     | 全量检查并自动修复可修复的问题                 |
+| `npm run format`       | 用 Prettier 格式化全仓文件                     |
+| `npm run format:check` | 只校验格式，不做修改                           |
+| `npm run check:docs`   | 校验文档标题、目录锚点、教程互链与 public 图片 |
 
 **提交前校验**
 
 自动修复并不能覆盖所有场景，为了保证代码的可靠性，项目还会在代码进行 git 提交时校验代码的正确性：Husky 的 `pre-commit` 钩子会对暂存文件跑一遍 eslint / Prettier 校验，如果存在未修复的代码格式错误，将会导致代码无法进行 git 提交。请手动按照 eslint 错误提示进行修复（或执行 `npm run lint:fix`）后再进行 git 提交。
+
+教程正文改动后，先执行 `npm run check:docs`（`npm run build` 也会先跑它）确认标题、目录锚点与互链没有断。
 
 ### 二、Git 提交规范
 
@@ -103,6 +106,7 @@ commitlint 规范参考文档：<https://blog.csdn.net/weixin_41447256/article/d
 
 ```
 build/
+├── doc-check.ts             # 构建前校验文档契约（标题 / 目录锚点 / 互链 / 图片）
 ├── mermaid.ts               # Vite 插件：构建期把 mermaid 代码块渲染成内联 SVG
 └── search-index.ts          # Vite 插件：构建期生成全文检索索引（virtual:search-index）
 
