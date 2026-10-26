@@ -62,3 +62,5 @@ btn.addEventListener('click', () => console.log('child bubble 2'))
 - 使用 `stopImmediatePropagation()`：`child capture → child bubble 1`（后面的 `child bubble 2` 与 `parent` 都不触发）
 
 > 注意：**同一元素上的多个监听器按注册顺序执行**。`stopPropagation` 拦不住同一元素上后面的监听器，只有 `stopImmediatePropagation` 可以。
+
+> 相关：[DOM 事件与浏览器边界](/doc/js-dom-events-browser) 里讲了事件流在浏览器中的完整链路。

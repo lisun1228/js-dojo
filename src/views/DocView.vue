@@ -10,6 +10,8 @@
       :is="meta?.demoComponent"
       v-if="meta?.demoComponent"
     />
+    <!-- 关联知识：与 /graph 共用同一份构建期图谱数据 -->
+    <RelatedKnowledge :doc-id="id" />
   </article>
 
   <p
@@ -30,6 +32,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import RelatedKnowledge from '../components/RelatedKnowledge.vue'
 import { getDocContent, getDocMeta, loadDocContent } from '../docs'
 
 const props = defineProps<{ id: string }>()

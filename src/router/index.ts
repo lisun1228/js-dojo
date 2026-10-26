@@ -19,6 +19,12 @@ const routes = [
     props: true,
   },
   {
+    // 分类级知识地图，节点与边由 build/knowledge-graph.ts 在构建期生成
+    path: '/graph',
+    name: 'graph',
+    component: () => import('../views/GraphView.vue'),
+  },
+  {
     // 兜底：匹配不到的路由
     path: '/:pathMatch(.*)*',
     name: 'notFound',

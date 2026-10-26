@@ -21,6 +21,7 @@ export const isNavGroup = (entry: NavEntry): entry is NavMenuGroup => 'items' in
  */
 export const navMenus: NavEntry[] = [
   { title: '首页', path: '/' },
+  { title: '知识图谱', path: '/graph' },
   // {
   //   title: '路由演示',
   //   items: [{ title: '404 兜底', path: '/abc' }],

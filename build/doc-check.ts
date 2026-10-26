@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { categories } from '../src/router/tutorials.ts'
-import { slugify } from '../src/utils/slugify.ts'
+import { collectVisibleLines, parseHeadings } from './markdown-scan.ts'
 
 /**
  * 文档契约检查：把 docs-mapping.md 里的人工自检变成命令。
@@ -27,18 +27,6 @@ interface Issue {
   message: string
 }
 
-interface Heading {
-  level: number
-  text: string
-  line: number
-  anchor: string
-}
-
-interface VisibleLine {
-  line: number
-  text: string
-}
-
 const issues: Issue[] = []
 
 const report = (file: string, message: string, line?: number) => {
@@ -53,36 +41,6 @@ const walk = (dir: string): string[] =>
 
 const rel = (file: string) => relative(ROOT, file).split(sep).join('/')
 const isKebabCase = (value: string) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
-
-/** 跳过围栏代码块，避免把示例里的链接和标题当成真实文档结构 */
-const collectVisibleLines = (lines: string[]): VisibleLine[] => {
-  const visible: VisibleLine[] = []
-  let fence: string | undefined
-
-  lines.forEach((text, index) => {
-    if (fence) {
-      if (text.trimStart().startsWith(fence)) fence = undefined
-      return
-    }
-
-    const fenceMatch = /^\s*(```|~~~)/.exec(text)
-    if (fenceMatch) {
-      fence = fenceMatch[1]
-      return
-    }
-
-    visible.push({ line: index + 1, text })
-  })
-
-  return visible
-}
-
-const parseHeadings = (visible: VisibleLine[]): Heading[] =>
-  visible.flatMap(({ line, text }) => {
-    const match = /^(#{1,6})\s+(.+?)\s*$/.exec(text)
-    if (!match) return []
-    return [{ level: match[1].length, text: match[2], line, anchor: slugify(match[2]) }]
-  })
 
 /* ---------- 1. 清单与磁盘文件 ---------- */
 

@@ -250,14 +250,14 @@ add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 | 文件 | 覆盖题号 | 内容 |
 |---|---|---|
 | `安全-00-总览与索引.md` | 2、13 | 攻击面地图、防御矩阵、前端边界、安全头速查 |
-| `安全-01-XSS-跨站脚本.md` | 1 | 三型 XSS、上下文与编码、payload 与绕过、纵深防御、Trusted Types |
-| `安全-02-CSRF与Cookie安全.md` | 19、10、11、12 | CSRF 原理与四种防御、SameSite/HttpOnly/Secure、现代 Token 方案 |
-| `安全-03-CSP与安全响应头.md` | 5、13 | CSP 指令详解、nonce/hash/strict-dynamic、上线策略、其他头 |
-| `安全-04-点击劫持与iframe安全.md` | 9、21、16 | 点击劫持变种、frame-ancestors、sandbox、postMessage 校验、opener |
-| `安全-05-传输层-HTTPS与中间人.md` | 7、18、20、14 | TLS、HSTS、SSL 剥离、运营商劫持、SRI |
-| `安全-06-鉴权与数据安全.md` | 3、4、15 | Session/JWT/OAuth、Token 存储、权限边界、密钥管理、防调试 |
-| `安全-07-跨域与WebSocket安全.md` | 6、8 | 同源策略、CORS 预检、JSONP、代理、postMessage、CSWSH |
-| `安全-08-工程化落地与供应链.md` | 17、2 | SQL/NoSQL 注入、供应链安全、上线检查清单、安全评审流程 |
+| [安全-01-XSS-跨站脚本](/doc/security-xss) | 1 | 三型 XSS、上下文与编码、payload 与绕过、纵深防御、Trusted Types |
+| [安全-02-CSRF与Cookie安全](/doc/security-csrf-cookie) | 19、10、11、12 | CSRF 原理与四种防御、SameSite/HttpOnly/Secure、现代 Token 方案 |
+| [安全-03-CSP与安全响应头](/doc/security-csp-headers) | 5、13 | CSP 指令详解、nonce/hash/strict-dynamic、上线策略、其他头 |
+| [安全-04-点击劫持与iframe安全](/doc/security-clickjacking-iframe) | 9、21、16 | 点击劫持变种、frame-ancestors、sandbox、postMessage 校验、opener |
+| [安全-05-传输层-HTTPS与中间人](/doc/security-transport-https) | 7、18、20、14 | TLS、HSTS、SSL 剥离、运营商劫持、SRI |
+| [安全-06-鉴权与数据安全](/doc/security-auth-data) | 3、4、15 | Session/JWT/OAuth、Token 存储、权限边界、密钥管理、防调试 |
+| [安全-07-跨域与WebSocket安全](/doc/security-cors-websocket) | 6、8 | 同源策略、CORS 预检、JSONP、代理、postMessage、CSWSH |
+| [安全-08-工程化落地与供应链](/doc/security-supply-chain) | 17、2 | SQL/NoSQL 注入、供应链安全、上线检查清单、安全评审流程 |
 
 ---
 

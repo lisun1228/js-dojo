@@ -94,3 +94,5 @@ function reactive(target) {
 ```
 
 > Vue 3 的 `reactive` 正是「**惰性递归 + WeakMap 缓存**」的实现方式：只在你真正访问到某个嵌套对象时，才为它创建代理。
+
+> 相关：[Proxy 与 Object.defineProperty](/doc/es6-reactivity-proxy) · [响应式原理：track / trigger 与 effect](/doc/reactive-effect)

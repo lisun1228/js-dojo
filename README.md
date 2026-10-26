@@ -25,7 +25,7 @@
 npm install
 
 npm run dev       # 启动开发服务器（默认 http://localhost:5173）
-npm run build     # 文档校验 + 类型检查 + 构建产物（check:docs && vue-tsc -b && vite build）
+npm run build     # 文档/图谱校验 + 类型检查 + 构建产物（check:docs && check:graph && vue-tsc -b && vite build）
 npm run preview   # 本地预览构建产物
 ```
 
@@ -65,12 +65,13 @@ VS Code 需安装 `Vue.volar`、`dbaeumer.vscode-eslint`、`esbenp.prettier-vsco
 | `npm run format`       | 用 Prettier 格式化全仓文件                     |
 | `npm run format:check` | 只校验格式，不做修改                           |
 | `npm run check:docs`   | 校验文档标题、目录锚点、教程互链与 public 图片 |
+| `npm run check:graph`  | 校验知识图谱的节点、边来源与未关联文档         |
 
 **提交前校验**
 
 自动修复并不能覆盖所有场景，为了保证代码的可靠性，项目还会在代码进行 git 提交时校验代码的正确性：Husky 的 `pre-commit` 钩子会对暂存文件跑一遍 eslint / Prettier 校验，如果存在未修复的代码格式错误，将会导致代码无法进行 git 提交。请手动按照 eslint 错误提示进行修复（或执行 `npm run lint:fix`）后再进行 git 提交。
 
-教程正文改动后，先执行 `npm run check:docs`（`npm run build` 也会先跑它）确认标题、目录锚点与互链没有断。
+教程正文或概念词表改动后，先执行 `npm run check:docs` 与 `npm run check:graph`（`npm run build` 也会先跑它们）确认标题、目录锚点、互链与图谱边没有断。
 
 ### 二、Git 提交规范
 
@@ -107,6 +108,9 @@ commitlint 规范参考文档：<https://blog.csdn.net/weixin_41447256/article/d
 ```
 build/
 ├── doc-check.ts             # 构建前校验文档契约（标题 / 目录锚点 / 互链 / 图片）
+├── graph-check.ts           # 校验知识图谱：节点 / 边来源 / 未关联文档
+├── knowledge-graph.ts       # Vite 插件：构建期生成知识图谱（virtual:knowledge-graph）
+├── markdown-scan.ts         # 文档结构解析：跳过代码块，抽标题与可见行
 ├── mermaid.ts               # Vite 插件：构建期把 mermaid 代码块渲染成内联 SVG
 └── search-index.ts          # Vite 插件：构建期生成全文检索索引（virtual:search-index）
 
@@ -133,19 +137,26 @@ src/
 ├── components/
 │   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
+│   ├── RelatedKnowledge.vue # 教程页「关联知识」：局部图 + 带原因的关联列表
 │   ├── ThemeSwitcher.vue    # 页头主题色块切换器
 │   ├── BackToTop.vue        # 页面滚动后的回到顶部悬浮按钮
 │   └── demos/               # 各教程的交互演示
 │       ├── DemoPanel.vue    # 统一的「按钮 + 运行日志」外壳
 │       ├── useDemoLog.ts    # 日志收集 composable
 │       └── *Demo.vue
+├── composables/
+│   └── useKnowledgeGraph.ts # 图谱数据单次加载，教程页与 /graph 共用
+├── config/
+│   ├── knowledge.ts         # 知识图谱受控概念词表
+│   └── nav-menus.ts         # 侧边栏与搜索菜单
 ├── stores/
 │   └── theme.ts             # 主题清单与当前主题（pinia + 持久化）
 ├── router/
 │   ├── tutorials.ts         # ★ 教程分类与清单（唯一数据源）
 │   └── index.ts             # 路由表
 ├── views/
-│   ├── DocView.vue          # 通用教程页：按 /doc/:id 渲染正文 + 演示
+│   ├── GraphView.vue        # 分类知识地图（/graph）
+│   ├── DocView.vue          # 通用教程页：按 /doc/:id 渲染正文 + 演示 + 关联知识
 │   ├── HomeView.vue         # 首页（占位）
 │   └── NotFound.vue         # 404 兜底
 ├── App.vue                  # 布局：页头 + 左侧分类导航 + 内容区
@@ -384,6 +395,7 @@ const run = () => push('输出一行日志')
 | ------------------ | ---------------------------------------------- |
 | `/`                | 首页（占位）                                   |
 | `/doc/:id`         | 通用教程页，`id` 对应 `src/docs/<dir>/<id>.md` |
+| `/graph`           | 分类知识地图，点击分类查看文档与跨分类关联     |
 | `/:pathMatch(.*)*` | 404 兜底，展示请求的路径                       |
 
 ## 实现要点
@@ -391,6 +403,7 @@ const run = () => push('输出一行日志')
 - **Markdown 渲染**：用 Vite 的 `?raw` 把 `.md` 当字符串导入，交给 `markdown-it` 渲染；`highlight.js` 只按需注册 `ts / js / json / bash / sh / html / xml / vue / css / md`，避免整个语言包进 bundle。
 - **标题锚点**：`MarkdownView` 重写了 `heading_open` 规则，给标题生成 GitHub 风格 `id`，正文里写的 `[目录](#xxx)` 可以直接跳转。
 - **Mermaid 图表**：正文里写 `mermaid` 代码块即可，构建期由 [build/mermaid.ts](build/mermaid.ts) 用本机 Chrome 渲染成内联 SVG（明暗主题各渲染一份，按内容哈希缓存在 `node_modules/.cache/mermaid`），页面运行时不会加载 mermaid。本机需有 Chrome，或用 `CHROME_PATH` 指定路径。
+- **知识图谱**：[build/knowledge-graph.ts](build/knowledge-graph.ts) 在构建期读取 `tutorials.ts`、正文标题与 `/doc/:id` 互链，生成 `virtual:knowledge-graph`。边只有显式引用与受控概念词两类；`npm run check:graph` 校验无自环、无悬空、无重复边且每条边有来源。教程页的「关联知识」与 `/graph` 共用这份数据，图数据独立分包（约 8.6KB gzip），不进主包。
 - **代码分割**：md 正文与演示组件都随 `DocView` 懒加载，主包保持精简。
 - **图片放大**：正文图片是 `v-html` 插入的，挂不上监听器，所以 `MarkdownView` 在容器上做事件委托，点击 `img` 后交给 `ImagePreview` 全屏预览；预览挂到 `body` 上，避免被 `main.content` 的 `overflow` 裁剪或页头层叠遮挡。
 - **代码块换行**：全局 `style.css` 给 `code` 设了 `display: inline-flex`，会把高亮产生的每个 `<span>` 当成 flex item 横排、丢掉换行，因此 `MarkdownView` 里把 `pre code` 重置为 `display: block`。
