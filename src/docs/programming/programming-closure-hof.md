@@ -21,13 +21,14 @@
 
 ## 1.0 这一册的共同内核：闭包
 
-这 5 道题看起来毫不相干，其实都在考同一件事：
+这 5 道题看起来毫不相干，其实都在考同一件事：把状态放在外层函数的词法环境里。
 
 ```js
 function outer() {
   let state;              // ← 状态放在外层函数
-  return function inner() {
-    state = ...;          // ← 内层函数读写它
+  return function inner(value) {
+    state = value;        // ← 内层函数读写它
+    return state;
   };
 }
 ```
@@ -40,11 +41,7 @@ function outer() {
 | compose | `fns` 数组 | 闭包捕获函数列表 |
 | reduce | `acc` / `index` | 遍历状态 |
 
-**面试时这句话可以直接用**：
-
-> 「这类题本质都是闭包——把状态放在外层函数的词法环境里，返回的内层函数通过 `[[Environment]]` 引用它，所以状态在多次调用之间能保留，外部又访问不到。这就是为什么不用全局变量。」
-
-**追问预判**：为什么不用 `this` 存？→ 因为返回的函数会被解构、当回调传出去，`this` 会丢；闭包不受调用方式影响。
+返回的内层函数通过 `[[Environment]]` 引用外层变量，状态因此在多次调用之间保留、外部访问不到。不用 `this` 存：返回的函数会被解构、当回调传出去，`this` 由调用方式决定，会丢。
 
 ---
 
@@ -54,7 +51,7 @@ function outer() {
 
 > 连续触发时只执行**最后一次**（或第一次），中间的都被取消。
 
-### 场景锚点（说出来会加分）
+### 场景锚点
 
 - 搜索框输入联想：打字过程中不发请求，停 300ms 再发
 - 窗口 `resize` / 滚动到底检测
@@ -73,18 +70,18 @@ function debounce(fn, delay) {
 }
 ```
 
-**核心逻辑是对的**，实测 `100ms 内连打 10 次 → 执行 1 次`。但缺 4 样东西：
+核心逻辑正确：delay 内连打 10 次只执行 1 次。缺 4 样东西：
 
-| 缺失 | 现场会怎么翻车 |
+| 缺失 | 不补会怎样 |
 |---|---|
-| `immediate` 选项 | 面试官问「如果我要第一次立即执行呢」→ 答不上来 |
-| `cancel` 方法 | 组件卸载时定时器还在跑，setState 到已卸载组件 |
-| 返回值 | `const r = debounced(); // undefined`，拿不到结果 |
-| `flush` | 想立刻执行挂起的那次 |
+| `immediate` 选项 | 「第一次立即执行」实现不了 |
+| `cancel` 方法 | 组件卸载时定时器还在跑，回调打到已卸载组件 |
+| 返回值 | `const r = debounced()` 只能拿到 `undefined` |
+| `flush` | 需要立刻执行挂起的那次时无从下手 |
 
-### 正确实现（三档，按面试官反应递进）
+### 正确实现（三档）
 
-#### 第一档：能过面试的最小版
+#### 第一档：最小实现
 
 ```js
 function debounce(fn, delay) {
@@ -99,13 +96,9 @@ function debounce(fn, delay) {
 }
 ```
 
-**边写边说这三句**：
+三个要点：`timer` 放外层，用闭包让多次调用共享同一个计时器；每次进来先 `clearTimeout` 取消上一次倒计时；箭头函数保住外层 `this`，`apply` 透传参数（直接 `fn()` 会同时丢 `this` 和参数）。
 
-1. 「`timer` 放在外层，用闭包保存，这样多次调用共享同一个计时器。」
-2. 「每次进来先 `clearTimeout`，等于把上一次的倒计时取消。」
-3. 「用箭头函数是为了保住外层 `this`——返回的函数被当回调传出去时 `this` 会丢；`apply` 是为了透传参数。」
-
-#### 第二档：加 immediate + cancel + 返回值（面试官点头后再补）
+#### 第二档：加 immediate + cancel + 返回值
 
 ```js
 function debounce(fn, delay, { immediate = false } = {}) {
@@ -135,7 +128,7 @@ function debounce(fn, delay, { immediate = false } = {}) {
 }
 ```
 
-**实测输出**：
+实测输出：
 
 ```
 连打 10 次              → 执行 1 次
@@ -145,11 +138,9 @@ cancel 后                → 执行 0 次
 返回值                   → 10          （返回上一次的执行结果）
 ```
 
-**关键点解释（面试官最爱追问这里）**：
+`immediate` 模式判断 `timer === null`：为 `null` 说明当前没有挂起的倒计时，也就是「这一批的第一次」。执行完照样要开一个定时器，但定时器里什么都不做，只负责在 delay 后把 `timer` 置回 `null`，下一批才能重新立即执行。
 
-> 「`immediate` 模式判断的是 `timer === null`。因为 `timer` 为 `null` 说明当前没有挂起的倒计时，也就是『这一批的第一次』。执行完之后照样要开一个定时器，但定时器里什么都不做，只负责在 delay 后把 `timer` 置回 `null`，这样下一批才能重新立即执行。」
-
-#### 第三档：返回 Promise 版（高级，面试官说「还能怎么改」时用）
+#### 第三档：返回 Promise 版
 
 ```js
 function debounceAsync(fn, delay) {
@@ -175,27 +166,13 @@ function debounceAsync(fn, delay) {
 }
 ```
 
-> 这段能说出来，基本就锁定了「这个人是真写过」的印象。因为**多处调用的返回值合并**是实际业务里才会遇到的问题（比如三个地方同时触发同一个请求，都想要结果）。
+这一档解决「多处调用共享同一次执行、都拿到同一个结果」：三个地方同时触发同一个请求，又都想要返回值。
 
 ### 面试怎么说（口述脚本）
 
-**接题时**：
-
-> 「防抖我按『核心实现 → 边界 → 扩展』三步来。核心就一句话：**每次触发都重置计时器，只在停下来 delay 之后执行一次**。」
-
-**写的时候**：
-
-> 「用闭包存 `timer`。每次进来先清掉上一次的。这里有两个细节：一是用箭头函数保 `this`，二是用 `apply` 透传参数——如果直接 `fn()` 就会丢 `this` 和参数。」
-
-**写完之后（这段最重要）**：
-
-> 「核心版好了。它现在有四个限制：
-> 1. **拿不到返回值**——因为执行是延后的，函数早就 return 了；
-> 2. **不能取消**——组件卸载时定时器还在，会 setState 到已卸载组件；
-> 3. **不支持首次立即执行**——有些场景（比如按钮防抖）希望第一下就响应；
-> 4. **某些场景需要『等待中的也立刻执行』**，就是 `flush`。
->
-> 我补一下 `immediate` 和 `cancel`。生产环境直接用 lodash 的 `debounce`，这几个选项它都有。」
+- **接题**：核心一句话——每次触发都重置计时器，只在停下来 delay 之后执行一次。
+- **关键细节**：`timer` 用闭包保存；每次先 `clearTimeout`；箭头函数保 `this`、`apply` 透传参数。
+- **主动补边界**：核心版拿不到返回值（执行延后，函数早已 return）、不能取消（卸载后定时器仍在）、不支持首次立即执行、没有 `flush`。补齐 `immediate` 和 `cancel`；生产环境直接用 lodash 的 `debounce`，这些选项它都有。
 
 ### 追问链
 
@@ -204,14 +181,14 @@ function debounceAsync(fn, delay) {
 | 防抖和节流什么区别？ | 防抖是「等你停下来再执行」，节流是「固定频率执行，不管你多频繁」。一句话记法：**防抖管「最后一次」，节流管「每隔一段」** |
 | 为什么用 `apply` 不用 `call`？ | `call` 要一个个列参数，这里参数是数组（`...args`），`apply` 正好接数组 |
 | `this` 为什么不会丢？ | 箭头函数没有自己的 `this`，它用的是 `debounced` 被调用时的 `this` |
-| 如果 `fn` 是 async 会怎样？ | 会正常执行，但返回值是 Promise；第一档实现里 `lastResult` 拿到的是 Promise，第二档同理。要拿真实结果得用第三档的合并写法 |
+| 如果 `fn` 是 async 会怎样？ | 会正常执行，但返回值是 Promise；第一档不返回值，第二档的 `lastResult` 拿到的是 Promise。要拿真实结果得用第三档的合并写法 |
 | 组件卸载时要注意什么？ | 调 `cancel()`。React 里在 `useEffect` 的 cleanup 里调；Vue 里在 `onUnmounted` 里调 |
 | 输入框联想为什么不用防抖而用节流？ | 也可以用防抖，但如果用户持续输入又想看到部分结果，节流体验更好。**关键看业务：要不要「过程中的反馈」** |
 | 防抖的 delay 设多少？ | 输入联想 300ms（经验值，超过 500ms 用户感觉卡）；resize 100~200ms；按钮防重 500ms~1s |
 
-### 加分点（这道题面试官在等你说什么）
+### 加分点
 
-> **「防抖在 React 函数组件里有个经典坑：闭包捕获了旧的 state。」**
+防抖在 React 函数组件里的经典坑是闭包捕获旧 state：
 
 ```js
 // 错误写法
@@ -220,11 +197,11 @@ function Search() {
   const search = useCallback(debounce(() => {
     fetch(`/api?q=${kw}`);     // ← 永远拿到第一次渲染时的 kw（空字符串）
   }, 300), []);                // ← 依赖数组空，search 永不重建
-  ...
+  // ...
 }
 ```
 
-正确做法是 `useRef` 存最新值，或者把 `kw` 加进依赖并 `cancel` 旧的，或者用 `useEvent`。这个坑一说出来，面试官就知道你实战过。
+正确做法：`useRef` 存最新值，或把 `kw` 加进依赖并 `cancel` 旧的，或用 `useEvent`。
 
 ---
 
@@ -249,18 +226,9 @@ function throttle(fn, interval) {
 }
 ```
 
-时间戳版。实测：
+时间戳版。最后一次调用落在两个窗口之间就被丢掉：用户拖动列表直到松手，最后一次 `mousemove` 发生在两次节流中间，不响应的话列表会停在倒数第二个位置。
 
-```
-等间隔 10ms 调用 10 次（interval=50）→ 执行 2 次
-同步连打 3 次                        → 执行 1 次
-```
-
-**问题：最后一次调用被丢弃了。**
-
-想一下这个场景：用户拖动列表，一直拖到松手。最后一次鼠标移动事件发生在两次节流的中间，如果不响应，列表**永远停在倒数第二个位置**——肉眼可见的 bug。
-
-### 三种实现对比（这是这道题的核心考点）
+### 三种实现对比
 
 | 版本 | 首次执行 | 末次执行 | 间隔精确性 | 典型问题 |
 |---|---|---|---|---|
@@ -333,7 +301,7 @@ function throttle(fn, interval, { leading = true, trailing = true } = {}) {
 }
 ```
 
-**实测对比**：
+实测对比：
 
 ```
 原答案（时间戳版）：
@@ -341,29 +309,17 @@ function throttle(fn, interval, { leading = true, trailing = true } = {}) {
   同步连打 3 次                        → 执行 1 次
 
 生产级（leading + trailing）：
-  等间隔 10ms 调用 10 次（interval=50）→ 执行 3 次，时间点 0ms / 51ms / 101ms
+  等间隔 10ms 调用 10 次（interval=50）→ 执行 3 次，时间点 0ms / 51ms / 102ms
   同步连打 3 次                        → 执行 2 次（leading 1 + trailing 1）
 ```
 
-**为什么多出来一次？** 因为尾部补了一次。这多出来的一次，就是「拖动结束后列表停在正确位置」的那一下。
+多出来的一次来自 trailing：它负责「拖动结束后列表停在正确位置」的那一下。
 
 ### 面试怎么说
 
-**接题时**：
-
-> 「节流有三种写法，我推荐先说清它们各自的取舍，再写代码。因为**这三种的差别就是这道题的全部考点**。」
-
-**写的时候**：
-
-> 「时间戳版：进来比对 `now - last`，够了就执行并更新 `last`。优点是首次立即执行、间隔准；**缺点是最后一次会被丢掉**。
->
-> 定时器版：`timer` 存在就直接 return，否则开一个定时器。优点是保证末次执行；**缺点是首次要等一个 interval**。
->
-> 所以生产环境用混合版，两个都补上。」
-
-**写完之后**：
-
-> 「`remaining > interval` 这个判断是防系统时间被修改的——如果用户把系统时间往前调，`now - last` 会变成负数，`remaining` 会超过 interval，这时候应该重新对齐而不是一直不执行。」
+- **接题**：先说清三种写法的取舍，这三种的差别就是本题考点。
+- **写的时候**：时间戳版比对 `now - last`，首次立即、间隔准、末次丢失；定时器版 `timer` 存在就 return，保证末次、首次要等一个 interval；生产版两者都补。
+- **主动补边界**：`remaining > interval` 用于系统时间被回拨（`now - last` 变负）；trailing 用 `lastArgs` 传最后一次参数；`cancel` 清定时器并重置 `last`。
 
 ### 追问链
 
@@ -378,18 +334,16 @@ function throttle(fn, interval, { leading = true, trailing = true } = {}) {
 
 ### 加分点
 
-> **「防抖和节流的选择，本质是问：你要『过程中的反馈』还是只要『最终结果』。」**
+防抖和节流的选择，本质是问：要「过程中的反馈」还是只要「最终结果」。
 
 - 只要最终结果（搜索、校验、提交）→ 防抖
 - 要过程反馈（滚动位置、拖拽、进度）→ 节流
-
-这一句能直接结束这道题。
 
 ---
 
 ## 1.3 柯里化 curry 与 add(1)(2)(3)
 
-题单把这两道题分开（14 和 45），但它们是**同一族**：都在考「参数累积 + 延迟执行」。
+题单把这两道题分开（14 和 45），但它们是同一族：都在考「参数累积 + 延迟执行」。
 
 ### 一句话结论
 
@@ -406,16 +360,16 @@ function curry(fn) {
 }
 ```
 
-**核心思路对，但 `fn.length` 有个大坑**。实测：
+核心思路对，但 `fn.length` 有个大坑：
 
 ```js
 function fDefault(a, b = 10, c) { return [a,b,c].join('-'); }
 
-fDefault.length                // → 1  ← 只有 a 被计入！
+fDefault.length                // → 1  ← 只有 a 被计入
 curry(fDefault)(1)             // → "1-10-"   c 直接丢了
 ```
 
-**根因**：`Function.prototype.length` 的定义是「**第一个有默认值的参数之前**的参数个数」。默认参数之后的参数全部不计入。
+根因：`Function.prototype.length` 的定义是「**第一个有默认值的参数之前**的参数个数」，默认参数之后的参数全部不计入。
 
 | 函数形态 | `.length` |
 |---|---|
@@ -427,7 +381,7 @@ curry(fDefault)(1)             // → "1-10-"   c 直接丢了
 
 ### 正确实现
 
-#### 基础版（够面试用）
+#### 基础版
 
 ```js
 function curry(fn) {
@@ -447,9 +401,9 @@ curry(f3)(1,2)(3)    → "1-2-3"
 curry(f3)(1)(2,3)    → "1-2-3"
 ```
 
-三种调用方式都work，说明「一次传几个都行，凑够就执行」。
+三种调用方式等价：一次传几个都行，凑够 `fn.length` 就执行。
 
-#### 加占位符版（高级）
+#### 加占位符版
 
 ```js
 const _ = Symbol('placeholder');
@@ -481,7 +435,7 @@ curry(f3)(_, 2)(1)(3)     → "1-2-3"
 curry(f3)(_, _, 3)(1)(2)  → "1-2-3"
 ```
 
-> **注意这里我自己第一版写错过**：一开始我只是把 `next` 直接 append 到 `args` 后面，结果占位符永远留在原位，`f3(_, 2, 1)` 会把 Symbol 转成字符串然后抛 `TypeError: Cannot convert a Symbol value to a string`。**占位符必须在填充时替换，不是追加。**
+易错点：把 `next` 直接追加到 `args` 末尾，占位符会留在原位，`join` 时 Symbol 隐式转字符串直接抛 `TypeError: Cannot convert a Symbol value to a string`。占位符必须在填充时替换，不能追加。
 
 ### add(1)(2)(3)：两种考法
 
@@ -493,11 +447,11 @@ function add(a) {
 }
 ```
 
-只能 `add(1)(2)(3)`，`add(1)(2)` 会返回一个函数而不是数值。
+只能 `add(1)(2)(3)`，`add(1)(2)` 返回函数而不是数值。
 
 #### 考法 B：无限累加（真正的考点）
 
-面试官说「那 `add(1)(2)(3)(4)(5)` 呢」，就是在考这个：
+面试官问「`add(1)(2)(3)(4)(5)` 呢」，考的就是这个：
 
 ```js
 function add(...args) {
@@ -515,20 +469,18 @@ function add(...args) {
 实测：
 
 ```
-add(1)(2)(3)      → [Function: fn]      ← 返回的是函数
-+add(1)(2)(3)(4)  → 10
-`${add(1)(2)}`    → "3"
-+add(1,2,3)       → 6                   ← 也支持一次传多个
-+add()            → 0
-add(1)(2) == 3    → true                ← 宽松相等触发 toPrimitive
-add(1)(2) === 3   → false               ← 严格相等不转换
+typeof add(1)(2)(3) → "function"     ← 返回的永远是函数
++add(1)(2)(3)(4)    → 10
+`${add(1)(2)}`      → "3"
++add(1,2,3)         → 6              ← 也支持一次传多个
++add()              → 0
+add(1)(2) == 3      → true           ← 宽松相等触发 toPrimitive
+add(1)(2) === 3     → false          ← 严格相等不转换
 ```
 
-**这一条是这道题的灵魂**：
+关键：返回值永远是函数，单独看 `add(1)(2)(3)` 只是函数；只有放进需要原始值的上下文（`+`、模板字符串、`==`）才会调用 `Symbol.toPrimitive` / `valueOf` / `toString` 转成数字。不是「凑够 3 个就返回数字」，而是靠类型转换兜底。
 
-> 「它返回的**永远是函数**，`add(1)(2)(3)` 单独看是个函数。但只要你把它放进需要原始值的上下文（`+`、模板字符串、`==`），JS 就会调用 `Symbol.toPrimitive` / `valueOf` / `toString` 把它转成数字。所以不是『凑够 3 个就返回数字』，而是**靠类型转换兜底**。」
-
-**优先级**：`Symbol.toPrimitive` > `valueOf` > `toString`。三个都写是为了兼容旧环境（`Symbol.toPrimitive` 是 ES6 的）。
+优先级：`Symbol.toPrimitive` > `valueOf` > `toString`。三个都写是为了兼容旧环境（`Symbol.toPrimitive` 是 ES6 的）。
 
 ### 追问链
 
@@ -539,9 +491,7 @@ add(1)(2) === 3   → false               ← 严格相等不转换
 | 柯里化和偏函数（partial）区别？ | 柯里化是把 n 元变 n 个 1 元（严格）；偏函数只是固定前几个参数，剩下的还要一次传完。**柯里化是偏函数的特例** |
 | `add(1)(2)` 为什么不会报错？ | 因为返回的是函数，能继续调用；只是它同时具有 `toPrimitive` 能力 |
 | 不用 `valueOf` 能实现吗？ | 不能靠隐式转换了，只能约定一个终止符：`add(1)(2)(3)()`，返回时判断 `args.length === 0` |
-| 这个在真实项目里用过吗？ | 老实说很少。**柯里化在函数式编程库里常见（Ramda），业务代码里更多是 `partial` 用法**——比如 `const log = curry((level, msg) => ...)` 然后 `const error = log('error')` |
-
-> 最后一个问题的诚实回答会加分。面试官知道大部分人没在生产里用过柯里化，装用途反而扣分。
+| 这个在真实项目里用过吗？ | 很少。**柯里化在函数式编程库里常见（Ramda），业务代码里更多是 `partial` 用法**——比如 `const log = curry((level, msg) => ...)` 然后 `const error = log('error')` |
 
 ---
 
@@ -559,7 +509,7 @@ function compose(...fns) {
 }
 ```
 
-实测直接崩：
+空参数直接抛错：
 
 ```
 compose()  → TypeError: Reduce of empty array with no initial value
@@ -589,9 +539,9 @@ pipe(inc, dbl)(3)         → 8      （先 3+1=4，再 4*2）
 compose(sq, inc, dbl)(3)  → 49     （((3*2)+1)^2）
 ```
 
-**注意 `compose(sq, inc, dbl)(3) = 49` 这个例子**：它证明了执行顺序是**从右往左**（`dbl` 先跑）。很多人写完不知道自己在写什么顺序，一测就露馅。
+`compose(sq, inc, dbl)(3) = 49` 说明执行顺序是**从右往左**（`dbl` 先跑）。
 
-#### 异步版（面试官问「函数是 async 呢」）
+#### 异步版
 
 ```js
 const composeAsync = (...fns) =>
@@ -602,13 +552,13 @@ const composeAsync = (...fns) =>
 
 实测：`composeAsync(aInc, aDbl)(3) → 7`
 
-> 关键点：`Promise.resolve(g(...args)).then(f)` —— `Promise.resolve` 包一层是为了**同时兼容同步和异步函数**。如果 `g` 返回的是普通值，`Promise.resolve` 会包成 resolved；如果 `g` 返回 Promise，直接链下去。
+关键点：`Promise.resolve(g(...args)).then(f)` —— `Promise.resolve` 包一层是为了**同时兼容同步和异步函数**。如果 `g` 返回的是普通值，`Promise.resolve` 会包成 resolved；如果 `g` 返回 Promise，直接链下去。
 
 ### 面试怎么说
 
-> 「`compose` 的核心是 `reduce`。第一次 `f` 是第一个函数，`g` 是第二个，产出 `f(g(x))`；第二次这个组合函数变成新的 `f`，再接第三个……所以最终是**最右边最先执行**。
->
-> 两个边界必须处理：空数组返回恒等函数，单个函数直接返回它自己。原版 `compose()` 会直接抛 TypeError。」
+- **接题**：`compose` 的核心是 `reduce`，最右边最先执行。
+- **关键细节**：`compose(inc, dbl)(3) = 7`（先 `dbl` 后 `inc`）；`pipe` 只是方向相反。多参数函数只能放在最右边，中间的函数都是单参数。
+- **主动补边界**：空数组返回恒等函数、单函数原样返回，否则 `compose()` 抛 `TypeError: Reduce of empty array with no initial value`；异步版用 `Promise.resolve(g(...args)).then(f)` 兼容同步与异步。
 
 ### 追问链
 
@@ -617,7 +567,7 @@ const composeAsync = (...fns) =>
 | `compose` 和 `pipe` 区别？ | 只有方向不同。`compose` 右到左（数学写法 `f∘g`），`pipe` 左到右（更符合阅读顺序）。**实际项目里 pipe 用得多，因为好读** |
 | 多参数函数放哪？ | 只能放**最右边**，因为它第一个接收参数。中间的函数都是单参数 |
 | 中间函数抛错怎么办？ | 直接冒泡，整个组合中断。要容错得每题包 try/catch 或用 `Result` 类型 |
-| 和 `reduce` 的初始值有关吗？ | 有关。不给初始值时，`[a,b,c].reduce(fn)` = `fn(fn(a,b),c)`，第一次 `f=a, g=b` 正是我们要的。**但如果给了初始值 `{}`，第一次就变成 `fn({}, a)`，顺序就全错了** |
+| 和 `reduce` 的初始值有关吗？ | 有关。不给初始值时，`[a,b,c].reduce(fn)` = `fn(fn(a,b),c)`，第一次 `f=a, g=b`，正是需要的顺序。**但如果给了初始值 `{}`，第一次就变成 `fn({}, a)`，顺序就全错了** |
 | 中间件的 `compose`（Koa/Redux）和这个一样吗？ | 名字一样但语义不同。Koa 的 `compose` 是**洋葱模型**——中间件能 `await next()` 后继续执行前一个的后半段；这里的是纯单向管道 |
 | 真实项目用在哪？ | 数据处理管道（埋点数据清洗）、Redux 的 `applyMiddleware`、Webpack loader 链（从右往左）、Vue 的编译管线 |
 
@@ -686,14 +636,14 @@ function myReduce(fn, ...rest) {
 实测：
 
 ```
-1) [1,2,3] 无初始值        → 6
-2) [1,2,3] 初始值 10       → 16
-3) 显式 undefined          → NaN       （与原生一致）
-4) 稀疏 [,,3]              → 3         （原生也是 3）
-5) 空数组无初始值          → TypeError: Reduce of empty array with no initial value
-6) 空数组有初始值 0        → 0
-7) 非函数                  → TypeError: callback must be a function
-8) 类数组 {0:'a',1:'b',len:2} → "ab"
+1) [1,2,3] 无初始值                          → 6
+2) [1,2,3] 初始值 10                         → 16
+3) 显式 undefined                            → NaN       （与原生一致）
+4) 稀疏 [,,3]                                → 3         （原生也是 3）
+5) 空数组无初始值                            → TypeError: Reduce of empty array with no initial value
+6) 空数组有初始值 0                          → 0
+7) 非函数                                    → TypeError: callback must be a function
+8) 类数组 {0:'a',1:'b',length:2} / 字符串 'ab' → "ab"
 ```
 
 ### 四个技术点
@@ -724,8 +674,7 @@ function myReduce(fn, ...rest) {
 | 这 5 道题有什么共同点？ | 都用闭包保存状态，状态在多次调用间保留、外部不可访问 |
 | 为什么不用 `this` 存状态？ | 返回的函数会当回调传出去，`this` 会丢；闭包不受调用方式影响 |
 | 哪个最常考？ | 防抖节流 > 柯里化 > compose > reduce |
-| 哪个最容易翻车？ | 节流的「末次丢失」和 `curry` 的 `fn.length` |
-| 写不出来怎么办？ | 先说思路和边界（「我需要一个闭包存 timer，每次进来清掉上一次的」），把「知道该怎么做」传递出去，代码能写多少写多少 |
+| 哪个最容易写错？ | 节流的「末次丢失」和 `curry` 的 `fn.length` |
 | 生产环境该用库吗？ | 应该。lodash 的 `debounce`/`throttle` 处理了 `maxWait`、`flush`、取消、返回值等十几个边界，手写版只适合面试 |
 
 ---
@@ -735,19 +684,17 @@ function myReduce(fn, ...rest) {
 ```
 【防抖】等你停下来 → 只管最后一次
   闭包存 timer；每次 clearTimeout 再 setTimeout
-  三扩展：immediate（首次立即）/ cancel（卸载时调）/ 返回值
+  扩展：immediate（首次立即）/ cancel（卸载时调）/ 返回值
   坑：React 函数组件里闭包捕获旧 state
 
 【节流】固定频率 → 不管你多频繁
-  时间戳版：首次 ✅ 末次 ❌（拖动停不住）
+  时间戳版：首次 ✅ 末次 ❌
   定时器版：首次 ❌ 末次 ✅
   生产版：leading + trailing 都要
-  视觉场景用 rAF，数据节流用时间戳
 
 【柯里化】f(a,b,c) → f(a)(b)(c)
-  靠 fn.length 判断凑够没
-  坑：默认参数/rest 之后的参数不计入 length
-  占位符版要「替换」不是「追加」
+  靠 fn.length 判断凑够没；默认参数/rest 之后的参数不计入
+  占位符版是「替换」，不是「追加」
 
 【add(1)(2)(3)】返回的永远是函数
   靠 Symbol.toPrimitive / valueOf / toString 隐式转数字
@@ -758,7 +705,7 @@ function myReduce(fn, ...rest) {
   异步版：Promise.resolve(g(...)).then(f)
 
 【reduce】三个坑
-  初始值用 arguments.length 判断，不用 !== undefined
+  初始值用参数个数判断，不用 !== undefined
   稀疏数组用 k in O 跳过
   空数组无初始值必须抛 TypeError
 ```

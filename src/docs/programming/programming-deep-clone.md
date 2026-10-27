@@ -43,7 +43,7 @@ function deepClone(obj, map = new WeakMap()) {
 }
 ```
 
-**框架是对的**（循环引用处理正确），但实测 6 个问题：
+**框架是对的**（循环引用处理正确），但 6 类对象全部拷错，类实例还会丢原型：
 
 | # | 用例 | 期望 | 实际 |
 |---|---|---|---|
@@ -67,28 +67,26 @@ Reflect.ownKeys(d);                // []      ← 连 Symbol 都没有
 d.getTime();                       // 时间藏在 [[DateValue]] 内部槽里
 ```
 
-它们的数据存在**内部槽（internal slot）**里，`for...in` 一个都遍历不到。所以不管怎么遍历属性，`Date` 都只能得到一个空对象。
-
-**唯一的办法是「按类型分别处理」**——先判断 `tag`，再用对应的构造函数重建。
+数据存在**内部槽（internal slot）**里，`for...in` 一个属性都遍历不到，只能得到空对象。唯一的办法是**按类型分别处理**：先判断 `tag`，再用对应的构造函数重建。
 
 ### 为什么 `Object.create(null)` 会抛错
 
-`Object.create(null)` 创建的对象**没有原型链**，所以：
+`Object.create(null)` 创建的对象**没有原型链**：
 
 ```js
 const np = Object.create(null);
 np.hasOwnProperty;                 // undefined  ← 不在原型链上，也没有
 ```
 
-`obj.hasOwnProperty(key)` 直接报 `is not a function`。
+`obj.hasOwnProperty(key)` 于是报 `is not a function`。
 
-**正确写法**：`Object.prototype.hasOwnProperty.call(obj, key)`。这个错误在真实项目里踩过的人不少——尤其是处理 `JSON.parse` 之外的数据源（比如 `Object.create(null)` 建的路由表、配置表）。
+**正确写法**：`Object.prototype.hasOwnProperty.call(obj, key)`。用 `Object.create(null)` 建的路由表、配置表都会踩到这一点。
 
 ---
 
 ## 6.3 为什么必须用 `WeakMap` 而不是 `Map`
 
-这是这道题**第一个必答的追问**。
+这道题的必答追问。
 
 ```js
 function deepClone(obj, map = new WeakMap()) { ... }
@@ -101,11 +99,11 @@ function deepClone(obj, map = new WeakMap()) { ... }
 | 可枚举 | 是（`keys()`） | 否 |
 | 能否被 GC | 键被引用期间不能 | **键没其他引用时可回收** |
 
-**用 `Map` 的问题**：如果拷贝的是一个巨大的对象树，`map` 会**强引用所有源对象的原对象**，直到 `map` 自己被回收。如果这个 `map` 被意外留在了闭包里（比如作为默认参数被共享），整棵源对象树都泄漏了。
+**用 `Map` 的问题**：`map` 会**强引用所有源对象**，直到自己被回收；一旦调用方把同一个 `Map` 复用给多次拷贝，整棵源对象树都跟着泄漏。
 
-`WeakMap` 的语义正好是「**源对象活着的时候才需要它**」——源对象被回收了，这条映射也没意义了。
+`WeakMap` 的语义正好是「**源对象活着的时候才需要它**」——源对象被回收，这条映射也没有意义了。
 
-> **注意一个细节**：默认参数 `map = new WeakMap()` 在**每次顶层调用**时都会创建新的。所以不存在「多次拷贝共享状态」的问题——这正是默认参数的正确用法。
+> **注意一个细节**：默认参数 `map = new WeakMap()` 在**每次顶层调用**时都会创建新的。所以不存在「多次拷贝共享状态」的问题。
 
 ---
 
@@ -154,7 +152,7 @@ function deepClone(value, map = new WeakMap()) {
   // ⑤ Map / Set 要单独遍历
   if (tag === '[object Map]') {
     for (const [k, v] of value) {
-      clone.set(deepClone(k, map), deepClone(v, map));   // 键也要深拷贝
+      clone.set(deepClone(k, map), deepClone(v, map));   // 键也深拷贝
     }
     return clone;
   }
@@ -166,22 +164,13 @@ function deepClone(value, map = new WeakMap()) {
     return clone;
   }
 
-  // ⑥ 复制所有自有属性：含 Symbol 键、含不可枚举
+  // ⑥ 复制所有自有属性：含 Symbol 键、不可枚举、getter/setter
   for (const key of Reflect.ownKeys(value)) {
     if (key === 'length' && Array.isArray(value)) continue;
 
     const desc = Object.getOwnPropertyDescriptor(value, key);
-
-    if (!desc.enumerable) {
-      Object.defineProperty(clone, key, desc);
-      continue;
-    }
-    if ('value' in desc) {
-      clone[key] = deepClone(desc.value, map);
-    } else {
-      // getter / setter：把描述符原样搬过去，不执行 getter
-      Object.defineProperty(clone, key, desc);
-    }
+    if ('value' in desc) desc.value = deepClone(desc.value, map);
+    Object.defineProperty(clone, key, desc);
   }
   return clone;
 }
@@ -198,20 +187,18 @@ function deepClone(value, map = new WeakMap()) {
 | ⑤ | Map/Set 的特殊遍历 | `for...of` 而非 `ownKeys` |
 | ⑥ | Symbol 键 + 不可枚举 + getter | `Reflect.ownKeys` + 描述符 |
 
-### 实测（全部通过）
+### 实测
 
 ```
 基础类型
   num/str/bool: 1 a false
   null/undefined: null undefined | 属性存在: true
-  NaN: true | -0: true                ← 保留 -0
+  NaN/-0: true true
 
 特殊对象
   Date: true | 时间相同: true | 不同引用: true
-  RegExp: true | source: ab+c | flags: gi | lastIndex: 0
-  Map: true | size: 2
-  Map 值深拷贝: true | 值: {"v":1}
-  Map 的键也深拷贝: true               ← 对象作为 key 也被复制
+  RegExp: true | source: ab+c | flags: gi | lastIndex: 2
+  Map: true | size: 2 | 值深拷贝: true | 键深拷贝: true | 原键可查: false
   Set: true | size: 2
   ArrayBuffer: true | 内容: hello
 
@@ -219,18 +206,19 @@ function deepClone(value, map = new WeakMap()) {
   point instanceof Point: true | dist(): 5 | getter sum: 7
   Object.create(null) 原型: null | x: 1
 
-Symbol / 函数 / getter
+Symbol / 函数 / 描述符
   Symbol 键: symbol-key
-  函数: function | 同一引用（函数不复制）: true
-  getter 值: computed-value | getter 被调用次数: 1
+  函数: function | 同一引用: true
+  getter: 拷贝阶段 0 次调用 | 读取时 1 次 | 副本仍是 accessor
+  不可枚举对象属性: 已深拷贝 | enumerable: false
 
 结构
-  循环引用: true | 不等于原对象: true
+  循环引用: true | 与源不同引用: true
   嵌套数组不同引用: true true [1,[2,[3]]]
   稀疏数组保留空位: true | length: 3
 
 改副本不影响原对象
-  原 arr: [1,[2,[3]]] | 原 point.x: 3 | 原 map.v: 1   ✅ 隔离
+  原 arr: [1,[2,[3]]] | 原 point.x: 3 | 原 map.v: 1
 ```
 
 ---
@@ -243,41 +231,40 @@ Symbol / 函数 / getter
 | Date | ✅ | ✅ | ❌ 变字符串 |
 | RegExp | ✅ | ✅ | ❌ 变 `{}` |
 | Map / Set | ✅ | ✅ | ❌ 变 `{}` |
-| 循环引用 | ✅ | ✅ | ❌ 抛错 |
+| 循环引用 | ✅ | ✅ | ❌ 抛 `TypeError` |
 | `undefined` 属性 | ✅ | ✅ | ❌ 丢失 |
 | `NaN` / `Infinity` | ✅ | ✅ | ❌ 变 `null` |
 | `-0` | ✅ | ✅ | ❌ 变 `0` |
-| 函数 | ⚠️ 共享引用 | ❌ **DataCloneError** | ❌ 丢失 |
-| **原型链** | ✅ | ❌ **丢失** | ❌ 丢失 |
-| getter/setter | ✅ 保留 | ❌ 丢弃（变成值） | ❌ 执行后取值 |
+| 函数 | ⚠️ 共享引用 | ❌ `DataCloneError` | ❌ 丢失 |
+| Symbol 键 / 值 | ✅ 保留 / 共享 | ❌ 键静默丢弃；值抛错 | ❌ 都丢失 |
+| 原型链（含 `Object.create(null)`） | ✅ | ❌ 变成 `Object` 原型 | ❌ 同左 |
+| getter/setter | ✅ 保留描述符 | ❌ 变成数据属性 | ❌ 变成数据属性 |
 | 稀疏数组空位 | ✅ | ✅ | ❌ 变 `null` |
-| 性能 | 慢 | **快（C++）** | 中 |
+| 性能（纯数据基准） | 慢（反射 + 描述符） | 中（原生实现） | 快 |
 | 浏览器支持 | 全 | Chrome 98+ / Safari 15.4+ | 全 |
 
 ### 实测对比
 
 ```
 structuredClone：
-  Date: true | Map: true | Set: true | RegExp: true
-  函数: DataCloneError - () => 1 could not be cloned.
-  循环引用: OK
-  类实例原型保留: false       ← 会丢原型
+  Date/Map/Set/RegExp 实例保留 | 循环引用: OK | undefined/NaN/-0/稀疏空位: 保留
+  函数、Symbol 值: DataCloneError
+  Symbol 键: 静默丢弃 | 类实例、Object.create(null): 原型变成 Object.prototype
 
-JSON 法：
-  Date → "2020-01-01T00:00:00.000Z"   （变字符串）
-  undefined 属性: false               （丢失）
-  NaN → null                          （变 null）
-  函数: false                         （丢失）
+JSON：
+  Date → "2023-11-14T22:13:20.000Z" | undefined/函数/Symbol 键: 丢失
+  NaN/Infinity → null | -0 → 0 | 稀疏数组空位 → null
+  循环引用 → TypeError: Converting circular structure to JSON
+
+性能（Node 22，1000 项对象 × 2000 次）
+  JSON 1233ms < structuredClone 1709ms < 手写 5443ms
 ```
 
 ### 三个结论（面试直接说）
 
-1. **绝大多数场景用 `structuredClone`**——快、标准、处理了循环引用和大部分类型
-2. **`structuredClone` 唯一的硬伤是不保留原型链**。如果拷贝的是类实例且需要调方法，必须手写
-3. **`JSON` 法只适合「纯数据 + 无 undefined + 无 Date + 无循环」**——实际项目里用它翻车的概率极高
-
-> **面试时的最佳答法**：
-> 「我会先问『拷贝的对象里有什么』。如果只是普通数据，`structuredClone` 就够了，而且比我手写的快。如果需要保留类实例的方法，或者有 getter，那才需要手写。**JSON 法我基本不用——`undefined` 和 `Date` 处理都是错的**。」
+1. **绝大多数场景用 `structuredClone`**——标准、原生实现、处理循环引用和大部分类型，比手写快
+2. **在可拷贝的类型里，`structuredClone` 的硬伤是不保留原型链**；函数和 Symbol 值会直接抛 `DataCloneError`。要保留类实例方法或 getter 才需要手写
+3. **`JSON` 法只适合「纯数据 + 无 undefined + 无 Date + 无循环」**——数据里有 `undefined`、`Date` 或 `NaN` 时，它只会悄悄改值
 
 ---
 
@@ -291,7 +278,7 @@ const src = { a: 1, b: { c: 2 }, arr: [1, 2] };
 const s1 = Object.assign({}, src);          // ⚠️ 有坑
 const s2 = { ...src };                      // 同上
 const s3 = { ...src, a: 99 };               // 覆盖某个字段
-const s4 = src.slice?.() ?? null;           // 只对数组
+const s4 = src.arr.slice();                 // 只对数组
 const s5 = structuredClone(src);            // 这是深拷贝，不是浅的
 ```
 
@@ -328,7 +315,7 @@ Object.assign({}, obj);      // 打印「getter 执行」
 
 ## 6.7 什么时候「不该」深拷贝
 
-这道题的隐藏考点。深拷贝看起来很安全，实际上经常是错的。
+深拷贝看起来很安全，实际上经常是错的。
 
 ### 场景 1：React 状态更新
 
@@ -346,8 +333,10 @@ setState({ ...state, user: { ...state.user, name: 'new' } });
 
 ```js
 const form = { el: document.querySelector('#x'), submit: () => {} };
-deepClone(form);    // el 被拷成一个空对象，submit 共享引用 —— 都不对
+deepClone(form);    // el 无法靠递归重建，submit 仍是共享引用
 ```
+
+递归复制只能复制属性，重建不了宿主对象（DOM 节点）和组件实例。
 
 ### 场景 3：大数据（10MB+ 的 JSON）
 
@@ -360,59 +349,27 @@ deepClone(form);    // el 被拷成一个空对象，submit 共享引用 —— 
 cache.set(userObj, data);
 ```
 
-> **面试时的加分回答**：
-> 「深拷贝不是越深越好。**能浅拷贝就浅拷贝，只复制变更路径**。React/Redux 的不可变更新就是这么做的——它在内存上更省，而且能保住 `memo` 的引用比较。深拷贝只适合『跨边界传递、且对方可能修改』的场景，比如 postMessage 前的数据准备、或者给第三方库传配置。」
+> **结论**：能浅拷贝就浅拷贝，只复制变更路径。React/Redux 的不可变更新就是这样——内存更省，还能保住 `memo` 的引用比较。深拷贝只适合「跨边界传递、且对方可能修改」的场景，比如 `postMessage` 前的数据准备、给第三方库传配置。
 
 ---
 
 ## 6.8 面试怎么说
 
-### 接题时（先确认范围，这一步拉开差距）
-
-> 「深拷贝我先确认边界：**需要支持哪些类型？** 只是普通对象和数组，还是要处理 Date、Map、Set、循环引用、类实例？
->
-> 如果只是普通数据，我直接推荐 `structuredClone`，比我手写的快。**要手写通常是因为需要保留原型链或者 getter**——这两点 `structuredClone` 做不到。」
-
-**这 30 秒的追问会让面试官立刻把你归到「有经验」那一档。** 大多数人一上来就开始写 `for...in`。
-
-### 写的时候
-
-> 「第一步判原始值直接返回——注意函数也走这条，因为函数不复制，共享引用是符合预期的。
->
-> 第二步用 WeakMap 查缓存。**为什么用 WeakMap 不用 Map**：Map 会强引用所有源对象，一旦这个 map 被闭包留住，整棵对象树都泄漏。
->
-> 第三步是关键：**不能只判断 `Array.isArray`，要按 `Object.prototype.toString` 判断类型**。因为 Date、Map、Set 的数据在内部槽里，`Object.keys` 完全看不到——你遍历它只会得到空对象。
->
-> 第四步，`map.set` 必须在递归之前。这是循环引用能工作的前提。
->
-> 最后，属性复制我用 `Reflect.ownKeys` 而不是 `Object.keys`——因为 `Object.keys` 拿不到 Symbol 键。」
-
-### 写完之后（主动交代取舍）
-
-> 「这个实现有几个已知的取舍：
-> 1. **函数是共享引用**，不复制。真要复制函数只能 `eval` 序列化，不现实。
-> 2. **getter/setter 是把描述符搬过去**，所以副本的 getter 里如果引用了原对象的其他字段，行为可能不对。
-> 3. **原型链用 `Object.create(getPrototypeOf())` 保留**，所以类实例的方法能用，但**构造函数不会执行**——如果构造函数里有副作用（比如注册事件），副本是没有的。
-> 4. `WeakMap` / `WeakSet` 我没处理，因为它们不可枚举，只能共享引用。
->
-> 生产环境我会优先用 `structuredClone`，只有需要保留原型时才用这个手写版。」
+- **接题先确认范围**：只需要普通对象/数组，还是 Date、RegExp、Map/Set、循环引用、类实例？纯数据直接用 `structuredClone`；要保留原型链或 getter 才值得手写。
+- **类型判断用 `Object.prototype.toString`**，不能只看 `Array.isArray`：Date、Map、Set 的数据在内部槽里，`Object.keys` 看不到。
+- **`map.set` 必须早于递归**，属性用 `Reflect.ownKeys` + 描述符复制，才能覆盖循环引用、Symbol 键、不可枚举属性和 getter。
+- **主动交代取舍**：函数共享引用；原型保留但构造函数不执行；getter 的副作用仍依赖原对象。
+- **主动补边界**：Map 的键也会被深拷贝（副本里用原键查不到）；`-0`、`NaN`、稀疏数组空位都保留。
 
 ### 追问链
 
 | 追问 | 答法 |
 |---|---|
-| 为什么用 WeakMap 不用 Map？ | Map 强引用键，会阻止源对象被 GC。WeakMap 是弱引用，源对象回收后映射自动消失 |
-| `map.set` 为什么必须在递归前？ | 循环引用时第二次遇到同一个对象，要靠 `map.has` 直接返回副本。如果放在递归后，就永远走不到那一步 → 死循环爆栈 |
-| `for...in` 和 `Reflect.ownKeys` 区别？ | `for...in` 走原型链且只拿字符串键；`Reflect.ownKeys` 拿**自有**的字符串 + Symbol 键（含不可枚举） |
-| `Object.keys` 能拿到 Symbol 吗？ | 不能。要 `Object.getOwnPropertySymbols` 或 `Reflect.ownKeys` |
-| 怎么拷贝函数？ | 不拷。函数是行为不是数据。硬要拷只能 `fn.toString()` + `new Function`，会丢闭包 |
-| 怎么处理 `WeakMap`？ | 无法拷贝（不可枚举）。只能共享引用，或者显式不拷 |
-| 怎么处理 Promise？ | 共享引用（Promise 是状态机，复制没有意义） |
-| 深拷贝会触发 getter 吗？ | 我这里不会（用描述符搬移）。`Object.assign` / `{...}` 会 |
-| 性能和内存开销？ | 时间 O(n) 但常数大（反射 + 描述符）。**比 `structuredClone` 慢一个数量级** |
+| 怎么拷贝函数？ | 不拷。函数是行为不是数据；`fn.toString()` + `new Function` 会丢闭包 |
+| `WeakMap` / `WeakSet` / Promise 怎么处理？ | 前两者不可枚举，只能共享引用；Promise 是状态机，复制没有意义 |
 | 怎么处理超深对象（1 万层）？ | 递归会爆栈，要改成显式栈迭代 |
-| `JSON` 法有什么致命问题？ | `undefined` 丢失、`Date` 变字符串、`NaN`/`Infinity` 变 `null`、循环引用抛错、`-0` 变 `0` |
-| Vue 的 `data` 为什么不需要深拷贝？ | Vue 3 用 Proxy 做响应式，`reactive` 本身就是「包装原对象」而不是复制。**复制反而会断开响应式关联** |
+| 手写和 `structuredClone` 差多少？ | 同一份纯数据约慢 3 倍（Node 22）；反射 + 描述符的常数更大 |
+| Vue 的 `data` 为什么不需要深拷贝？ | Vue 3 用 Proxy 包装原对象，复制反而会断开响应式关联 |
 
 ---
 
@@ -420,7 +377,7 @@ cache.set(userObj, data);
 
 ```
 【原答案 6 个错】
-Date/RegExp/Map/Set → 都变 {}     ← 数据在内部槽，ownKeys 看不到
+Date/RegExp/Map/Set → 都变 {}     ← 数据在内部槽，for...in 看不到
 Symbol 键 → 丢失                  ← for...in 只拿字符串键
 Object.create(null) → 抛错        ← 没有 hasOwnProperty
 类实例 → 原型丢失
@@ -438,9 +395,9 @@ WeakMap 弱引用 → 源对象回收后映射自动消失
 ⑥ Reflect.ownKeys + 描述符（Symbol / 不可枚举 / getter）
 
 【三方对比】
-structuredClone：快、标准、循环引用 OK，但丢原型
+structuredClone：标准、比手写快、循环引用 OK，但丢原型，函数抛错
 JSON：undefined 丢失 / Date 变字符串 / NaN 变 null / 循环引用抛错
-手写：唯一能保留原型 + getter 的方案
+手写：三者中唯一能保留原型 + getter 的方案
 
 【什么时候不该深拷贝】
 React 状态 → 全量拷贝会让 memo 全部失效
@@ -459,7 +416,7 @@ React 状态 → 全量拷贝会让 memo 全部失效
 □ 能说出 map.set 为什么必须在递归之前
 □ 能说出 Reflect.ownKeys 比 Object.keys 多拿到什么
 □ 能说出 structuredClone 的三个优势和两个劣势
-□ 能说出 JSON 法的四个致命问题
+□ 能说出 JSON 法的至少四个致命问题
 □ 能说出 Object.assign 会触发 getter
 □ 能说出「什么时候不该深拷贝」的至少两个场景
 □ 能说出类实例深拷贝后构造函数不会执行的影响

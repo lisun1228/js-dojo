@@ -23,7 +23,7 @@
 
 ## 4.0 为什么这三道题是同一道
 
-题单把它们编成 19、21、36，其中 21 明写「同第 19 题」。而 36 的 Scheduler 只是**换了个 API 形态**：
+题单把它们编成 19、21、36，其中 21 明写「同第 19 题」。36 的 Scheduler 只是**换了个 API 形态**：
 
 | 形态 | 入参 | 返回 | 适用 |
 |---|---|---|---|
@@ -38,8 +38,6 @@
 + 一条规则：任务完成时 running--，然后从 queue 里取下一个
 ```
 
-理解了这一句，两种形态都能推出来。
-
 ---
 
 ## 4.1 先说结论：这道题的正确性怎么验证
@@ -53,7 +51,7 @@
 | **结果顺序** | 对比输入顺序 | 与输入顺序一致（不是完成顺序） |
 | **槽位是否泄漏** | 结束后看 `running` | 必须为 0 |
 
-**第 4 项是最容易被忽略、也最致命的**——泄漏几次之后，并发数就永久降低了，最终完全卡死。
+第 4 项最容易漏测：槽位每泄漏一次，可用并发就永久少一个，最终完全卡死。
 
 ---
 
@@ -81,48 +79,33 @@ class Scheduler {
 }
 ```
 
-### bug 1：非排队分支的**返回值丢失**
+### bug 1：非排队分支的返回值丢失
 
 实测：
 
-```js
-const s = new Scheduler(2);
-const outs = await Promise.all(
-  [1,2,3,4].map(i => s.add(() => sleep(30, 'task' + i)))
-);
-// outs → [null, null, "task3", "task4"]
+```
+add 四次 → [null, null, "task3", "task4"], count = 0
 ```
 
-**前两个是 `null`，后两个正常**——同一份代码，行为不一致。
+前两个任务拿到 `undefined`，后两个拿到值。根因：`_run` 的 `.then` 回调**没有 `return val`**，返回值靠结尾的 `then` 链传递：
 
-**根因**：`_run` 里 `.then(val => { ...; resolve && resolve(val); })` 这个箭头函数**没有 `return val`**。所以：
+- 排队分支：外层 `new Promise(resolve => ...)` 在任务完成时 `resolve(val)`，能拿到值；
+- 直接分支：`resolve` 是 `undefined`，`resolve && resolve(val)` 什么都不做，`.then` 返回 `undefined`。
 
-- 走排队分支时：外层 `new Promise(resolve => ...)` 会 `resolve(val)`，能拿到值 ✓
-- 走直接分支时：`resolve` 是 `undefined`，`resolve && resolve(val)` 什么都不做，`.then` 返回 `undefined` ✗
+同一份代码产生两种行为，且与任务提交顺序相关，不是随机现象。
 
-**这就是为什么「同一份代码有的返回 null 有的正常」——这种 bug 最难排查，因为它看起来是「随机」的。**
-
-### bug 2：reject 时**并发槽位永久泄漏**
+### bug 2：reject 时并发槽位永久泄漏
 
 实测：
 
-```js
-const s2 = new Scheduler(2);
-await Promise.allSettled([
-  s2.add(() => sleep(20, 'ok1')),
-  s2.add(() => sleep(10, 'fail', true)),   // 这个 reject
-  s2.add(() => sleep(10, 'ok3')),
-  s2.add(() => sleep(10, 'ok4')),
-]);
-// 结果: ["fulfilled","rejected","fulfilled","fulfilled"]
-// 但 s2.count === 1     ← 应该是 0
+```
+四个任务含一个 reject → ["fulfilled","rejected","fulfilled","fulfilled"]
+但 count = 1（应为 0）
 ```
 
-**根因**：`_run` 里只有 `.then(val => { count--; ... })`，**没有 `.catch` 也没有 `.finally`**。任务 reject 时 `onFulfilled` 不执行，`count--` 就永远不跑。
+根因：`_run` 只有 `.then(val => { count--; ... })`，**没有 `.catch` 也没有 `.finally`**。任务 reject 时 `onFulfilled` 不执行，`count--` 永远不跑。
 
-后果：**每 reject 一次，并发上限就永久 -1**。limit=2 的场景下，两次失败之后就完全卡死了。
-
-> 这个 bug 在测试环境很难发现，因为**大部分任务不会失败**。上了生产，某个接口一抖，整个请求池就慢慢瘫痪了。
+后果：**每 reject 一次，并发上限就永久 -1**，limit 为 2 时两次失败后完全卡死。
 
 ---
 
@@ -166,28 +149,19 @@ class Scheduler {
 
 | # | 写法 | 不写会怎样 |
 |---|---|---|
-| ① | `Promise.resolve().then(fn)` | `fn` 同步抛错时，异常在 `run` 里冒出，整个 `new Promise` 崩掉 |
+| ① | `Promise.resolve().then(fn)` | `fn` 同步抛错会直接逃出 `run`，`.finally` 挂不上：外层 Promise 虽然 reject，但 `running` 停在 1、队列不再补位（实测后续任务永久 pending） |
 | ② | `.then(resolve, reject)` | 用双参，不是 `.then(resolve).catch(reject)`——后者会把 `resolve` 抛的错也捕获 |
 | ③ | `.finally(...)` | bug 2：reject 时槽位泄漏 |
-| ④ | `while` 而不是 `if` | 如果一次释放后能补多个（比如 limit 被调大），`if` 只补一个 |
+| ④ | `while` 而不是 `if` | 一次释放后理论上能补多个，`if` 只补一个 |
 
-### 实测（全部通过）
+### 实测
 
 ```
-1) 返回值 [task1, task2, task3, task4]   ← 原答案是 [null, null, task3, task4]
-   running = 0, queue = 0
-
-2) 含一个 reject: ["fulfilled","rejected","fulfilled","fulfilled"]
-   running = 0                            ← 原答案是 1（泄漏）
-
-3) 全失败 limit=1: ["rejected","rejected","rejected"]
-   running = 0                            ← 不会死锁
-
-4) 动态添加（5 个 + 后面再 add 1 个）: [0,1,2,3,4,"late"]
-
-5) 同步抛错: ["rejected","fulfilled"], running = 0
-
-6) 所有任务都失败时不报未捕获异常
+1) 返回值 ["task1","task2","task3","task4"]，running = 0，queue = 0，最大并发 2
+2) 含一个 reject: ["fulfilled","rejected","fulfilled","fulfilled"]，running = 0
+3) 全失败 limit=1: ["rejected","rejected","rejected"]，running = 0
+4) 动态添加（5 个 + 后补 1 个）: [0,1,2,3,4,"late"]
+5) 同步抛错: ["rejected","fulfilled"]，running = 0
 ```
 
 ---
@@ -212,7 +186,8 @@ async function asyncPool(tasks, limit) {
     executing.add(p);
 
     if (executing.size >= limit) {
-      await Promise.race(executing);      // 等任意一个完成，腾出槽位
+      // 只等「有槽位腾出」，单个任务失败不能中断入队
+      await Promise.race([...executing].map(q => q.catch(() => {})));
     }
   }
 
@@ -223,44 +198,34 @@ async function asyncPool(tasks, limit) {
 }
 ```
 
-### ⚠️ 我第一版写错了，这个坑非常典型
-
-第一版我写的是：
+### 常见错误：把 results 直接交给 Promise.all
 
 ```js
-return Promise.all(results);       // ← 错！
+return Promise.all(results);       // 错：results 里是「值 + 空洞」，不是 promise
 ```
 
-实测结果：
+实测：
 
 ```
 6 任务 limit=2 → [1,2,3,4,5,null]
-3 任务 limit=5 → [null,null,null]      ← 任务数 < limit 时全部丢失
+3 任务 limit=5 → [null,null,null]
 ```
 
-**为什么错**：`results` 里装的是「已经填好的值 + 还没填的空洞」，**不是 promise**。`Promise.all` 对普通值会立刻 resolve，所以：
+原因：循环里的 `await` 会让出控制权，前面几批任务顺带把结果写进 `results`；但**最后一批**在循环结束时还在跑，没人等它们。任务数小于 limit 时循环里一次都不 `await`，所以全部是空洞。`Promise.all` 对普通值立即 resolve，空洞原样保留。
 
-- 循环里 `await Promise.race(executing)` 会让出控制权，**顺带**让前面几批任务填上了结果
-- 但**最后一批**（循环结束那一刻还在跑的任务）没机会填
-- 而「任务数 < limit」时循环里一次都没 `await`，所以**一个都没填**
-
-**这个 bug 的可怕之处**：limit 比较小、任务比较多的时候，看起来「基本是对的」（只丢最后一个）；一旦任务数少于 limit，就全空。**测试用例稍微换一下结论就完全不同。**
-
-正确做法：**单独用一个 `all` 数组收集 promise，最后 `await Promise.allSettled(all)`**。
+同理，`await Promise.race(executing)` 不吞 rejection 时，一个任务失败会让 `race` 直接 reject、循环中断，后面的任务根本不会启动：实测 4 任务 limit=2、第 2 个任务失败时只启动了 2 个，12ms 就抛出；给每个 promise 加 `.catch(() => {})` 后 4 个全部启动，等全部结束后才抛出。
 
 ### 实测
 
 ```
-6 任务 limit=2 → [1,2,3,4,5,6] | 耗时 187ms | 最大并发 2
+6 任务 limit=2 → [1,2,3,4,5,6] | 耗时 183ms | 最大并发 2
 3 任务 limit=5 → [1,2,3]       | 耗时 51ms
-4 任务 limit=1 → [1,2,3,4]     | 耗时 208ms   （串行，约 4×50ms）
-含同步抛错     → rejected:sync boom
+4 任务 limit=1 → [1,2,3,4]     | 耗时 205ms
+含同步抛错     → rejected: sync boom
 空数组         → []
 ```
 
-**验算**：6 个任务耗时分别 100/100/50/50/30/30，limit=2：
-- 前两个并行 100ms，接着两个并行 50ms（到 150），最后两个并行 30ms（到 180）
-- 实测 187ms ✓ 与理论一致
+**验算**：6 个任务耗时分别 100/100/50/50/30/30，limit=2：前两个并行 100ms，接着两个并行 50ms（到 150），最后两个并行 30ms（到 180）。实测 183ms，差值来自调度开销。
 
 ---
 
@@ -304,7 +269,9 @@ const sem = new Semaphore(2);
 const results = await Promise.all(urls.map(u => sem.run(() => fetch(u))));
 ```
 
-**这个版本的价值**：它不要求你「一次性拿到所有任务」，所以**适合流式处理**——比如用户在无限滚动里不断加载、或者 WebSocket 持续推任务。
+实测：5 个任务 limit=2 → 结果按输入顺序返回，最大并发 2，结束后 `current = 0`。
+
+**价值**：不要求一次性拿到所有任务，适合流式处理——无限滚动持续加载、WebSocket 持续推任务。
 
 ---
 
@@ -326,11 +293,12 @@ function serialQueue() {
 ```
 三个任务（耗时 20/5/1ms）→ 结果 ["a","b","c"]，执行顺序 1→2→3
 一个失败后继续 → err:boom | after-error
+去掉 chain.catch → 第二个任务被跳过：err:boom | err:boom
 ```
 
-**关键点**：`chain = result.catch(() => {})` 这一行。如果不加，`chain` 就是个 rejected promise，后面的 `.then` 全部会被跳过——**一次失败，整个队列停摆**。
+**关键点**：`chain = result.catch(() => {})`。不加的话 `chain` 是 rejected promise，后面的 `.then` 全部被跳过——一次失败，整个队列停摆。
 
-> 这个「链式串行」的写法比 Scheduler 更简洁，但它**不支持动态调整 limit**，只适合严格串行。
+链式串行比 Scheduler 更简洁，但不支持动态调整 limit，只适合严格串行。
 
 ---
 
@@ -352,12 +320,13 @@ function withTimeout(promise, ms, msg = 'timeout') {
 
 ```
 正常完成 → done
-超时     → caught:timeout
+超时     → timeout
+超时返回时底层任务仍在跑，之后再结束
 ```
 
-**两个必须说的点**：
+两个必须说的点：
 
-1. **`finally(() => clearTimeout(timer))` 不能省**——否则任务先完成时，那个定时器还会挂着，直到 ms 后才清掉。大量请求时会积累几万个定时器。
+1. **`finally(() => clearTimeout(timer))` 不能省**——任务先完成时，定时器会一直挂到 ms 到期，请求量大时大量堆积。
 2. **超时只是「不再等」，不是「取消」**。底层任务还在跑，结果被丢弃。
 
 真正的取消要用 `AbortController`：
@@ -368,39 +337,17 @@ fetch(url, { signal: ac.signal });          // 只有支持 signal 的 API 才�
 setTimeout(() => ac.abort(), 3000);
 ```
 
-实测（演示「AbortController 只是信号，不自动取消 promise」）：
-
-```
-Promise.race([sleep(100), abortSign()]) → aborted   （10ms 时就返回了）
-```
-
-但 `sleep(100)` 本身还会跑完——只是没人在等它了。
+实测：`race([sleep(100), abortSign()])` 在约 10ms 时以 `aborted` 返回，此时 `sleep(100)` 尚未结束，之后仍会自己跑完。
 
 ---
 
 ## 4.8 面试怎么说
 
-### 接题时（先确认语义，这一步很多人跳过）
-
-> 「并发限制我先确认一下语义：**是『最多 limit 个同时在跑』，还是『每秒最多 limit 个』？** 前者是并发数控制，后者是速率限制，实现不一样。」
-
-> 「另外确认一下：结果顺序要跟输入一致吗？有任务失败时是整体失败还是要全部结果？」
-
-**这三句话会让面试官觉得你在真实项目里处理过这类需求**，因为这两个歧义在需求评审里经常搞混。
-
-### 写的时候
-
-> 「思路是一个计数器加一个队列。任务进来时看计数器有没有满：没满就直接跑，满了就推进队列。任务结束时计数器减一，然后从队列里取一个补上。
->
-> 关键点是**必须在 `finally` 里减计数器**，不能在 `then` 里——因为任务可能失败，失败也得释放槽位。」
-
-### 写完之后（主动说边界）
-
-> 「我测四个点：最大并发是不是真的等于 limit、总耗时是不是接近理论值、结果顺序对不对、结束之后计数器是不是回到 0。**最后一个是查槽位泄漏的**。
->
-> 另外有个坑我踩过：用 `Set` 追踪正在跑的 promise 时，如果最后把所有结果收集起来用 `Promise.all(results)`，那个数组里装的是**值不是 promise**，最后一批任务的结果会丢。要单独用一个数组收集 promise，最后等它。」
-
-> **主动说出自己踩过的坑，是手写题里最高效的加分方式**——它证明你真的写过，不是背的。
+- **接题先定语义**：是「最多 limit 个同时跑」还是「每秒最多 limit 个」——前者是并发数控制，后者是速率限制；再确认结果顺序是否与输入一致、失败是整体失败还是保留全部结果。
+- **主体思路**：计数器 + 队列；未满直接跑，满了入队；任务结束时 `running--` 并从队列补位。
+- **关键细节**：释放槽位必须放在 `finally`，任务 reject 也要执行；`fn` 用 `Promise.resolve().then(fn)` 包裹，把同步抛错转成 rejection。
+- **主动补边界**：结束断言 `running === 0` 查槽位泄漏；`asyncPool` 的 `results` 装的是值不是 promise，要另用数组收集 promise 再 `allSettled`；`await Promise.race` 要吞掉单个任务的 rejection，否则会中断入队。
+- **本质**：资源池（上限 + 排队 + 超时），与连接池、线程池同构。
 
 ### 追问链
 
@@ -414,45 +361,35 @@ Promise.race([sleep(100), abortSign()]) → aborted   （10ms 时就返回了）
 | 为什么不用 `Promise.all` + 分批切片？ | 分批会导致「一批里最慢的拖住整批」——**批次末尾有空转**。并发池是「谁完成谁补位」，没有空转 |
 | 这个和节流有关系吗？ | 不同维度。**并发数控制的是「同时多少个」，节流控制的是「单位时间多少个」**。做爬虫两者都要 |
 
-### 加分点
-
-> **「这个题的本质是『资源池』，和数据库连接池、线程池是同一个模型。」**
-
-一说出来就跨了层次——从「会写 JavaScript」上升到「懂系统设计」。可以再补一句：
-
-> 「所以连接池要解决的三个问题这里都有：**上限、排队、超时**。我上面只实现了前两个，第三个要靠 `withTimeout` 配合。」
-
 ---
 
 ## 4.9 速记卡
 
 ```
-【内核】计数器 running + 队列 queue + 完成时 running-- 并补位
+【内核】计数器 running + 队列 queue；完成时 running-- 并补位
 
 【原答案两个 bug】
-① 直接分支没 return → 返回值丢失（[null,null,3,4]）
+① 直接分支没 return → 返回值丢失（[null,null,task3,task4]）
 ② 没有 finally → reject 时槽位永久泄漏（count 停在 1）
 
-【正确写法四要点】
-Promise.resolve().then(fn)   ← 同步抛错转 rejection
-.then(resolve, reject)       ← 双参，不用 .catch
-.finally(() => { running--; next() })   ← 成功失败都释放
-while 而不是 if              ← 一次能补多个
+【Scheduler 四要点】
+Promise.resolve().then(fn)            ← 同步抛错转 rejection
+.then(resolve, reject)                ← 双参，不用 .catch
+.finally(() => { running--; _next() })
+while 而不是 if                       ← 一次能补多个
 
-【我踩过的坑】
-Promise.all(results) 里装的是「值+空洞」不是 promise
-→ 最后一批任务结果丢失
-→ 任务数 < limit 时全空
-正确：单独用 all[] 收集 promise，await Promise.allSettled(all)
+【验证四指标】最大并发 = limit / 总耗时 ≈ 串行 ÷ limit / 结果顺序 = 输入顺序 / 结束后 running === 0
 
-【验证四指标】最大并发 / 总耗时 / 结果顺序 / 结束后 running===0
+【asyncPool】
+results 里是「值 + 空洞」→ 不能直接 Promise.all   ← 最后一批丢失，任务数 < limit 时全空
+正确：单独收集 promise，最后 await Promise.allSettled(all)
+race 要吞掉失败：map(q => q.catch(() => {}))      ← 否则一个失败中断入队
 
-【串行队列】
-chain = result.catch(() => {})   ← 不加则一次失败全队列停摆
+【串行队列】chain = result.catch(() => {})，不加则一次失败后后续全跳过
 
-【超时】race + finally(clearTimeout)；超时≠取消，要取消用 AbortController
+【超时】race + finally(clearTimeout)；超时 ≠ 取消，真正取消用 AbortController
 
-【本质】资源池：上限 + 排队 + 超时 = 连接池/线程池同构
+【本质】资源池：上限 + 排队 + 超时
 ```
 
 ---
@@ -461,15 +398,14 @@ chain = result.catch(() => {})   ← 不加则一次失败全队列停摆
 
 ```
 □ 能说出并发限制和速率限制的区别
-□ 能默写 Scheduler 的 add / _next
-□ 能解释为什么必须用 finally 而不是 then
-□ 能说出原答案 [null,null,3,4] 的成因
-□ 能说出槽位泄漏会导致什么后果
-□ 能解释 Promise.resolve().then(fn) 的作用
-□ 能说出 asyncPool 里为什么要单独收集 promise
+□ 能默写 Scheduler 的 add / _next，并说清 run 里四步各自的作用
+□ 能解释为什么释放槽位必须用 finally 而不是 then
+□ 能说出原答案 [null,null,task3,task4] 的成因
+□ 能说出槽位泄漏会导致什么后果，以及怎么在结束时断言
+□ 能解释 Promise.resolve().then(fn) 的作用（不写时 running 会停在哪）
+□ 能说出 asyncPool 里为什么要单独收集 promise，以及任务数 < limit 时的现象
 □ 能算出「6 个任务耗时 100/100/50/50/30/30，limit=2」的总耗时
 □ 能说出串行队列里 chain.catch 的作用
 □ 能解释超时和取消的区别
-□ 能说出 limit 为什么不能设太大
 □ 能说出并发池和「分批切片」的性能差异在哪
 ```
