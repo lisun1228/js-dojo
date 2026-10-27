@@ -1,8 +1,8 @@
 # TS · 07 装饰器与 mixin
 
-> 本册覆盖：装饰器、mixin
-> 题单只说「需要开启 `experimentalDecorators`」——**这句话在 2023 年之后已经不完整了**。
-> **TS 5.0 支持了 TC39 Stage 3 标准装饰器，不需要任何 flag，而且和旧版 `experimentalDecorators` 完全不兼容。** 这是现在最高频的坑，也是本册的重点。
+> 覆盖：装饰器、mixin
+> 题单只说「需要开启 `experimentalDecorators`」——这只覆盖旧版。TS 5.0 起默认支持 TC39 Stage 3 装饰器，无需任何 flag，且与旧版语义不兼容。
+> 下文结论按仓库自带的 TypeScript 6.0.3 实测：`npx tsc --noEmit --strict`，旧版另加 `--experimentalDecorators`。
 
 ---
 
@@ -24,8 +24,8 @@
 
 ## 7.1 一句话结论
 
-**装饰器**是一个 `@expression` 语法的特殊声明，用来在**类、方法、属性、访问器**上附加元信息或改写行为。它的本质是**一个在类定义时被调用的函数**。
-**mixin** 是「用类工厂把多个类的成员组合到一个类上」的模式——因为 JS/TS 只支持单继承，mixin 是「多继承」的替代方案。
+**装饰器**是 `@expression` 形式的声明，作用于**类、方法、属性、访问器**（旧版还支持参数）。它本质上是**在类定义时被调用的函数**，会真的执行代码。
+**mixin** 是用类工厂把多个类的成员组合进一个类的模式：JS/TS 只支持单继承，mixin 用来复用多份实现。
 
 ---
 
@@ -44,7 +44,7 @@ class Greeter {
 }
 ```
 
-### 7.2.2 本质：它是「编译期语法糖」，展开成函数调用
+### 7.2.2 本质：编译期语法糖，展开成函数调用
 
 ```ts
 // 输入
@@ -56,7 +56,7 @@ let Greeter = class Greeter {};
 Greeter = __decorate([sealed], Greeter);
 ```
 
-**所以装饰器不是「注解」，是「在类定义时执行的函数」**——它会真的运行代码。
+名字叫装饰器，落点仍是普通函数调用，所以**有运行时开销**。
 
 ### 7.2.3 一个最小可运行的例子
 
@@ -71,41 +71,33 @@ class Greeter {
   name = 'world';
 }
 
-Object.isSealed(Greeter);   // true ← 装饰器真的执行了
+Object.isSealed(Greeter); // true（实测）
 ```
 
 ---
 
 ## 7.3 【重点】两套标准：TS 5.0 的分水岭
 
-**这是本册最重要的内容，也是现在面试最容易踩的坑。**
-
 ### 7.3.1 两套标准对比
 
 | | **旧版（`experimentalDecorators`）** | **新版（Stage 3 标准，TS 5.0+）** |
 |---|---|---|
-| 提案阶段 | TC39 **Stage 1**（早期草案） | TC39 **Stage 3**（即将标准化） |
+| 提案阶段 | TC39 旧提案，已被 Stage 3 取代 | TC39 **Stage 3** |
 | TS 支持 | TS 1.5 起 | **TS 5.0 起** |
 | 是否需要 flag | ✅ `"experimentalDecorators": true` | ❌ **不需要，默认开启** |
 | 参数签名 | `(target, key, descriptor)` | `(value, context)` |
-| **参数装饰器** | ✅ 支持 | ❌ **不支持**（Stage 3 移除了） |
-| 元数据反射 | ✅ `emitDecoratorMetadata` + `reflect-metadata` | ❌ 不支持（需 `Symbol.metadata`） |
-| 谁在用 | **Angular、NestJS、TypeORM、InversifyJS** | 新的库（如 Lit、部分新框架） |
-| 兼容性 | 事实标准，生态庞大 | 标准化方向，生态在迁移 |
+| **参数装饰器** | ✅ 支持 | ❌ **不支持**（TS1206） |
+| 元数据反射 | `emitDecoratorMetadata` + `reflect-metadata` | `context.metadata`（TS 5.2+，运行时需 `Symbol.metadata`） |
+| 谁在用 | **Angular、NestJS、TypeORM、InversifyJS** | 新库（Lit 3 等） |
 
 ### 7.3.2 两者**完全不兼容**
 
 ```
-开 experimentalDecorators: true
-    → 用旧版语义
-    → 新版写法的装饰器会报类型错误
-
-不开 experimentalDecorators
-    → 用新版（Stage 3）语义
-    → 现有 Angular/NestJS 生态的装饰器会全部报错
+开 experimentalDecorators → 旧版语义；Stage 3 的 (value, context) 签名报 TS1238 / TS1270
+不开（TS 5.0+）          → Stage 3 语义；旧版 (target, key, descriptor) 签名报 TS1241 / TS1270
 ```
 
-**这就是为什么「升级 TS 5.0 后装饰器报错」成了常见问题**——如果项目原来没开 `experimentalDecorators` 但有装饰器代码，升级后语义变了。
+升级 TS 5.0+ 后，未开 flag 的项目会按新语义编译，原有的旧版装饰器代码会直接报签名错误。
 
 ### 7.3.3 签名对比（看代码最直观）
 
@@ -117,17 +109,28 @@ function classDec(target: Function) {}
 
 // 方法装饰器
 function methodDec(
-  target: any,                    // 类的 prototype
+  target: any,                    // 实例方法为 prototype，静态方法为构造函数
   propertyKey: string,
   descriptor: PropertyDescriptor
 ) {}
 
-// 属性装饰器
+// 属性装饰器（没有 descriptor）
 function propDec(target: any, propertyKey: string) {}
 
 // 参数装饰器（★ 旧版独有）
-function paramDec(target: any, propertyKey: string, index: number) {}
+function paramDec(target: any, propertyKey: string | undefined, index: number) {}
 ```
+
+旧版的 `target` / `key` 由成员类型决定（实测）：
+
+| 装饰位置 | `target` | `propertyKey` | `descriptor` |
+|---|---|---|---|
+| 实例属性 | `prototype` | 属性名 | `undefined` |
+| 静态属性 | 构造函数 | 属性名 | `undefined` |
+| 实例方法 / 访问器 | `prototype` | 方法名 | `PropertyDescriptor` |
+| 静态方法 | 构造函数 | 方法名 | `PropertyDescriptor` |
+| 方法参数 | `prototype` | 方法名 | 无此参数 |
+| 构造函数参数 | 构造函数 | `undefined` | 无此参数 |
 
 **新版（Stage 3）**：
 
@@ -160,7 +163,10 @@ function fieldDec(
 ### 7.3.4 `context.addInitializer`（新版独有的好用法）
 
 ```ts
-function bound(value: Function, context: ClassMethodDecoratorContext) {
+function bound<T extends (this: any, ...args: any[]) => any>(
+  value: T,
+  context: ClassMethodDecoratorContext
+): T {
   // 新版：每个实例创建时执行
   context.addInitializer(function (this: any) {
     this[context.name] = this[context.name].bind(this);
@@ -173,16 +179,16 @@ class Button {
 
   @bound
   handleClick() {
-    console.log(this.label);    // ✅ this 正确绑定
+    console.log(this.label);
   }
 }
 
 const b = new Button();
 const fn = b.handleClick;
-fn();      // ✅ 不会丢 this
+fn(); // click（实测，this 没丢）
 ```
 
-**这比旧版优雅得多**——旧版要在 descriptor 里改 `value`，还要自己处理 prototype 和 instance 的差异。
+旧版要在 `descriptor.value` 上包一层，并自行处理 prototype 与实例的差异。
 
 ### 7.3.5 怎么选
 
@@ -196,22 +202,10 @@ fn();      // ✅ 不会丢 this
 
 ```json
 // 旧版（Angular/NestJS 项目）
-{
-  "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
-  }
-}
+{ "compilerOptions": { "experimentalDecorators": true, "emitDecoratorMetadata": true } }
 
-// 新版（Stage 3）
-{
-  "compilerOptions": {
-    // 什么都不用加！TS 5.0+ 默认支持
-  }
-}
+// 新版（Stage 3）：什么都不用加，TS 5.0+ 默认支持
 ```
-
-> **面试话术**：「装饰器现在有两套标准。旧版是 `experimentalDecorators`，基于 TC39 Stage 1 提案，Angular、NestJS、TypeORM 都用它，签名是 `(target, key, descriptor)`，还支持参数装饰器和 `reflect-metadata`。TS 5.0 加了 Stage 3 标准装饰器，**不需要任何 flag**，签名改成 `(value, context)`，更函数式，还有 `addInitializer` 钩子，但**不支持参数装饰器**。两套完全不兼容——同一个项目里只能选一套，靠 `experimentalDecorators` 开关切换。」
 
 ---
 
@@ -237,7 +231,7 @@ class Config {
   constructor(public env = 'dev') {}
 }
 
-new Config() === new Config();   // true（单例）
+new Config() === new Config(); // true（单例，实测）
 ```
 
 **用途**：注册类、加静态属性、单例、冻结、替换构造函数。
@@ -284,8 +278,7 @@ new Calculator().add(1, 2);
 ```ts
 function defaultValue(value: unknown) {
   return function (target: any, key: string) {
-    // ⚠️ 属性装饰器【不能】直接改初始值（此时实例还不存在）
-    // 只能记录信息，在别处（比如类装饰器）读取并应用
+    // target 是 prototype：只能挂原型访问器，不能给实例写值
     Object.defineProperty(target, key, {
       get() { return value; },
       configurable: true,
@@ -295,13 +288,15 @@ function defaultValue(value: unknown) {
 
 class Config {
   @defaultValue('localhost')
-  host!: string;
+  declare host: string;   // declare：不生成实例字段，否则 ES2022 会用自有属性遮蔽原型 getter
 }
+
+new Config().host;        // 'localhost'（实测，所有实例共享同一个值）
 ```
 
-**⚠️ 重要限制**：属性装饰器的 `target` 是**类的 prototype**（实例属性）或**构造函数**（静态属性），**此时实例还不存在**，所以不能直接改实例的属性值。
+**⚠️ 重要限制**：属性装饰器的 `target` 是**类的 prototype**（实例属性）或**构造函数**（静态属性），**此时实例还不存在**，所以拿不到 `this`，也不能写实例属性。上面的写法只能给出原型级默认值（共享、无 setter）。
 
-**要改实例属性，得用「属性装饰器记录信息 + 类装饰器应用」的模式**，或者在 `constructor` 里处理：
+**要给每个实例独立的初始值，得用「属性装饰器记录信息 + 类装饰器应用」的模式**：
 
 ```ts
 // 用 Symbol 记录默认值，在构造函数里应用
@@ -328,7 +323,7 @@ function applyDefaults<T extends new (...args: any[]) => any>(target: T) {
 }
 ```
 
-**这就是为什么很多库（比如 class-validator）会要求同时用类装饰器**。
+实测 `@applyDefaults` + `@defaultValue('localhost')` 组合能拿到实例级默认值 `'localhost'`。class-validator 之类要求同时用类装饰器，就是这个原因。
 
 ### 7.4.4 访问器装饰器（getter/setter）
 
@@ -351,21 +346,23 @@ class Point {
 }
 ```
 
-**访问器装饰器和方法装饰器签名相同**，只是作用于 `get`/`set`。
+**访问器装饰器和方法装饰器签名相同**（都有 `descriptor`），只是作用于 `get`/`set`。
 
 ### 7.4.5 参数装饰器（★ 旧版独有）
 
 ```ts
+import 'reflect-metadata';
+
 function inject(token: string) {
   return function (
-    target: any,          // prototype
-    key: string | undefined,  // 方法名（构造函数参数时是 undefined）
-    index: number         // 参数在参数列表中的位置
+    target: any,                      // 方法参数为 prototype；构造函数参数为构造函数
+    key: string | symbol | undefined, // 构造函数参数时为 undefined
+    index: number                     // 参数在参数列表中的位置
   ) {
     // 记录「第 index 个参数需要注入 token 对应的实例」
-    const deps = Reflect.getMetadata('deps', target, key) || [];
+    const deps: string[] = Reflect.getMetadata('deps', target, key) || [];
     deps[index] = token;
-    Reflect.defineMetadata('deps', target, key, deps);
+    Reflect.defineMetadata('deps', deps, target, key);
   };
 }
 
@@ -377,9 +374,11 @@ class UserService {
 }
 ```
 
-**这就是 Angular/NestJS 依赖注入的核心机制**——参数装饰器记录依赖，`reflect-metadata` 存元数据，容器在实例化时读取并注入。
+`Reflect.getMetadata` / `defineMetadata` 由 `reflect-metadata` 提供，必须先 `import 'reflect-metadata'`，否则运行时报 `Reflect.getMetadata is not a function`、类型检查报 TS2339。
 
-**⚠️ Stage 3 装饰器不支持参数装饰器**，所以 Angular/NestJS 暂时无法迁移到新标准。
+**这就是 Angular/NestJS 依赖注入的核心机制**：参数装饰器记录依赖，`reflect-metadata` 存元数据，容器在实例化时读取并注入。
+
+**⚠️ Stage 3 装饰器不支持参数装饰器**，这是 Angular/NestJS 迁移到新标准的主要障碍。
 
 ---
 
@@ -399,7 +398,7 @@ class A {}
 
 **记忆：「表达式从上往下求值，函数从下往上执行」**。
 
-### 7.5.2 不同类型的装饰器：参数 → 方法/属性 → 类
+### 7.5.2 不同类型的装饰器：类装饰器最后
 
 ```ts
 @classDec
@@ -414,6 +413,8 @@ new A();
 // 2. methodDec（方法装饰器）
 // 3. classDec（类装饰器）
 ```
+
+这个例子只有一个成员，所以看起来是「参数 → 方法 → 类」。**成员之间按声明顺序处理**，不是所有参数装饰器先跑完：若类里先声明属性 `@propDec p = 1`，它会比后面的方法装饰器更早执行（实测）。类装饰器始终最后。
 
 ### 7.5.3 完整示例（值得手算一遍）
 
@@ -435,22 +436,22 @@ class Demo {
 }
 ```
 
-**输出**：
+**旧版输出（实测）**：
 
 ```
-evaluate: class        ← 先对整段代码求值（从上往下）
 evaluate: prop
+execute: prop
 evaluate: method
 evaluate: param
-execute: param         ← 然后执行（从内到外、从下往上）
+execute: param
 execute: method
-execute: prop
+evaluate: class
 execute: class
 ```
 
-**为什么 `evaluate: class` 最先**：因为装饰器表达式在类定义**之前**就要求值（就像函数调用要先算参数）。然后才是执行阶段。
+每个成员先求值、随即执行；类装饰器在所有成员之后才求值并执行。**`evaluate: class` 不是最先**。
 
-> 这个顺序题在面试里能问倒大部分人。**记住两句：`evaluate` 自上而下，`execute` 自下而上（且参数最内层最先）。**
+**新版（Stage 3）输出不同**（实测）：先按「类装饰器 → 成员声明顺序」求值，再执行「静态方法 → 实例方法 → 静态字段 → 实例字段 → 类」；参数装饰器不存在。
 
 ---
 
@@ -468,7 +469,7 @@ class Greeter {
 ```
 
 ```js
-// 输出（target: ES2015，简化）
+// 输出（旧版，target: ES2015，简化）
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length,
         r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc,
@@ -496,7 +497,11 @@ Greeter = __decorate([
 
 **注意 `for (var i = decorators.length - 1; i >= 0; i--)`**——这就是「从下往上执行」的实现。
 
+新版（Stage 3）不生成 `__decorate`，而是生成 `__esDecorate` 加类内 `static` 块：`static` 块里完成全部求值与执行，字段初始化器通过 `__runInitializers` 运行。
+
 ### 7.6.2 元数据反射（`emitDecoratorMetadata`）
+
+前提：`emitDecoratorMetadata` 必须与 `experimentalDecorators` 同时开启，单独指定的报错是 `TS5052: Option 'emitDecoratorMetadata' cannot be specified without specifying option 'experimentalDecorators'`（实测）。
 
 ```ts
 // 开 emitDecoratorMetadata 后
@@ -507,19 +512,15 @@ class UserService {
 
 ```js
 // 会额外生成 __metadata
-__decorate([
-    inject(),
+UserService = __decorate([
+    __param(0, inject()),
     __metadata("design:paramtypes", [Database])   // ← 参数类型被保留到运行时！
 ], UserService);
 ```
 
 **这是 Angular/NestJS 依赖注入能工作的关键**：平时类型是被擦除的，但**装饰器 + `emitDecoratorMetadata` 会把类型信息写进元数据**。
 
-```ts
-// 配合 reflect-metadata 读取
-Reflect.getMetadata('design:paramtypes', UserService);
-// [Database]
-```
+配合 `reflect-metadata` 读取（必须先 `import 'reflect-metadata'`）：`Reflect.getMetadata('design:paramtypes', UserService)` → `[Database]`。
 
 **三个可用的元数据键**：
 
@@ -529,7 +530,7 @@ Reflect.getMetadata('design:paramtypes', UserService);
 | `design:paramtypes` | 方法/构造函数的参数类型数组 |
 | `design:returntype` | 返回值类型 |
 
-**⚠️ 限制**：只能记录「有运行时值的类型」（类、构造函数）。**`interface`、`type`、泛型、联合类型都拿不到**（因为它们被擦除了）。
+**⚠️ 限制**：只能记录「有运行时值的类型」（类、构造函数）。**`interface`、泛型参数、联合类型在擦除后只能记成 `Object`**：
 
 ```ts
 class S {
@@ -538,7 +539,7 @@ class S {
 }
 ```
 
-> **这是 TS 装饰器的一个根本限制**：类型擦除 + 元数据类型有限。所以 NestJS 里注入泛型接口必须用 `@Inject('TOKEN')` 显式指定。
+实测 `constructor(a: Repository<{ id: number }>, b: IFoo, c: string | number)` 生成的是 `__metadata("design:paramtypes", [Repository, Object, Object])`。所以 NestJS 里注入泛型接口必须用 `@Inject('TOKEN')` 显式指定。
 
 ---
 
@@ -560,17 +561,20 @@ class S {
 **一个完整的「权限 + 日志」示例**：
 
 ```ts
+import 'reflect-metadata';
+
 function Roles(...roles: string[]) {
-  return (target: any, key: string, desc: PropertyDescriptor) => {
+  return (target: any, key: string | symbol, desc: PropertyDescriptor) => {
     Reflect.defineMetadata('roles', roles, desc.value);
   };
 }
 
 function RequireRole(currentUser: { role: string }) {
-  return (target: any, key: string, desc: PropertyDescriptor) => {
+  return (target: any, key: string | symbol, desc: PropertyDescriptor) => {
+    // 装饰阶段就读取：能否读到取决于两个装饰器的执行顺序
+    const roles: string[] = Reflect.getMetadata('roles', desc.value) || [];
     const original = desc.value;
     desc.value = function (...args: any[]) {
-      const roles: string[] = Reflect.getMetadata('roles', original) || [];
       if (roles.length && !roles.includes(currentUser.role)) {
         throw new Error(`Forbidden: requires ${roles.join(' or ')}`);
       }
@@ -586,18 +590,18 @@ class AdminController {
 }
 ```
 
-**⚠️ 注意装饰器顺序**：`@Roles` 在上、`@RequireRole` 在下 → **`@RequireRole` 先执行**，此时 `@Roles` 的元数据**还没写入**！
+**⚠️ 注意装饰器顺序**：`@Roles` 在上、`@RequireRole` 在下 → **`@RequireRole` 先执行**，此时 `@Roles` 的元数据**还没写入**，读到的 `roles` 为空，鉴权不生效。
 
-**这是个真实的坑**：需要把写元数据的装饰器放在**下面**（后执行的在上面）。
+**写元数据的装饰器要放在下面**：
 
 ```ts
-// ✅ 正确顺序：写元数据的在下
+// ✅ 正确顺序：写元数据的在下（先执行）
 @RequireRole({ role: 'user' })
 @Roles('admin')
 deleteAll() {}
 ```
 
-**这就是为什么必须搞懂执行顺序**——顺序错了逻辑就错了。
+实测：上面的顺序直接返回，下面的顺序抛 `Forbidden: requires admin`。
 
 ---
 
@@ -615,7 +619,7 @@ class A extends B, C {}    // ❌ 语法错误
 
 | 方案 | 特点 |
 |---|---|
-| **mixin（类工厂）** | 组合实现，**TS 官方推荐** |
+| **mixin（类工厂）** | 组合实现，**TS 文档给出的写法** |
 | 组合（has-a） | 更灵活，但要多写转发方法 |
 | 接口（implements） | 只约束形状，**不提供实现** |
 | 装饰器 | 改行为，不是组合成员 |
@@ -655,7 +659,7 @@ u.activate();    // ✅
 u.isActive;      // ✅ true
 ```
 
-**TS 能自动推导出所有成员的类型**——这是这个写法的最大优势。
+**TS 能自动推导出所有成员的类型**——返回类型是基类与新增成员的交叉类型，不需要手写 `interface` 合并。
 
 ### 7.8.3 更常见的写法：class 表达式 + 继承
 
@@ -689,31 +693,38 @@ class Person { constructor(public name: string) {} }
 class Robot { constructor(public id: string) {} }
 
 class P extends Greetable(Person) {}     // ✅
-class R extends Greetable(Robot) {}      // ❌ 报错：Robot 没有 name
+class R extends Greetable(Robot) {}      // ❌ TS2345：Robot 缺 name
 ```
 
 **`Constructor<{ name: string }>` 这个约束是关键**——它保证 mixin 内部能安全访问 `this.name`。
 
 ### 7.8.5 两个必须知道的限制
 
-**限制 ①：mixin 里的类不能有 `private` / `protected` 成员**
+**限制 ①：多个 mixin 不能声明同名的 `private` / `protected` 成员**
 
 ```ts
-function Mixin<TBase extends Constructor>(Base: TBase) {
+function MixinA<TBase extends Constructor>(Base: TBase) {
   return class extends Base {
-    private secret = 1;      // ⚠️ 会导致「两个类有同名 private」的冲突
+    private secret = 1;      // 单个 mixin 可以
   };
 }
 
-class A extends Mixin(Mixin(Base)) {}
-// ❌ 可能报错：Class 'A' incorrectly extends... private 成员来自不同声明
+function MixinB<TBase extends Constructor>(Base: TBase) {
+  return class extends Base {
+    private secret = 2;      // 与 MixinA 的同名 private 冲突
+  };
+}
+
+class A extends MixinA(MixinB(class {})) {}
+// ❌ TS2509：交叉类型因同名 private 来自不同声明退化为 never：
+// "Base constructor return type 'never' is not an object type..."
 ```
 
-**原因**：匿名类的 `private` 成员无法在外部正确合并（回顾 01 册的「结构化类型 + private 必须同源」）。
+**原因**：`private` 成员只能在同一声明内兼容，两个匿名类各声明一份 `secret`，交叉后不是同一个成员。单个 mixin 带 `private` 是合法的（实测）。
 
-**解法**：用 `#x`（真私有不受这个限制）或改用 `protected` 配合接口声明。
+**解法**：改用 `#x`——私有名按类作用域隔离，两个 mixin 各写 `#secret` 不会冲突（实测可编译、可运行）；或者避免多个 mixin 使用同名私有成员。
 
-**限制 ②：多个 mixin 有同名成员时，后面的覆盖前面的**
+**限制 ②：多个 mixin 有同名成员时，外层的静默覆盖内层的**
 
 ```ts
 function A<T extends Constructor>(B: T) {
@@ -723,9 +734,11 @@ function B<T extends Constructor>(B: T) {
   return class extends B { value = 'B'; };
 }
 
-class C extends A(B(Base)) {}
-new C().value;    // 'A'（外层覆盖内层）
+class C extends A(B(class {})) {}
+new C().value;    // 'A'（外层覆盖内层，实测）
 ```
+
+**不会报错，也没有提示**；`A(B(Base))` 里 B 先应用、A 后应用，A 的字段初始化在后，最终值来自 A。
 
 ### 7.8.6 mixin vs 组合（什么时候不用 mixin）
 
@@ -733,13 +746,11 @@ new C().value;    // 'A'（外层覆盖内层）
 |---|---|---|
 | 关系 | is-a（伪装） | has-a |
 | 类型推导 | 自动 | 需要手写转发 |
-| 命名冲突 | 后者覆盖，静默 | 明确（`this.a.foo()`） |
+| 命名冲突 | 外层覆盖，静默 | 明确（`this.a.foo()`） |
 | 调试 | 类名变匿名，堆栈难读 | 清晰 |
 | 灵活性 | 编译期确定 | 运行时可替换 |
 
-**我的建议**：**优先用组合**。mixin 只在「确实需要 is-a 关系 + 大量共享方法」时用（比如 Vue 2 的 mixin 就是典型，但也因为命名冲突和来源不清被 Vue 3 的 composable 取代了）。
-
-> **面试话术**：「mixin 用类工厂实现『多继承』：接收一个基类，返回一个继承了它并加上新成员的匿名类。核心是 `type Constructor<T> = new (...args: any[]) => T` 这个构造器类型，加上 `TBase extends Constructor` 的约束，TS 就能自动推导所有成员类型。但有两个限制：mixin 里不能用 `private`/`protected` 成员（会冲突），同名成员会静默覆盖。所以实战里我更倾向用组合而不是 mixin——Vue 2 的 mixin 就因为命名冲突和来源不清，在 Vue 3 里被 composable 取代了。」
+**选型：优先用组合**。mixin 只在「确实需要 is-a 关系 + 大量共享方法」时用——Vue 2 的 mixin 就是因为命名冲突和来源不清，被 Vue 3 的 composable 取代。
 
 ---
 
@@ -749,14 +760,14 @@ new C().value;    // 'A'（外层覆盖内层）
 |---|---|
 | **「装饰器需要 experimentalDecorators」** | **TS 5.0+ 的 Stage 3 装饰器不需要**；只有旧版需要 |
 | **两套装饰器可以混用** | ❌ 完全不兼容，靠 `experimentalDecorators` 开关二选一 |
-| **Stage 3 支持参数装饰器** | ❌ **不支持**（这是 Angular/NestJS 迁移的最大障碍） |
-| **属性装饰器能改初始值** | ❌ `target` 是 prototype，实例还不存在；要配合类装饰器 |
-| **装饰器执行顺序从下往上** | 要分两阶段：**表达式求值从上往下，函数执行从下往上** |
-| **写元数据的装饰器放上面** | ❌ 会被后执行的覆盖/读不到；**写元数据的要放在下面** |
-| **`emitDecoratorMetadata` 能拿到泛型** | ❌ 只能拿到有运行时值的类型（类），泛型/接口/联合都拿不到 |
+| **Stage 3 支持参数装饰器** | ❌ **不支持**（TS1206），这是 Angular/NestJS 迁移的最大障碍 |
+| **属性装饰器能改初始值** | ❌ `target` 是 prototype，实例还不存在；且 ES2022 的实例字段会遮蔽原型 getter，要配合类装饰器 |
+| **装饰器执行顺序从下往上** | 同一成员内如此；**类装饰器最后，成员按声明顺序** |
+| **写元数据的装饰器放上面** | ❌ 在装饰阶段读取时读不到；**写元数据的要放在下面** |
+| **`emitDecoratorMetadata` 能拿到泛型** | ❌ 擦除后只剩 `Object`；只能拿到有运行时值的类型（类） |
 | **装饰器是「注解」不影响运行** | 它会真的执行代码，有运行时开销 |
-| **mixin 可以用 private 成员** | ⚠️ 会冲突；用 `#x` 或 `protected` |
-| **mixin 同名成员会报错** | 不会，**静默覆盖**（后者赢） |
+| **mixin 可以用 private 成员** | 单个可以；**多个 mixin 同名 private 会冲突**（TS2509），改用 `#x` |
+| **mixin 同名成员会报错** | 不会，**静默覆盖**（外层/最后应用的赢） |
 | **mixin 比组合好** | 组合更清晰、无命名冲突、可运行时替换；mixin 只在 is-a 场景用 |
 
 ---
@@ -765,29 +776,15 @@ new C().value;    // 'A'（外层覆盖内层）
 
 ### 30 秒版（装饰器）
 
-> 装饰器是 `@expression` 语法的特殊声明，本质是**在类定义时被调用的函数**，可以作用于类、方法、属性、访问器、参数。
-> 它可以用来加元信息或改写行为，常见用途是日志、权限校验、缓存、依赖注入——Angular 和 NestJS 的整个架构都靠它。
-> **要补充一个重要变化**：装饰器现在有两套标准。旧版要开 `experimentalDecorators`，签名是 `(target, key, descriptor)`，支持参数装饰器和 `reflect-metadata`，Angular/NestJS 在用。**TS 5.0 加了 TC39 Stage 3 标准装饰器，不需要任何 flag**，签名改成 `(value, context)`，更函数式，但**不支持参数装饰器**。两套完全不兼容。
+- 语法是 `@expr`，本质是**类定义时被调用的函数**，作用于类、方法、属性、访问器（旧版还有参数）。
+- 旧版要开 `experimentalDecorators`，签名 `(target, key, descriptor)`，支持参数装饰器和 `emitDecoratorMetadata`；Angular/NestJS 依赖这套。
+- TS 5.0+ 默认 Stage 3，签名 `(value, context)`，用 `addInitializer` 和 `context.metadata`，**没有参数装饰器**；两套不兼容。
 
 ### 30 秒版（mixin）
 
-> mixin 是「用类工厂实现多继承」的模式，因为 JS/TS 只支持单继承。
-> 核心是一个接收基类、返回继承它并加上新成员的匿名类的函数。类型上要定义 `type Constructor<T> = new (...args: any[]) => T`，然后用 `TBase extends Constructor` 约束——这样 TS 能自动推导出所有成员类型。
-> 两个限制：mixin 里不能用 `private`/`protected` 成员（会冲突），同名成员会静默覆盖。所以实战里我更倾向组合。
-
-### 2 分钟版（串起来讲）
-
-> 我分「装饰器是什么 → 两套标准 → 执行顺序 → mixin」讲。
->
-> **装饰器本质**：语法是 `@expr`，但它的本质是**在类定义时被调用的函数**。展开后是 `__decorate([dec], Target)` 这样的调用。所以它不是「注解」，会真的执行代码、有运行时开销。
->
-> **两套标准**（这是重点）：旧版基于 TC39 Stage 1 提案，要开 `experimentalDecorators`，签名是 `(target, key, descriptor)`，支持五种装饰器（类、方法、属性、访问器、**参数**），配合 `emitDecoratorMetadata` 和 `reflect-metadata` 能拿到参数类型——这就是 Angular/NestJS 依赖注入的基础。TS 5.0 加了 Stage 3 标准装饰器，**不需要任何 flag**，签名改成 `(value, context)`，通过返回新函数来改行为，还有 `context.addInitializer` 这个很好用的钩子，但**不支持参数装饰器**。两套完全不兼容，同一个项目只能选一套。
->
-> **执行顺序**（高频细节）：分两个阶段。**表达式求值从上往下**，然后**函数执行从下往上**。不同类型之间是「参数装饰器 → 方法/属性装饰器 → 类装饰器」。这里有个实战坑：如果装饰器 A 写元数据、装饰器 B 读元数据，那 A 必须写在**下面**，因为它先执行。
->
-> **一个限制**：`emitDecoratorMetadata` 只能记录「有运行时值的类型」——类、构造函数。**泛型、接口、联合类型都拿不到**，因为它们被擦除了。所以 NestJS 里注入泛型接口必须用 `@Inject('TOKEN')` 显式指定。
->
-> **mixin**：因为只支持单继承，用类工厂组合多个类的成员。核心是 `Constructor<T> = new (...args: any[]) => T` 这个类型 + `TBase extends Constructor` 约束，TS 就能推导所有成员。更好的写法是 `class Smart extends Activatable(Timestamped(User))`，得到一个有名字的类。两个限制：不能用 private/protected 成员（会冲突），同名成员静默覆盖。所以实战里我优先用组合——Vue 2 的 mixin 就是因为命名冲突和来源不清被 Vue 3 的 composable 取代了。
+- JS/TS 只能单继承，mixin 用类工厂组合多份实现。
+- 核心类型 `type Constructor<T = {}> = new (...args: any[]) => T`，用 `TBase extends Constructor` 约束；返回类型自动带全部成员。
+- 限制：多个 mixin 同名 private 冲突（改用 `#x`），同名成员外层静默覆盖；实战优先组合。
 
 ### 追问表
 
@@ -796,15 +793,13 @@ new C().value;    // 'A'（外层覆盖内层）
 | 装饰器是什么 | `@expr` 语法，本质是类定义时调用的函数 |
 | 需要什么配置 | 旧版要 `experimentalDecorators`；TS 5.0 的 Stage 3 不需要 |
 | 有哪些装饰器 | 类、方法、属性、访问器、参数（参数装饰器是旧版独有） |
-| 执行顺序 | 求值自上而下，执行自下而上；参数 → 方法/属性 → 类 |
+| 执行顺序 | 同一成员内求值自上而下、执行自下而上；类装饰器最后，成员按声明顺序 |
 | 属性装饰器能改初始值吗 | 不能，target 是 prototype，要配合类装饰器 |
-| `emitDecoratorMetadata` 干什么 | 把参数类型写进元数据，供 DI 容器读取 |
-| 它能拿到泛型吗 | 不能，只能拿到有运行时值的类型 |
-| 装饰器有运行时开销吗 | 有，会真的执行 |
+| `emitDecoratorMetadata` 干什么 | 把参数类型写进元数据，供 DI 容器读取；需 `reflect-metadata` |
+| 它能拿到泛型吗 | 不能，擦除后只剩 `Object` |
 | mixin 怎么实现 | 类工厂 `function M<T extends Constructor>(Base: T) { return class extends Base {} }` |
 | mixin 的类型怎么写 | `type Constructor<T> = new (...args: any[]) => T` + 泛型约束 |
-| mixin 有什么限制 | 不能有 private/protected；同名成员静默覆盖 |
-| mixin 和组合怎么选 | 优先组合；mixin 只在 is-a + 大量共享方法时用 |
+| mixin 有什么限制 | 多个 mixin 同名 private 冲突；同名成员静默覆盖 |
 
 ---
 
@@ -812,33 +807,32 @@ new C().value;    // 'A'（外层覆盖内层）
 
 ```
 装饰器
-  语法 @expr，本质「类定义时被调用的函数」（不是注解，会执行）
-  五种：类 / 方法 / 属性 / 访问器 / 参数
+  @expr 语法，本质「类定义时被调用的函数」（不是注解，会执行）
 
-★ 两套标准（TS 5.0 分水岭）
-  旧版：experimentalDecorators，Stage 1，签名 (target, key, descriptor)
-        + 支持参数装饰器 + emitDecoratorMetadata（Angular/NestJS/TypeORM）
-  新版：Stage 3，TS 5.0+ 默认开启，无需 flag，签名 (value, context)
-        + context.addInitializer + 不支持参数装饰器
-  两者完全不兼容，靠 experimentalDecorators 二选一
+★ 两套标准（TS 5.0 分水岭，完全不兼容，靠 experimentalDecorators 二选一）
+  旧版：experimentalDecorators，(target, key, descriptor)
+        + 参数装饰器 + emitDecoratorMetadata（Angular/NestJS/TypeORM）
+        target：实例成员 prototype，静态成员构造函数；属性装饰器无 descriptor
+  新版：默认开启，(value, context) + addInitializer + context.metadata
+        context.metadata 需 Symbol.metadata（Node 22 没有）；参数位置写 @dec 报 TS1206
 
-执行顺序（必考）
-  求值：从上往下
-  执行：从下往上
-  类型间：参数 → 方法/属性 → 类
-  实战坑：写元数据的装饰器要放在【下面】（先执行）
+执行顺序
+  同一成员：表达式从上往下求值，函数从下往上执行
+  类装饰器最后；成员按声明顺序；参数装饰器先于其方法/属性
+  装饰阶段读元数据时，写元数据的装饰器要放在下面
 
 编译产物
-  __decorate([dec], Target) / __decorate([dec], proto, "key", null)
-  for (i = decorators.length - 1; i >= 0; i--)  ← 「从下往上」的实现
-  emitDecoratorMetadata → __metadata("design:paramtypes", [X])
-  限制：泛型/接口/联合类型拿不到
+  旧版：__decorate([dec], Target) / __decorate([dec], proto, "key", null)
+        for (i = decorators.length - 1; i >= 0; i--)  ← 「从下往上」的实现
+  新版：__esDecorate + static 块
+  元数据：__metadata("design:paramtypes", [X])；泛型/接口/联合只剩 Object
+  前提：emitDecoratorMetadata 必须与 experimentalDecorators 同开（TS5052）
 
 mixin
   type Constructor<T = {}> = new (...args: any[]) => T
   function M<TBase extends Constructor>(Base: TBase) { return class extends Base { ... } }
   用法：class Smart extends Activatable(Timestamped(User)) {}
   带约束：TBase extends Constructor<{ name: string }>
-  限制：不能有 private/protected（冲突）；同名静默覆盖
+  限制：多个 mixin 同名 private → TS2509（改用 #x）；同名成员外层静默覆盖
   选型：优先组合（Vue 2 mixin → Vue 3 composable 就是这个教训）
 ```

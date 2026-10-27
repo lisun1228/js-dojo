@@ -22,27 +22,13 @@
 
 ### 5.0.1 第 2 题不是 ES6 的题
 
-题单里第 2 题是「ES6 怎么热更新的」，但 **HMR（Hot Module Replacement）和 ES6 规范没有任何关系**——它是 **Webpack / Vite 这类构建工具**的能力，出现时间也远晚于 ES6（Webpack HMR 在 2014 年左右，Vite 在 2020 年）。
+**HMR（Hot Module Replacement）和 ES6 规范没有关系**：它是 **Webpack / Vite 这类构建工具**基于模块系统实现的能力，不属于语言规范。
 
-题库作者大概率是把「**模块化 → 模块热替换**」这条线串在一起了。
+回答时先界定边界：HMR 不是 ES6 规范的一部分，下面从「模块化之后为什么能热替换」展开。
 
-**面试时怎么说**：
+### 5.0.2 第 6 题的答题范围
 
-> "HMR 严格来说不是 ES6 的能力，是构建工具基于模块系统实现的。不过既然放在一起问，我从『模块化之后为什么能热替换』这个角度答。"
-
-这句话本身就是加分项——**说明你知道知识边界在哪**。
-
-### 5.0.2 第 6 题的参考答案太薄
-
-题单给的答案只有三行（静态分析、异步、tree-shaking、拷贝值），实际上这题能问到很深：
-
-- **活绑定（live binding）** 到底是什么意思
-- ESM 的**三个加载阶段**
-- 为什么 **`import` 必须写在顶层**
-- 循环依赖为什么两种系统表现不同
-- Node 里怎么混用
-
-下面逐层展开。
+第 6 题需要覆盖：**活绑定**、**三个加载阶段**、**`import` 必须在顶层**、**循环依赖的表现差异**、**Node 互操作**。下面逐层展开。
 
 ---
 
@@ -53,7 +39,7 @@
 > **ESM 是"编译时静态"的模块系统**：依赖关系在**代码解析阶段**就确定了，导入的是**值的引用（活绑定）**，加载是**异步**的，所以能被 tree-shaking。
 > **CommonJS 是"运行时动态"的模块系统**：`require` 是一个**普通函数调用**，什么时候执行、执行几次都由运行时决定，导入的是**值的拷贝**，加载是**同步**的。
 
-### 5.1.1 六维对照表
+### 5.1.1 差异对照表
 
 | 维度 | ES Module | CommonJS |
 |---|---|---|
@@ -62,7 +48,7 @@
 | **加载方式** | **异步**（先 fetch 再执行） | **同步**（阻塞式） |
 | **顶层 `this`** | `undefined` | `module.exports` |
 | **严格模式** | 默认严格模式 | 默认非严格模式 |
-| **能否 tree-shaking** | ✅ 能 | ❌ 不能（多数情况） |
+| **能否 tree-shaking** | ✅ 能（需无副作用 / 纯函数标注） | ❌ 不能（多数情况） |
 | **`import` 位置** | 必须在**顶层**（不能放 `if` 里） | `require` 可以放任何位置 |
 | **缓存** | 按 URL 缓存，**只求值一次** | 按路径缓存，`require.cache` |
 | **循环依赖表现** | 用 TDZ 报错，函数声明可用 | 拿到"未完成的 exports" |
@@ -93,18 +79,17 @@ function load(name) {
 }
 ```
 
-**这个差异直接决定了 tree-shaking 的可行性**：
+**这个差异是 tree-shaking 的前提**：
 
 ```
-ESM：打包工具在解析阶段就能构建完整的依赖图
-     → 知道哪些 export 被用到 → 没用的可以摇掉
-
-CJS：require 可能在 if 里、可能在函数里、路径可能是变量
-     → 打包工具无法静态确定 → 只能保守地把整个模块打进去
+ESM：解析阶段可构建完整依赖图 → 未使用的 export 可被移除
+CJS：require 可在 if / 函数内、路径可为变量 → 无法静态确定，只能整块打入
 ```
 
-> **这就是为什么很多库提供 `module` 字段（ESM 版本）给打包工具，`main` 字段（CJS 版本）给 Node**：
-> ```json
+静态依赖图只是前提。实际能否移除还取决于副作用声明（`package.json` 的 `sideEffects`）和纯函数标注（`/*#__PURE__*/`）：模块若被判定有副作用，即使导出未被使用也不能删。
+
+> **这就是 `package.json` 同时提供 `main` / `module` / `exports` 的原因**：`main` 给 Node 的 `require`，`module` 给打包工具做 tree-shaking，`exports` 按条件分流：
+> ```jsonc
 > {
 >   "main": "./dist/index.cjs",     // Node require 用
 >   "module": "./dist/index.esm.js", // 打包工具用（能 tree-shaking）
@@ -117,7 +102,7 @@ CJS：require 可能在 if 里、可能在函数里、路径可能是变量
 
 ### 5.1.3 差异二：值引用（活绑定）vs 值拷贝
 
-**这是最容易被问倒的一条**，必须能举出具体例子。
+判断依据：导出方后续修改变量，导入方能否观察到。
 
 ```js
 // ===== ESM =====
@@ -194,23 +179,23 @@ count = 10;      // ❌ TypeError: Assignment to constant variable
 
 ### 5.1.4 差异三：异步 vs 同步加载
 
-```js
-// ESM：加载是异步的（浏览器里要先 fetch 文件）
+```html
+<!-- ESM：浏览器里异步 fetch，等价于 defer，不阻塞 HTML 解析 -->
 <script type="module" src="./main.js"></script>
-// 等价于 defer，不会阻塞 HTML 解析
+```
 
-// CJS：加载是同步的（require 会阻塞，直到文件读完并执行完）
-const a = require('./a');   // 阻塞在这里
-console.log('after');       // 一定在 a 执行完之后
+```js
+// CJS：require 同步阻塞，直到文件读完并执行完
+const a = require('./a');
+console.log('after');   // 一定在 a 执行完之后
 ```
 
 **这个差异的根源是使用场景**：
 
 | | 浏览器 | Node |
 |---|---|---|
-| 网络请求 | 天然异步（必须异步，否则卡 UI） | 本地文件（可以同步） |
-| ESM | 异步加载 | 异步（但也可以同步处理本地文件） |
-| CJS | 不支持 | 同步加载（启动时一次性加载完） |
+| ESM | 异步 fetch，不阻塞解析 | loader 异步，模块体按依赖顺序求值（顶层 `await` 会挂起） |
+| CJS | 不支持 | 同步加载，启动时一次性执行完 |
 
 **ESM 的 `import` 为什么"看起来是同步的"？**
 
@@ -237,77 +222,30 @@ console.log(this === module.exports);   // true
 **实践影响**：
 
 ```js
-// CJS 里很常见的写法，在 ESM 里会报错
-this.something = 1;   // ❌ ESM 里 this 是 undefined
-
-// jQuery 插件那种 (function($){...})(this) 在 ESM 里也失效
+this.something = 1;                      // ❌ ESM 里 this 是 undefined
+(function ($) { /* ... */ })(this);      // ❌ 依赖 this 的 UMD/jQuery 插件写法失效
 ```
 
 ### 5.1.6 差异五：循环依赖的表现
 
-```js
-// ===== CJS =====
-// a.js
-console.log('a 开始');
-exports.done = false;
-const b = require('./b');       // ← 这里会去执行 b.js
-console.log('a 里 b.done =', b.done);
-exports.done = true;
-console.log('a 结束');
+- **CJS**：`require` 返回**当前已执行到的那部分 `exports`**，循环处拿到「半成品」，缺失属性静默为 `undefined`，已赋值的字段是当时的值。
+- **ESM**：绑定在**实例化阶段**创建但尚未初始化；循环处访问 `let` / `const` / `class` 绑定会命中 TDZ，抛 `ReferenceError`。
+- **函数声明**：ESM 在实例化阶段就初始化，循环中可调用；CJS 的 `exports.fn = ...` 仍要执行到那一行才存在。
 
-// b.js
-console.log('b 开始');
-const a = require('./a');       // ← a 还没执行完，拿到的是"不完整的 exports"
-console.log('b 里 a.done =', a.done);   // undefined（此时 a.done 还没赋值）
-exports.done = false;
-console.log('b 结束');
-
-// main.js
-require('./a');
-
-// 输出：
-// a 开始
-// b 开始
-// b 里 a.done = false     ← 注意：拿到的是 false（因为 exports.done=false 已经执行了）
-// b 结束
-// a 里 b.done = false
-// a 结束
-```
-
-> 关键：CJS 返回的是「**当前已经执行到的那部分 exports**」，所以可能拿到"半成品"。
-
-```js
-// ===== ESM =====
-// a.js
-import { b } from './b.js';
-export const a = 'a';
-
-// b.js
-import { a } from './a.js';
-export const b = a + '!';     // ❌ ReferenceError: Cannot access 'a' before initialization
-
-// 但如果 a 是函数声明，就没问题（函数声明会提升并初始化）
-// a.js
-import { b } from './b.js';
-export function a() { return 'a'; }
-```
-
-**为什么 ESM 会报 TDZ 而不是拿到 `undefined`？**
-
-因为 ESM 的绑定在**实例化阶段**就创建好了（但未初始化），所以 `b.js` 里访问 `a` 时，绑定**存在**但处于 TDZ → 报 `ReferenceError`。这比 CJS 的"静默拿到 undefined"更安全，因为错误暴露得更早。
+完整执行顺序与代码见 [5.3 循环依赖](#53-循环依赖两种模块系统的表现差异)。
 
 | | CJS | ESM |
 |---|---|---|
-| 循环依赖时 | 拿到未完成的 `exports`（可能 `undefined`） | 绑定存在但 TDZ → `ReferenceError` |
-| 函数声明 | 需要 `exports.fn = ...`（执行到才有） | **函数声明提升，可用** |
-| 调试难度 | 高（静默 undefined） | 低（直接报错） |
+| 循环处拿到 | 未完成的 `exports`（可能 `undefined`） | 绑定存在但处于 TDZ → `ReferenceError` |
+| 函数声明 | 执行到 `exports.fn = ...` 才可用 | 实例化阶段已可用 |
+| 错误暴露 | 晚（静默 `undefined`） | 早（直接抛错） |
 
 ### 5.1.7 差异六：缓存机制
 
 ```js
 // ESM：按 URL 缓存，同一个 URL 只求值一次
 import './a.js';
-import './a.js?foo';    // ← 不同 URL，会再执行一次（这是 Vite HMR 的原理）
+import './a.js?foo';    // ← 不同 URL 是新模块实例（Vite HMR 用时间戳 query 做替换）
 
 // CJS：按解析后的绝对路径缓存
 require('./a');
@@ -327,48 +265,41 @@ console.log(require.cache);   // 可以看到缓存表
 | 命名导入 | `import { a } from './x'` | `const { a } = require('./x')` |
 | 全部导入 | `import * as ns from './x'` | `const ns = require('./x')` |
 | 副作用导入 | `import './x'` | `require('./x')` |
-| 动态导入 | `await import('./x')` | `require('./x')` |
+| 动态导入 | `await import('./x')` | `import('./x')` |
 | 再导出 | `export { a } from './x'` / `export * from './x'` | `module.exports = require('./x')` |
 
 ### 5.1.9 答题模板
 
-**30 秒版：**
-
-> "最根本的区别是**静态还是动态**。ESM 的 `import` 必须在顶层，依赖关系在**编译阶段**就确定了，所以打包工具能做 tree-shaking；CJS 的 `require` 是普通函数调用，可以放在 `if` 里、路径可以是变量，只能运行时确定。
-> 这个差异还带来两点：ESM 导出的是**值的引用（活绑定）**，导出方改变量，导入方能"看到"变化；CJS 是**值的拷贝**，导出后就脱钩了。
-> 另外 ESM 是异步加载、顶层 `this` 是 `undefined`、默认严格模式；CJS 是同步加载、顶层 `this` 是 `module.exports`。"
-
-**2 分钟版补充：**
-
-> "再补两个实战点：
-> 一是**循环依赖的表现不同**。CJS 会拿到"执行到一半的 exports"，所以可能静默拿到 `undefined`；ESM 因为绑定在实例化阶段就创建了，会直接报 TDZ 的 `ReferenceError`，错误暴露更早。
-> 二是 **Node 里的互操作**。ESM 里没有 `require`、`__dirname`、`__filename`，要用 `import.meta.url` 配合 `fileURLToPath` 换算；反过来 CJS 里不能静态 `import`，但可以 `await import()` 动态导入。"
+- **根本差异**：ESM 是编译时静态，`import` 必须在顶层，依赖图在解析阶段确定；CJS 的 `require` 是运行时函数调用，可放在 `if` 里、路径可为变量。
+- **值的语义**：ESM 导出活绑定，导出方改变量，导入方能观察到；CJS 导出值拷贝，导出后脱钩。
+- **其他差异**：ESM 异步加载、顶层 `this` 为 `undefined`、默认严格模式；CJS 同步加载、顶层 `this` 为 `module.exports`。
+- **两个实战点**：循环依赖 CJS 拿到半成品、ESM 报 TDZ；Node 里 ESM 没有 `require` / `__dirname`，用 `import.meta.url` 换算，CJS 侧用 `await import()` 加载 ESM。
 
 ### 5.1.10 追问表
 
 | 追问 | 答题要点 |
 |---|---|
 | 最根本的区别？ | 静态（编译时）vs 动态（运行时） |
-| 为什么 ESM 能 tree-shaking？ | 依赖图静态可分析，未使用的 export 能安全移除 |
+| 为什么 ESM 能 tree-shaking？ | 依赖图静态可分析，且模块无副作用（`sideEffects` / 纯函数标注） |
 | 活绑定是什么意思？ | 导入的是对导出变量的引用，值会同步变化 |
 | 导入的变量能赋值吗？ | 不能，`TypeError`（只读绑定） |
 | ESM 是同步还是异步？ | 异步（浏览器要先 fetch） |
 | ESM 顶层 `this`？ | `undefined` |
 | CJS 顶层 `this`？ | `module.exports` |
 | 循环依赖谁更安全？ | ESM（报错早），CJS 会静默 `undefined` |
-| ESM 里能用 `require` 吗？ | 不能（Node 22+ 支持 `require(esm)`，但方向相反） |
+| ESM 里能用 `require` 吗？ | 不能；Node 22.12+ 支持在 CJS 里 `require(esm)`，方向相反 |
 | ESM 里怎么拿 `__dirname`？ | `path.dirname(fileURLToPath(import.meta.url))` |
 | `import()` 和 `import` 区别？ | 前者运行时、返回 Promise、可动态路径；后者静态、顶层 |
 | 为什么 `import` 不能写在 `if` 里？ | 静态结构要求，否则无法在编译期建依赖图 |
 | ESM 能条件加载吗？ | 顶层不能，要用 `import()` |
-| CJS 能 tree-shaking 吗？ | 基本不能，除非工具做静态分析的"猜测" |
+| CJS 能 tree-shaking 吗？ | 基本不能；`require` 与导出都可能动态生成 |
 | `exports` 和 `module.exports` 区别？ | 初始指向同一对象；重新赋值 `module.exports` 会让 `exports` 失效 |
 
 ---
 
 ## 5.2 深入：ESM 的三个加载阶段
 
-> 面试官如果追问"ESM 到底怎么加载的"，答这个能明显拉开差距。
+ESM 的加载分构造、实例化、求值三阶段；循环依赖能成立，靠的是实例化阶段先建立绑定。
 
 ### 5.2.1 三个阶段
 
@@ -425,29 +356,29 @@ console.log(derived);
 
 ### 5.2.3 一个能证明"实例化阶段存在"的例子
 
-```js
-// main.js
-import { fn } from './module.js';
+静态依赖总会被先求值，单独 `import` 无法证明实例化；必须用循环依赖：入口模块的函数在**自己的模块体执行前**就被依赖方调用。
 
-console.log(fn());   // ✅ 能调用！尽管 module.js 还没求值
+```js
+// a.mjs（入口）
+import './b.mjs';
+console.log('a 求值');
+export function fn() { return 'ok'; }
 ```
 
 ```js
-// module.js
-console.log('module 求值');     // 这行在 main.js 的 console.log 之后才执行
-export function fn() { return 'ok'; }
+// b.mjs
+import { fn } from './a.mjs';
+console.log('b 求值，fn() =', fn());   // a.mjs 的模块体还没执行
 ```
 
 **输出**：
 
 ```
-ok
-module 求值
+b 求值，fn() = ok
+a 求值
 ```
 
-**为什么？** 因为 `fn` 是**函数声明**，在**实例化阶段**就已经初始化好了，所以 `main.js` 求值时能直接调用它。而 `module.js` 的模块体（`console.log`）要等到求值阶段才执行。
-
-> **这个例子非常能说明问题**：如果你只看"加载 → 执行"两阶段模型，会以为 `module.js` 一定先执行完，那就无法解释这个输出。
+**为什么？** `fn` 是函数声明，在实例化阶段已初始化，`b.mjs` 求值时可以直接调用；`a.mjs` 的 `console.log` 要等依赖求值完才执行。若只有「加载 → 执行」两步，这个输出无法解释。
 
 ---
 
@@ -483,7 +414,7 @@ require('./a');
 // --- a 结束 ---
 ```
 
-**关键**：④ 时 `a.js` 只执行到 ②，`exports.loaded` 还是 `false`（① 已执行，③ 未执行）。所以拿到的是"快照"。
+**关键**：④ 时 `a.js` 只执行到 ②，`exports.loaded` 还是 `false`（① 已执行，③ 未执行）。CJS 返回的是同一个 `exports` 对象的引用，不是深拷贝；之后对 `exports` 的修改，调用方再读取时仍能看到。
 
 **如果 `a.js` 里 `exports.loaded = true` 在 `require` 之前呢？**
 
@@ -496,32 +427,19 @@ const b = require('./b');   // b 里会看到 true
 ### 5.3.2 ESM 的循环依赖：TDZ 报错
 
 ```js
-// a.js
-import { b } from './b.js';
+// a.mjs（入口）
+import { b } from './b.mjs';
 export const a = 'a';
-console.log('a 求值，b =', b);   // ❌ ReferenceError（b 还没初始化）
+console.log('a 求值，b =', b);   // 不会执行
+
+// b.mjs
+import { a } from './a.mjs';
+export const b = a + '!';        // ❌ ReferenceError: Cannot access 'a' before initialization
 ```
 
-```js
-// b.js
-import { a } from './a.js';
-export const b = a + '!';        // ❌ ReferenceError（a 在 TDZ）
-```
+求值时入口 `a` 先处理依赖 `b`，`b` 的模块体先执行；此时 `a` 的绑定仍在 TDZ，错误在 `b` 抛出，`a` 的模块体一行都没执行。
 
-**但如果用函数，就能工作**：
-
-```js
-// a.js
-import { getB } from './b.js';
-export function getA() { return 'a'; }
-console.log('a 求值，getB() =', getB());   // ✅ 'b'（函数已提升）
-
-// b.js
-import { getA } from './a.js';
-export function getB() { return 'b'; }
-```
-
-**这也是为什么很多库的入口用函数导出而不是常量**——函数声明在实例化阶段就可用，能扛住循环依赖。
+**换成函数声明就能工作**：函数声明在实例化阶段已初始化，循环中可以调用（执行过程见 [5.2.3](#523-一个能证明实例化阶段存在的例子)）；`let` / `const` / `class` 没有这一步，仍会命中 TDZ。
 
 ### 5.3.3 怎么避免循环依赖
 
@@ -538,27 +456,26 @@ export function getB() { return 'b'; }
 
 ## 5.4 互操作：Node 里怎么混用（实战必踩）
 
-### 5.4.1 启用 ESM 的三种方式
+### 5.4.1 启用 ESM 的两种方式
+
+`package.json` 声明后整个包默认 ESM：
 
 ```json
-// package.json
-{ "type": "module" }     // 整个包默认 ESM
+{ "type": "module" }
 ```
 
-```bash
-# 或者用扩展名
-.mjs   # 强制 ESM
-.cjs   # 强制 CJS
-```
+另一种是按扩展名：`.mjs` 强制 ESM，`.cjs` 强制 CJS。
 
 ### 5.4.2 ESM 里拿 CJS 的"缺失变量"
 
 ```js
-// ❌ ESM 里这些都不可用
-console.log(__dirname);   // ReferenceError
-console.log(__filename);  // ReferenceError
-console.log(require);     // ReferenceError
+// ❌ ESM 里这些都不是全局变量
+console.log(__dirname);   // ReferenceError: __dirname is not defined
+console.log(__filename);  // ReferenceError: __filename is not defined
+console.log(require);     // ReferenceError: require is not defined
+```
 
+```js
 // ✅ 用 import.meta 换算
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -570,10 +487,10 @@ const __dirname = dirname(__filename);
 **`import.meta` 还能干什么？**
 
 ```js
-console.log(import.meta.url);      // file:///path/to/module.js
-console.log(import.meta.env);      // Vite 注入的环境变量
-console.log(import.meta.hot);      // Vite 的 HMR API
-console.log(import.meta.resolve('./x.js'));  // 解析路径
+console.log(import.meta.url);                 // file:///.../module.mjs
+console.log(import.meta.resolve('./x.js'));   // file:///.../x.js（Node 同步返回 URL）
+console.log(import.meta.env);                 // undefined；Vite 注入后才存在
+console.log(import.meta.hot);                 // undefined；Vite HMR 运行时才注入
 ```
 
 ### 5.4.3 CJS 里加载 ESM
@@ -588,34 +505,36 @@ console.log(import.meta.resolve('./x.js'));  // 解析路径
 })();
 ```
 
-> **新变化**：Node 22.12+ 支持在 CJS 里 `require()` 一个 ESM 模块（前提是那个模块没有顶层 `await`）。但为了兼容性，生产代码还是建议用 `await import()`。
+> **新变化**：Node 22.12 起默认开启 `require(esm)`（本机 v22.12.0 实测可用，仍打印 `ExperimentalWarning`）。带顶层 `await` 的模块会抛 `ERR_REQUIRE_ASYNC_MODULE`，需改用 `await import()`。
 
 ### 5.4.4 ESM 里加载 CJS
 
 ```js
-// ✅ 可以，Node 会把 CJS 的 module.exports 当作默认导出
-import pkg from 'lodash';           // 默认导入 = module.exports
-import { debounce } from 'lodash';  // ⚠️ 命名导入可能不工作（取决于静态分析）
-
-// 更稳的写法
-import lodash from 'lodash';
-const { debounce } = lodash;
+// ✅ 默认导入 = module.exports，最稳
+import pkg from 'lodash';
+const { debounce } = pkg;
 ```
 
-**为什么命名导入可能失效？** 因为 Node 对 CJS 模块做**静态分析**（`cjs-module-lexer`）来推断有哪些命名导出，如果 `module.exports` 是动态构建的（比如 `module.exports = {...}` 里混了计算属性），就推断不出来。
+```js
+// 命名导入依赖 cjs-module-lexer 的静态分析，能静态识别时才有值
+import { debounce } from 'lodash';
+```
+
+`module.exports = { ... }` 这类静态字面量能被识别；动态拼装（循环、计算属性）推断不出命名导出，只能走默认导入再解构。
 
 ### 5.4.5 常见报错对照表
 
 | 报错 | 原因 | 解法 |
 |---|---|---|
 | `Cannot use import statement outside a module` | CJS 环境里写了 `import` | 加 `"type": "module"` 或改 `.mjs` |
-| `require is not defined in ES module scope` | ESM 里用了 `require` | 改 `import`，或 `createRequire` |
+| `require is not defined` | ESM 里用了 `require` | 改 `import`，或用 `createRequire` |
 | `__dirname is not defined` | ESM 没有 `__dirname` | `fileURLToPath(import.meta.url)` |
-| `ERR_REQUIRE_ESM` | CJS `require` 了纯 ESM 包 | 用 `await import()` 或降级包版本 |
-| `The requested module does not provide an export named 'x'` | 包的 CJS 版本没有该命名导出 | 默认导入再解构 |
+| `ERR_REQUIRE_ASYNC_MODULE` | CJS `require` 了带顶层 `await` 的 ESM | 用 `await import()` |
+| `ERR_REQUIRE_ESM` | Node < 22.12 的 CJS `require` 了纯 ESM | 升级 Node，或用 `await import()` |
+| `Named export 'x' not found` | CJS 包没有该命名导出，或静态分析推断不出 | 默认导入再解构 |
 | `ERR_MODULE_NOT_FOUND` | ESM **必须写扩展名** | 补 `.js`（浏览器和 Node ESM 都要求） |
 
-> **最容易踩的一条**：**ESM 里 import 相对路径必须带扩展名**。`import './utils'` 在 CJS 里可以，在 ESM 里不行。
+ESM 相对路径必须带扩展名：`import './utils'` 在 CJS 里可以，在 ESM 里会报 `ERR_MODULE_NOT_FOUND`。
 
 ---
 
@@ -633,14 +552,7 @@ const { debounce } = lodash;
 | **HMR**（热替换） | 文件变了 → **只替换模块** | ✅ 保留（大多数情况） |
 | **Hot Reloading**（React 社区叫法） | 通常是 HMR 的一种实现（Fast Refresh） | ✅ 保留组件 state |
 
-**为什么需要 HMR？**
-
-```
-改一行 CSS → 等 3 秒页面刷新 → 重新登录 → 重新点开三层菜单 → 重新填表单
-                ↑ 这个循环一天重复几百次，就是 HMR 要消灭的东西
-```
-
-**核心价值**：**保留应用状态**。调试一个深层页面的弹窗时，刷新意味着重新走一遍路径。
+**为什么需要 HMR？** 刷新会丢失应用状态：深层弹窗、表单、登录态都要重走一遍；HMR 直接替换模块，保留这些状态，这是它的核心价值。
 
 ### 5.5.2 Webpack HMR 的完整流程（7 步）
 
@@ -653,15 +565,15 @@ const { debounce } = lodash;
    同时生成一个 manifest（描述"哪些 chunk 变了"）
 
 ③ 通过 WebSocket 推送通知
-   服务端 → 浏览器：{ type: 'hash', data: 'abc123' }
+   服务端 → 浏览器：{ type: 'hash', data: '<hash>' }
                     { type: 'ok' }
 
 ④ 浏览器拉取 manifest
-   HMR runtime 请求 `abc123.hot-update.json`
-   → { "h": "abc123", "c": { "main": true } }   ← 告诉它 main chunk 需要更新
+   HMR runtime 请求 `<hash>.hot-update.json`
+   → { "h": "<hash>", "c": { "main": true } }   ← 告诉它 main chunk 需要更新
 
 ⑤ 拉取新模块代码
-   请求 `main.abc123.hot-update.js`
+   请求 `main.<hash>.hot-update.js`
    → 里面是 JSONP 格式：webpackHotUpdate("main", { "./src/a.js": fn })
 
 ⑥ 替换模块缓存
@@ -677,10 +589,10 @@ const { debounce } = lodash;
 **关键概念：HMR 边界（boundary）**
 
 ```js
-// 一个模块可以声明"我能接受哪些依赖的变化"
+// 一个模块可以声明自己能接受哪些依赖的变化
 if (import.meta.hot) {          // Vite
   import.meta.hot.accept('./dep.js', (newDep) => {
-    // dep.js 变了，我自己处理，不用往上冒泡
+    // dep.js 变了，本模块自行处理，不用往上冒泡
     render(newDep);
   });
 }
@@ -693,7 +605,7 @@ if (module.hot) {
     render(require('./dep.js'));
   });
 
-  // 也可以声明"我自己能被替换"
+  // 也可以声明本模块可被替换
   module.hot.accept();
 
   // 清理副作用（比如解绑事件、清定时器）
@@ -736,7 +648,7 @@ if (module.hot) {
 
 **CSS**
 
-- `style-loader` 的 HMR 是**最完美的**：直接替换 `<style>` 标签内容，连 DOM 都不用重建
+- CSS 的 HMR 直接替换 `<style>` 标签内容，不重建 DOM，开销最小
 
 ### 5.5.4 Vite 的 HMR 为什么快
 
@@ -752,7 +664,7 @@ Vite：  文件变化 → 只让"这个模块 + 它的导入者链"失效 → �
 ① 文件变化
 ② 沿模块图找到"接受这个变化的边界"（acceptedPath）
 ③ WebSocket 推送：{ type: 'update', updates: [{ path: '/src/a.js', acceptedPath: '/src/App.vue' }] }
-④ 浏览器执行 import(`/src/App.vue?t=1699999999`)
+④ 浏览器执行 import(`/src/App.vue?t=<timestamp>`)
    ↑ 加时间戳 query 绕过浏览器 HTTP 缓存和 ESM 模块缓存
 ⑤ 新模块替换旧模块，执行 accept 回调
 ```
@@ -761,12 +673,12 @@ Vite：  文件变化 → 只让"这个模块 + 它的导入者链"失效 → �
 
 因为 **ESM 的模块是浏览器原生缓存的，而且无法"删除"某个模块的缓存**。加不同的 query 会创建一个**新的模块实例**，这是绕过 ESM 缓存的唯一办法。
 
-**速度差异的量化**：
+**速度差异的来源**：
 
 | | Webpack | Vite |
 |---|---|---|
-| 冷启动 | 要打包整个应用（大项目几十秒） | 不打包，秒开 |
-| HMR 更新 | 增量打包相关 chunk（百毫秒级） | 只重请求单个文件（毫秒级） |
+| 冷启动 | 先打包整个应用，耗时随项目规模增长 | 不打包，按需请求 |
+| HMR 更新 | 增量打包相关 chunk | 只重新请求单个文件 |
 | 项目越大 | 越慢（打包范围可能扩大） | 基本不变 |
 
 ### 5.5.5 HMR 失效的四个原因（实战排查）
@@ -780,17 +692,10 @@ Vite：  文件变化 → 只让"这个模块 + 它的导入者链"失效 → �
 
 ### 5.5.6 答题模板
 
-**30 秒版：**
-
-> "HMR 是模块热替换，文件改动后**只替换改动的那几个模块，不刷新页面**，所以能保留应用状态。
-> 流程是：构建工具 watch 文件 → 增量编译 → 通过 WebSocket 通知浏览器 → 浏览器拉取更新的模块 → 替换模块缓存 → 从改动模块**向上冒泡**，找到声明了 `accept` 的边界就执行回调，找不到就退化成整页刷新。
-> 严格说它不是 ES6 的能力，是 Webpack/Vite 这类工具基于模块系统实现的。"
-
-**2 分钟版补充：**
-
-> "两个能体现深度的点：
-> 一是 **HMR 边界**。模块可以声明 `accept` 表示"我能处理某个依赖的变化"，这样变化不会继续往上冒泡。框架的 loader 会帮你自动加，比如 Vue 的模板改动走 `rerender` 保留状态，`<script>` 改动走 `reload` 重建组件。
-> 二是 **Vite 为什么快**。它开发时不打包，基于原生 ESM，文件变了只让相关模块失效，浏览器重新请求那个文件就行。有个细节是必须加 `?t=时间戳` 这样的 query，因为 ESM 模块缓存没法删除，只能靠不同 URL 创建新实例。"
+- **定义**：HMR 是模块热替换，改动后只替换相关模块、不刷新页面，因而保留应用状态；它是构建工具基于模块系统实现的能力，不属于 ES6 规范。
+- **流程**：watch 文件 → 增量编译 → WebSocket 通知 → 浏览器拉取新模块 → 替换模块缓存 → 从改动模块向上冒泡，找到 `accept` 边界执行回调，找不到则退化为整页刷新。
+- **HMR 边界**：模块用 `accept` 声明自己能处理某个依赖的变化，变化不再向上冒泡；框架 loader 会自动生成，例如 Vue 模板变更走 `rerender` 保留状态，`<script>` 变更走 `reload` 重建组件。
+- **Vite**：开发时不打包，基于原生 ESM，只让相关模块失效并由浏览器重新请求；用 `?t=` 时间戳创建新模块实例，绕过无法删除的 ESM 模块缓存。
 
 ### 5.5.7 追问表
 
@@ -822,12 +727,9 @@ Vite：  文件变化 → 只让"这个模块 + 它的导入者链"失效 → �
 ② HMR          → 只换模块不刷页面；watch → 编译 → WS → 替换 → 冒泡找边界
 ```
 
-### 5.6.2 把两题串起来（面试收尾用）
+### 5.6.2 把两题串起来
 
-> "这两题其实有因果关系：**ESM 的静态结构让"模块"成了构建工具可以精确操作的单元**，HMR 才有可能只替换一个模块。
-> CJS 的 `require` 是运行时行为，打包工具没法精确知道"谁依赖谁"，HMR 的边界就没法算——所以早期 Webpack 的 HMR 在 CJS 下经常"冒泡到入口"，退化成整页刷新。
->
-> 一句话：**ESM 给了"模块"这个概念以静态边界，HMR 是在这个边界上做的增量替换。**"
+ESM 的静态依赖图让「模块」成为构建工具可精确操作的单元，HMR 才能只替换一个模块；CJS 的 `require` 是运行时行为，路径可动态生成，依赖边界无法完全静态确定，找不到 `accept` 边界时只能退化成整页刷新。一句话：**ESM 给出模块的静态边界，HMR 在这个边界上做增量替换。**
 
 ---
 
@@ -842,7 +744,7 @@ Vite：  文件变化 → 只让"这个模块 + 它的导入者链"失效 → �
   加载        异步                同步
   顶层 this   undefined           module.exports
   严格模式    默认开启             默认关闭
-  tree-shaking ✅                 ❌
+  tree-shaking ✅（需 sideEffects/纯函数）  ❌
   import 位置 必须顶层             任意位置
   缓存        按 URL               按路径（require.cache）
   循环依赖    TDZ 报错（函数可用）   拿到半成品 exports
@@ -865,7 +767,7 @@ Vite：  文件变化 → 只让"这个模块 + 它的导入者链"失效 → �
   清理：module.hot.dispose（清定时器/监听器）
   Vue：模板变更 rerender（保状态）/ script 变更 reload（重建）
   React：Fast Refresh 保 useState
-  Vite：不打包 + 原生 ESM + ?t= 绕缓存 → 毫秒级
+  Vite：不打包 + 原生 ESM + ?t= 绕缓存 → 按需请求
 ```
 
 ### 5.7.2 连环追问
@@ -873,7 +775,7 @@ Vite：  文件变化 → 只让"这个模块 + 它的导入者链"失效 → �
 | # | 追问 | 关键答点 |
 |---|---|---|
 | 1 | ESM 和 CJS 最根本区别？ | 静态 vs 运行时 |
-| 2 | 为什么 ESM 能 tree-shaking？ | 依赖图静态可分析 |
+| 2 | 为什么 ESM 能 tree-shaking？ | 依赖图静态可分析，且模块无副作用（`sideEffects` / 纯函数标注） |
 | 3 | 活绑定是什么？ | 导入的是引用，值会同步变化 |
 | 4 | 导入的变量能改吗？ | 不能，只读绑定 |
 | 5 | ESM 异步还是同步？ | 异步 |

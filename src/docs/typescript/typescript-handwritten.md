@@ -1,9 +1,7 @@
 # TS · 10 手写实现题 10 道
 
-> 本册覆盖：sleep、myMap、treePath、product、myAll、sum、mergeArray、firstSingleChar、reverseWord、objToArray
-> 这 10 道占全部 46 题的 22%，但**考的不是 TS 特性，而是「用 TS 写代码 + 算法基本功」**。
-> 原题单有 **3 个真实 bug**（myAll 空数组死锁、reverseWord 多余空格、product 类型全丢），本册逐一修复。
-> **每题的答题重点不是「写出来」，而是「类型标注得准不准 + 边界想到了没有」。**
+> 覆盖：sleep、myMap、treePath、product、myAll、sum、mergeArray、firstSingleChar、reverseWord、objToArray
+> 每题给出实现、类型标注与边界处理；多数题先列出原答案的问题与失败现象，再给修正版。
 
 ---
 
@@ -20,17 +18,17 @@
 
 ## 10.1 一句话结论
 
-这类题的评分权重（按重要性）：
+手写题按五个维度检查：
 
-| 权重 | 维度 | 说明 |
-|---|---|---|
-| ★★★★★ | **边界** | 空输入、单元素、重复、稀疏数组、`null` 入参 |
-| ★★★★★ | **类型标注** | 泛型用得对不对、返回类型精不精确、`readonly` 要不要加 |
-| ★★★★☆ | **正确性** | 别看错题（比如「第一个只出现一次」是要**原串顺序**的第一个） |
-| ★★★☆☆ | **复杂度** | 能报出来，且不写 O(n²) 的傻实现 |
-| ★★★☆☆ | **可读性** | 命名、提前返回、不用 `var` |
+| 维度 | 检查内容 |
+|---|---|
+| 边界 | 空输入、单元素、重复元素、稀疏数组、`null` / `undefined` 入参 |
+| 类型标注 | 泛型参数、返回类型精度、是否接受 `readonly` |
+| 正确性 | 题干语义，如「第一个只出现一次」要求原串顺序的第一个 |
+| 复杂度 | 能报出时间/空间复杂度，不写 O(n²) |
+| 可读性 | 命名、提前返回、不用 `var` |
 
-**最容易失分的不是「写不出来」，而是「类型写得太松」**——比如 `product(...arrays: any[][]): any[][]`，等于没有类型。
+`product(...arrays: any[][]): any[][]` 这类签名没有约束：最内层元素是 `any`，调用方拿不到任何类型信息。
 
 ---
 
@@ -38,16 +36,16 @@
 
 | # | 题号 | 题目 | 难度 | 核心考点 | 原答案 |
 |---|---|---|---|---|---|
-| 1 | 13 | sum | ⭐ | rest 参数、`reduce` 初值 | ✅ 正确但太简单 |
-| 2 | 14 | mergeArray | ⭐ | 泛型 + `readonly` | ✅ 可加泛型约束 |
-| 3 | 6 | sleep | ⭐⭐ | Promise 包装、可取消 | ✅ 可扩展 |
-| 4 | 9 | myMap | ⭐⭐ | 泛型 + 稀疏数组 + `thisArg` | ⚠️ 漏了稀疏数组 |
+| 1 | 13 | sum | ⭐ | rest 参数、`reduce` 初值 | ✅ 正确 |
+| 2 | 14 | mergeArray | ⭐ | 泛型 + `readonly` | ⚠️ 未接受 `readonly` |
+| 3 | 6 | sleep | ⭐⭐ | Promise 包装、可取消 | ✅ 正确 |
+| 4 | 9 | myMap | ⭐⭐ | 泛型 + 稀疏数组 + `thisArg` | ⚠️ 漏稀疏数组、`thisArg`、第三参 |
 | 5 | 18 | objToArray | ⭐⭐ | `Object.entries` 类型、保留 key | ⚠️ 丢失 key 字面量 |
 | 6 | 15 | firstSingleChar | ⭐⭐ | Map 插入顺序、返回 `null` | ✅ 正确 |
-| 7 | 16 | reverseWord | ⭐⭐ | 正则边界、trim | ❌ **多余空格 bug** |
+| 7 | 16 | reverseWord | ⭐⭐ | 正则边界、trim | ❌ 多余空格 bug |
 | 8 | 10 | treePath | ⭐⭐⭐ | DFS + 回溯、避免拷贝 | ⚠️ O(n·depth) 拷贝 |
-| 9 | 11 | product | ⭐⭐⭐ | 笛卡尔积 + **元组类型推导** | ❌ **类型全丢** |
-| 10 | 12 | myAll | ⭐⭐⭐⭐ | Promise 并发 + **空数组** | ❌ **空数组永不 resolve** |
+| 9 | 11 | product | ⭐⭐⭐ | 笛卡尔积 + **元组类型推导** | ❌ 类型全丢 |
+| 10 | 12 | myAll | ⭐⭐⭐⭐ | Promise 并发 + **空数组** | ❌ 空数组永不 resolve |
 
 ---
 
@@ -69,16 +67,17 @@ sum();             // 0（初值 0 保证空调用不报错）
 ```
 
 **类型要点**：
+
 - `...nums: number[]` 是 rest 参数，调用时可以传任意个
 - **`reduce` 必须给初值 `0`**，否则空数组会抛 `Reduce of empty array with no initial value`
 
 #### 追问一：浮点精度
 
 ```ts
-sum(0.1, 0.2);     // 0.30000000000000004  ← IEEE 754 的锅
+sum(0.1, 0.2);     // 0.30000000000000004 ← IEEE 754 的二进制表示误差
 ```
 
-**三种解法**：
+三种处理方式：
 
 ```ts
 // ① 整数化（适合金额场景，单位用分）
@@ -88,15 +87,16 @@ function sumMoney(...cents: number[]): number {
 
 // ② 按最大小数位数放大
 function sumDecimal(...nums: number[]): number {
+  if (nums.length === 0) return 0;    // Math.max(...[]) 为 -Infinity，不特判会得到 NaN
   const maxDigits = Math.max(
     ...nums.map((n) => (String(n).split('.')[1] ?? '').length)
   );
   const factor = 10 ** maxDigits;
   return nums.reduce((a, b) => a + Math.round(b * factor), 0) / factor;
 }
-sumDecimal(0.1, 0.2);    // 0.3 ✅
+sumDecimal(0.1, 0.2);    // 0.3
 
-// ③ Kahan 求和（处理大数吃小数）
+// ③ Kahan 求和：减少累加过程的舍入误差，修不了 0.1 自身的表示误差
 function kahanSum(nums: number[]): number {
   let sum = 0;
   let c = 0;                          // 补偿项
@@ -108,6 +108,7 @@ function kahanSum(nums: number[]): number {
   }
   return sum;
 }
+kahanSum([0.1, 0.2]);    // 0.30000000000000004
 ```
 
 #### 追问二：柯里化版本（「无限累加」）
@@ -124,7 +125,7 @@ add(1)(2)(3)();     // 6
 add(1)(2)();        // 3
 ```
 
-**类型怎么写**：
+调用链可以用下面的类型描述：
 
 ```ts
 interface CurriedAdd {
@@ -132,7 +133,8 @@ interface CurriedAdd {
   (): number;
 }
 ```
-**但这个类型在 TS 里无法精确表达**（可变参数数量的链式调用），实际要用重载或多个接口，或者接受 `any`。
+
+但实现函数不能直接标注成 `CurriedAdd`：`(): number` 允许零参首调，而实现要求至少传一个参数，`tsc` 报错 `Target signature provides too few arguments. Expected 1 or more, but got 0.`，所以实现里返回 `any`，或用重载 / 断言。
 
 #### 追问三：支持数组或变参
 
@@ -173,7 +175,7 @@ const B = [3, 4] as const;
 mergeArray(A, B);                // ✅ 不报错
 ```
 
-**但这样 T 会被推成 `1 | 2 | 3 | 4`**：
+**但这样 `T` 会被推成联合**：
 
 ```ts
 const r = mergeArray([1, 2] as const, [3, 4] as const);
@@ -244,12 +246,13 @@ async function main() {
 ```
 
 **类型要点**：
+
 - `Promise<void>` 显式标注（`resolve` 不传值）
-- **不要写 `Promise<unknown>` 或省略**，否则 `await sleep(1000)` 的类型不明确
+- 省略标注时，`new Promise((resolve) => setTimeout(resolve, ms))` 推断为 `Promise<unknown>`，`await sleep(1000)` 的类型就不明确
 
 #### 追问一：可取消的 sleep
 
-**为什么要可取消**：组件卸载后还在 `await`，会导致「更新已卸载组件的状态」警告。
+组件卸载后还在 `await`，会触发「更新已卸载组件的状态」警告，因此需要可取消版本。
 
 ```ts
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -283,13 +286,14 @@ ac.abort();
 ```
 
 **三个细节**：
+
 1. **成功时要 `removeEventListener`**，否则 signal 上挂的监听器泄漏
-2. **`{ once: true }`** 让监听器自动移除
+2. **`{ once: true }`** 让监听器在 abort 后自动移除
 3. **用 `DOMException` 而不是普通 Error**，和 `fetch` 的行为一致
 
 #### 追问二：为什么不用 `setInterval`
 
-不需要——`setTimeout` 一次性就够，用 `setInterval` 还要自己 `clearInterval`。
+`setTimeout` 一次性就够；`setInterval` 还要自己 `clearInterval`。
 
 #### 追问三：`setTimeout` 的返回值类型
 
@@ -300,7 +304,7 @@ ac.abort();
 let timer: ReturnType<typeof setTimeout>;
 ```
 
-**这是「为什么 TS 项目里要写 `ReturnType<typeof setTimeout>`」的原因。**
+浏览器与 Node 的返回值类型不同，这是 `ReturnType<typeof setTimeout>` 的用途。
 
 ---
 
@@ -324,7 +328,7 @@ function myMap<T, U>(arr: T[], fn: (item: T, index: number) => U): U[] {
 **遗漏 1：稀疏数组**
 
 ```ts
-const sparse = [1, , 3];          // 中间有空洞
+const sparse = [1, , 3] as number[];   // 中间有空洞（TS 会把洞推断成 undefined）
 sparse.length;                     // 3
 1 in sparse;                       // false ← 索引 1 不存在
 ```
@@ -338,7 +342,7 @@ sparse.length;                     // 3
 | `1 in result` | **`false`**（保持稀疏） | **`true`**（被填了值） |
 | `JSON.stringify` | `[2,null,6]` | `[2,null,6]`（`NaN` 序列化成 `null`） |
 
-**所以 `JSON.stringify` 看不出差别，但 `1 in result` 和 `result[1]` 不一样。** 原生 `map` 承诺「空洞还是空洞」，`push` 会把空洞填成 `NaN`。
+`JSON.stringify` 看不出差别，但 `1 in result` 和 `result[1]` 不一样：原生 `map` 承诺「空洞还是空洞」，`push` 会把空洞填成 `NaN`。
 
 **遗漏 2：`thisArg` 和完整回调参数**
 
@@ -378,7 +382,7 @@ function myMap<T, U, This = undefined>(
 
 ```ts
 myMap([1, 2, 3], (x) => x * 2);           // [2, 4, 6]
-myMap([1, , 3], (x) => x * 2);            // [2, <1 empty>, 6]  ✅ 和原生一致
+myMap(sparse, (x) => x * 2);              // [2, <1 empty>, 6]，1 in 结果为 false
 
 const obj = { factor: 10 };
 myMap([1, 2], function (x) { return x * this.factor; }, obj);   // [10, 20] ✅
@@ -484,9 +488,9 @@ entries<T>(o: { [s: string]: T } | ArrayLike<T>): [string, T][];
 entries(o: {}): [string, any][];
 ```
 
-**它只能给出 `[string, T]`，无法保留 key 的字面量类型**——这是 TS 的类型局限（`Object.entries` 返回的是新数组，无法表达「每个元素的 key 类型不同」）。
+**它只能给出 `[string, T]`，无法保留 key 的字面量类型**——`Object.entries` 返回的是新数组，类型上无法表达「每个元素的 key 类型不同」。
 
-**所以必须 `as` 断言**。这是一个**合理的断言**（因为我们知道实现是正确的），但要在注释里说明。
+因此需要 `as` 断言，并注明断言依据：实现本身保证每个元素就是 `[key, value]`。
 
 ---
 
@@ -531,9 +535,7 @@ Object.keys(map);      // ['1', '3', 'a', 'b']  ← 数字键被提前了！
 用 Map：  返回 'a'   ✅ 对
 ```
 
-**这两个实现只差「用 `Record` 还是 `Map` 做容器」，结果就完全相反。**
-
-**这是「为什么计数要用 `Map` 不用 `Record`」的硬理由**——不是性能，是**顺序语义**。
+两个实现只差「用 `Record` 还是 `Map` 做容器」，结果就相反。计数必须用 `Map` 而不是 `Record`，原因不是性能，是**顺序语义**。
 
 #### 三处可改进
 
@@ -567,8 +569,9 @@ function firstSingleChar(s: string): string | null {
 
 ```ts
 function firstSingleCharAscii(s: string): string | null {
-  // 用两个 32 位整数当位图：seen 标记出现过，repeated 标记出现多次
-  const seen = new Uint32Array(4);       // 128 位，覆盖 ASCII
+  // 四个 32 位整数当位图（128 位，覆盖 ASCII）：seen 标记出现过，repeated 标记出现多次
+  const seen = new Uint32Array(4);
+  const repeated = new Uint32Array(4);
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
     if (c > 127) continue;
@@ -591,7 +594,7 @@ function firstSingleCharAscii(s: string): string | null {
 
 ---
 
-### 10.3.7 reverseWord【原答案有 bug】
+### 10.3.7 reverseWord
 
 **题目**：反转单词顺序，`'hello world'` → `'world hello'`。
 
@@ -612,15 +615,11 @@ function reverseWord(s: string): string {
 
 // .reverse() → ['world', 'hello', '']
 // .join(' ')  → 'world hello '   ← 末尾多一个空格
-```
 
-```ts
 'hello world '.split(/\s+/);
 // ['hello', 'world', '']
 // .reverse().join(' ') → ' world hello'   ← 开头多一个空格
-```
 
-```ts
 '  a  b  '.split(/\s+/);
 // ['', 'a', 'b', '']  →  ' b a '   ← 两端都有多余空格
 ```
@@ -635,8 +634,6 @@ function reverseWord(s: string): string {
 }
 ```
 
-**验证**：
-
 **实测对比（Node 22，`JSON.stringify` 输出，空格可见）**：
 
 | 输入 | 原答案 | 修复版 |
@@ -647,12 +644,6 @@ function reverseWord(s: string): string {
 | `'  a  b  '` | `' b a '` ❌ 两端多余 | `'b a'` ✅ |
 | `''` | `''` ✅ | `''` ✅ |
 | `'   '`（纯空格） | **`' '`** ❌ **返回一个空格！** | `''` ✅ |
-
-**最后一行最能说明问题**：纯空格输入时，原答案返回的是**一个空格**，而不是空串。
-
-**但 `''.split(/\s+/)` 是 `['']`**，所以 `''` 走一遍是 `['']` → reverse → `['']` → join → `''`。✅ 没问题。
-
-**`'   '.trim()` 是 `''`**，同上。✅
 
 #### 修复二：手动扫描（不依赖正则，更可控）
 
@@ -677,14 +668,19 @@ function reverseWord(s: string): string {
 }
 ```
 
-**这个版本的好处**：
+**好处**：
+
 - **不依赖 `trim`**，逻辑自洽
 - 能处理任意空白（空格、Tab、换行）
 - **支持 Unicode**（`for...of` 按码点）
 
-**代价**：`cur += ch` 在很长的字符串下有性能问题（虽然现代引擎有 rope 优化）。生产代码可以用数组收集字符。
+**代价**：`cur += ch` 在很长的字符串下有额外拷贝；生产代码可以用数组收集字符。
 
-> **面试话术**：「这题有个容易踩的坑：`split(/\s+/)` 在字符串以空白开头或结尾时会产生空字符串元素，直接 reverse + join 会多出空格。修复是加 `trim()`，或者手动扫描、只在遇到非空词时才 push。我一般用 `trim().split(/\s+/).reverse().join(' ')`，一行搞定且能归一多个连续空格。」
+**口述要点**：
+
+- `split(/\s+/)` 在字符串以空白开头或结尾时会产生空串元素，直接 `reverse().join(' ')` 会多出空格
+- 最短修复是 `trim().split(/\s+/).reverse().join(' ')`，同时归一多个连续空白
+- 需要处理任意空白与 Unicode 时，用手动扫描版，只在 `cur` 非空时 push
 
 ---
 
@@ -727,6 +723,7 @@ interface TreeNode {
   id: number;
   name?: string;
   children?: TreeNode[];
+  parentId?: number | null;     // 父引用结构用这个字段
 }
 
 function treePath(tree: readonly TreeNode[], id: number): TreeNode[] | null {
@@ -742,15 +739,15 @@ function treePath(tree: readonly TreeNode[], id: number): TreeNode[] | null {
     return false;
   }
 
-  return dfs(tree) ? [...path] : null;              // ★ 返回副本
+  return dfs(tree) ? [...path] : null;
 }
 ```
 
 **关键三点**：
 
 1. **`path.push` / `path.pop` 配对**：进入时 push，没找到就 pop（回溯）
-2. **找到时直接 `return true`，不 pop**——因为 path 正是我们要的路径
-3. **返回 `[...path]` 而不是 `path`**——否则返回的是内部数组的引用，后续调用会污染它
+2. **找到时直接 `return true`，不 pop**——此时 `path` 正是目标路径
+3. **返回 `[...path]` 是防御性拷贝**：本实现返回后不再修改 `path`，直接返回 `path` 结果也正确，拷贝用于把结果与内部数组解耦
 
 **复杂度**：O(n) 时间（每个节点进出一次）、O(depth) 空间（只有一条路径 + 递归栈）。
 
@@ -799,13 +796,13 @@ function pathByParentId(
 
 | 优化 | 说明 |
 |---|---|
-| **迭代 DFS**（显式栈） | 避免递归爆栈（默认约 1 万层） |
+| **迭代 DFS**（显式栈） | 避免深树递归爆栈 |
 | **先建 id → node 的 Map** | 如果查询多次，一次建表 O(n)，之后每次查询 O(1) 定位 + O(depth) 回溯 |
 | **给每个节点加 path 字段** | 建树时就算好，查询 O(1)，但内存翻倍 |
 
 ---
 
-### 10.3.9 product【原答案类型全丢】
+### 10.3.9 product
 
 **题目**：实现 `product` 方法（多个数组的笛卡尔积）。
 
@@ -836,7 +833,7 @@ product([]);           // []    ← 1 个空数组时返回空
 product([1, 2], []);   // []    ← 任一为空则结果为空
 ```
 
-**这三个边界都是正确的**（笛卡尔积的数学定义：空集的积有 1 个元素——空元组）。
+这三个边界符合笛卡尔积的数学定义：空集的积有 1 个元素——空元组。
 
 #### 精确类型的实现
 
@@ -870,7 +867,7 @@ r[0][1].toUpperCase();   // ✅ 因为 'a'|'b' 是 string
 r[0][2];                 // ❌ 报错：长度是 2
 ```
 
-**为什么必须用 `as const`**：不加的话 `[1, 2]` 推断成 `number[]`，`ElementsOf` 得到 `number` 而不是 `1 | 2`。**但即使不加，`[number, string]` 这个元组结构也是精确的**——这已经比 `any[][]` 强太多了。
+**为什么必须用 `as const`**：不加的话 `[1, 2]` 推断成 `number[]`，`ElementsOf` 得到 `number` 而不是 `1 | 2`。**但即使不加，`[number, string]` 这个元组结构也是精确的**，比 `any[][]` 多了元素类型与长度约束。
 
 **`ElementsOf` 为什么能保持元组**：这是一个 **homomorphic mapped type**（`[K in keyof T]` 直接作用于 `T`），TS 对元组/数组有特殊处理，会保持结构。
 
@@ -907,15 +904,15 @@ function* productGen<T extends readonly (readonly unknown[])[]>(
 product(a, b, c).length === a.length * b.length * c.length
 ```
 
-**所以要提醒调用方：这个函数的输出规模是乘积级的**，实际用的时候要小心。
+输出规模是各数组长度的乘积，实际调用时要先确认量级。
 
 ---
 
-### 10.3.10 myAll【原答案有空数组死锁 bug】
+### 10.3.10 myAll
 
 **题目**：实现 `Promise.all`。
 
-#### 原答案的致命 bug
+#### 原答案的 bug
 
 ```ts
 // ❌ 原答案
@@ -944,17 +941,15 @@ count 永远是 0
     ↓
 `++count === 0` 永远为 false（因为 count 先自增变成 1）
     ↓
-Promise 永久 pending  💥
+Promise 永久 pending
 ```
 
 **实测验证**（Node 22，用 `Promise.race` 加 100ms 超时探测）：
 
 ```
-badAll([])  → TIMEOUT（死锁，Promise 永久 pending）
-goodAll([]) → []      ✅ 立即 resolve
+原答案 myAll([]) → TIMEOUT（Promise 永久 pending）
+修正版 myAll([]) → []      ✅ 立即 resolve
 ```
-
-**这就是「看起来对、但在边界上死锁」的典型 bug**。面试官问「空数组呢」就是在等你这个。
 
 **其他三个问题**：
 
@@ -962,9 +957,9 @@ goodAll([]) → []      ✅ 立即 resolve
 |---|---|
 | **参数类型太窄** | `Promise<T>[]` 不接受普通值（`Promise.all([1, 2])` 是合法的） |
 | **不支持 `Iterable`** | 原生 `Promise.all` 接受任何可迭代对象（Set、生成器） |
-| **用 `forEach` 处理稀疏数组** | `forEach` 会跳过空洞，导致某些索引永远不被赋值 |
+| **用 `forEach` 处理稀疏数组** | `forEach` 会跳过空洞，导致某些索引永远不被赋值、`count` 到不了 `len` |
 
-#### 正确实现（面试版）
+#### 正确实现
 
 ```ts
 function myAll<T>(values: Iterable<T | Promise<T>>): Promise<Awaited<T>[]> {
@@ -996,7 +991,7 @@ function myAll<T>(values: Iterable<T | Promise<T>>): Promise<Awaited<T>[]> {
 
 | 点 | 原因 |
 |---|---|
-| **`if (len === 0) resolve([])`** | 修复空数组死锁 |
+| **`if (len === 0) resolve([])`** | 空输入直接 resolve |
 | **`for` 循环而不是 `forEach`** | 稀疏数组下 `forEach` 会跳过空洞，导致 `count` 永远到不了 `len` |
 | **`Promise.resolve(arr[i])`** | 支持普通值（`myAll([1, 2])`） |
 | **`.then(onFulfilled, onRejected)`** | 用第二个参数捕获，**避免多建一个 Promise**（`.then().catch()` 会额外创建一个） |
@@ -1139,7 +1134,7 @@ function myAny<T>(values: Iterable<T | Promise<T>>): Promise<Awaited<T>> {
 | 模式 | 出现在 | 怎么写 |
 |---|---|---|
 | **泛型 + 两个类型参数** | myMap、product | `<T, U>` 或 `<T extends ...>` |
-| **边界：空输入** | 全部 10 道 | 开头 `if (!len) return ...` |
+| **边界：空输入** | 全部 10 道 | 给出确定结果，如 `sum()` → 0、`myAll([])` → `[]` |
 | **边界：稀疏数组 / 空洞** | myMap、myAll | `i in arr` / 用 `for` 不用 `forEach` |
 | **避免拷贝** | treePath | push/pop 回溯而不是 `[...path, x]` |
 | **类型推导要精确** | product、myAll、objToArray | 元组映射类型 + `as const` + `Awaited` |
@@ -1158,7 +1153,7 @@ function myAny<T>(values: Iterable<T | Promise<T>>): Promise<Awaited<T>> {
 □ 有没有不必要的拷贝？（深递归里的展开）
 ```
 
-**面试时写完代码，主动按这个清单说一遍**——比等面试官问要好得多。
+写完代码按此清单逐项核对。
 
 ---
 
@@ -1166,34 +1161,17 @@ function myAny<T>(values: Iterable<T | Promise<T>>): Promise<Awaited<T>> {
 
 ### 30 秒版（开场）
 
-> 这类手写题我会先确认三件事：**输入的类型和边界**（空、单元素、重复）、**要不要保持顺序**、**能不能改入参**。然后写实现，写完主动报复杂度和边界。最后如果有类型上的讲究（比如泛型推导、`readonly`），我会额外说一句。
+- 先确认三件事：**输入的类型和边界**（空、单元素、重复）、**要不要保持顺序**、**能不能改入参**
+- 再写实现，写完主动报时间/空间复杂度和边界
+- 类型上有取舍（泛型推导、`readonly`）时补一句
 
-### 2 分钟版（以 myAll 为例，展示答题节奏）
+### 2 分钟版（以 myAll 为例）
 
-> 我先确认需求：实现一个类似 `Promise.all` 的方法，**所有成功才成功、任一失败就失败、结果顺序和输入一致**。
->
-> **边界上我要处理三个**：空数组要立即 resolve（这是最容易漏的，因为 `forEach` 不执行、计数永远到不了 0）；入参可能是普通值不是 Promise，所以要用 `Promise.resolve` 包一层；入参可能是稀疏数组，所以要用 `for` 循环而不是 `forEach`，否则某些索引永远不被处理、计数永远不齐。
->
-> **实现**：外层一个 `new Promise`，内部维护 `results` 数组和 `count` 计数器，遍历输入，每个元素 `Promise.resolve().then(onFulfilled, onRejected)`——**用 `.then` 的第二个参数而不是 `.catch`，可以少建一个 Promise**。成功时把值按**索引**写入 `results`（不能用 push，因为完成顺序是乱的），计数到长度就 resolve；失败时直接 reject。
->
-> **类型上**，如果要做到和原生一样精确，可以写成泛型 + 元组映射：`<T extends readonly unknown[]>(values: T): Promise<{[P in keyof T]: Awaited<T[P]>}>`，这样 `myAll([Promise.resolve(1), 'a'] as const)` 会得到 `[number, 'a']` 而不是 `(number | string)[]`。`Awaited` 会递归解包 Promise。
->
-> **复杂度** O(n) 时间、O(n) 空间。如果想扩展，`allSettled` 就是把每个 Promise 都 `.then` 成一个永不 reject 的 `{status, value/reason}` 对象再复用 `all`；`race` 是第一个 settled 就 resolve/reject；`any` 是第一个 fulfilled，全失败才 reject 一个 `AggregateError`。
-
-### 各题的「一句话补充」
-
-| 题 | 写完补一句 |
-|---|---|
-| sum | 「`reduce` 必须给初值 0，否则空数组抛错；浮点精度问题可以用整数化或 Kahan 求和」 |
-| mergeArray | 「想保持元组精度可以用变长元组类型 `[...A, ...B]`」 |
-| sleep | 「生产里应该支持 AbortSignal 可取消，否则组件卸载后还在 await」 |
-| myMap | 「要跳过稀疏数组的空洞，用 `i in arr` 判断」 |
-| objToArray | 「`Object.entries` 的类型只能给 `[string, T]`，要保留 key 字面量得用映射类型 + 断言」 |
-| firstSingleChar | 「必须用 `Map` 不能用普通对象，因为对象的数字键会被排序，破坏『原串顺序』语义」 |
-| reverseWord | 「`split(/\s+/)` 遇前后空格会产生空串元素，要 `trim()`」 |
-| treePath | 「用 push/pop 回溯避免每层拷贝 path，把 O(n·depth) 降到 O(n)」 |
-| product | 「输出规模是乘积级，大数据量应该用生成器」 |
-| myAll | 「空数组必须立即 resolve，这是原答案的 bug」 |
+- 需求：所有成功才成功、任一失败就失败、结果顺序和输入一致
+- 边界三项：空数组立即 resolve；入参可能是普通值，用 `Promise.resolve` 包一层；入参可能是稀疏数组，用 `for` 循环而不是 `forEach`（`forEach` 跳过空洞，`count` 到不了 `len`）
+- 实现：`new Promise` + `results` 数组 + `count` 计数，每个元素 `Promise.resolve(x).then(onFulfilled, onRejected)`，按**索引**写入 `results`，计数到 `len` 时 resolve
+- 类型：`<T extends readonly unknown[] | []>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>`，`myAll([Promise.resolve(1), 'a'] as const)` 得到 `[number, 'a']`
+- 复杂度 O(n) 时间、O(n) 空间；扩展版 `allSettled` / `race` / `any` 的差异见上一节
 
 ---
 
@@ -1202,7 +1180,7 @@ function myAny<T>(values: Iterable<T | Promise<T>>): Promise<Awaited<T>> {
 ```
 sum
   reduce 必须给初值 0（否则空数组抛错）
-  浮点：整数化 / 按最大小数位放大 / Kahan 求和
+  浮点：整数化 / 按最大小数位放大 / Kahan 求和（Kahan 只减少累加误差）
 
 mergeArray
   readonly T[] 更通用
@@ -1215,7 +1193,7 @@ sleep
 
 myMap
   ★ 稀疏数组要 i in arr 判断（原生 map 跳过空洞）
-  new Array(len) + result[i] = 保长度
+  new Array(len) + result[i] = 保持稀疏（不填洞）
   三个参数 + thisArg 才和原生一致
 
 objToArray
@@ -1235,7 +1213,7 @@ reverseWord
 treePath
   ★ 原答案每层 [...path, node] 是 O(depth) 拷贝 → O(n·depth)
   改 push/pop 回溯 → O(n)
-  ★ 返回 [...path] 而不是 path（否则返回内部引用）
+  返回 [...path] 作防御性拷贝
   children?.length 判断（[] 是 truthy）
 
 product
@@ -1245,10 +1223,10 @@ product
   大数据量用生成器（否则 OOM）
 
 myAll
-  ★★ 原答案空数组永不 resolve（forEach 不执行 → count 永远 0）
+  ★★ 空数组必须立即 resolve（forEach 不执行 → count 永远 0）
   ★ 用 for 循环不用 forEach（稀疏数组会跳过）
   ★ Promise.resolve 包一层（支持普通值）
   ★ .then(onFulfilled, onRejected) 而不是 .catch（少建一个 Promise）
   ★ results[i] 而不是 push（保证顺序）
-  精确类型：<T extends readonly unknown[]>(v: T) => Promise<{[P in keyof T]: Awaited<T[P]>}>
+  精确类型：<T extends readonly unknown[] | []>(v: T) => Promise<{[P in keyof T]: Awaited<T[P]>}>
 ```

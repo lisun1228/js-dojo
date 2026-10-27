@@ -1,8 +1,6 @@
 # TS · 05 泛型与方法重载
 
-> 本册覆盖：泛型、方法重载
-> 题单只给了 `identity<T>` 和一个 `pad` 的例子，**远不够**。泛型是 TS 里最能拉开差距的一块——面试官会顺着往「约束、推断、`keyof`、条件类型、映射类型、手写工具类型」追问。
-> 本册按「泛型基础 → 类型运算符 → 条件/映射类型 → 手写工具类型 → 方法重载」的顺序展开。
+> 覆盖：泛型基础 → 类型运算符 → 条件/映射类型 → 手写工具类型 → 方法重载
 
 ---
 
@@ -61,7 +59,7 @@ const a = identity('hello');   // a 是 'hello'
 const b = identity(42);        // b 是 42
 ```
 
-**`T` 把「参数类型」和「返回类型」绑定在一起了**——这才叫「类型参数化」。
+**`T` 把「参数类型」和「返回类型」绑定在一起**，这是泛型与 `any`、联合类型的根本区别。
 
 ### 5.2.2 `T` 只是一个约定名
 
@@ -89,7 +87,7 @@ function identity<Whatever>(x: Whatever): Whatever { return x; }
 function map<TInput, TOutput>(arr: TInput[], fn: (x: TInput) => TOutput): TOutput[];
 ```
 
-### 5.2.3 泛型会保留「字面量类型」（这一点常被忽略）
+### 5.2.3 泛型会保留「字面量类型」
 
 ```ts
 function identity<T>(x: T): T { return x; }
@@ -97,13 +95,15 @@ function identity<T>(x: T): T { return x; }
 const a = identity('hello');   // 类型是 'hello'，不是 string！
 const b = identity(1);         // 类型是 1，不是 number！
 
-// 如果想「拓宽」成 string/number，要加约束
+// 加约束不会拓宽，推断结果仍是字面量
 function identity2<T extends string | number>(x: T): T { return x; }
-// 仍然保留字面量…… 要拓宽得显式标注
-const c: string = identity('hello');
+const c = identity2('hello');  // 仍是 'hello'
+
+// 要拿到 string，只能显式标注变量
+const d: string = identity2('hello');
 ```
 
-**为什么**：泛型推断会尽量保留精确类型（这叫「字面量保留」）。**这在写常量、配置、判别联合时很有用，但也可能意外导致类型过窄。**
+**为什么**：泛型推断会尽量保留精确类型。写常量、配置、判别联合时有用，也可能意外导致类型过窄。
 
 ---
 
@@ -154,13 +154,11 @@ s.push(1);
 s.push('a');    // ❌ 报错
 ```
 
-**也可以让 TS 推断**：
+**`T` 没有推断来源**：构造函数不带参数，`new Stack()` 得到 `Stack<unknown>`；工厂函数同样推断不出 `T`，只能显式传。
 
 ```ts
-const s = new Stack<number>();
-// 或者写工厂函数
 function createStack<T>(): Stack<T> { return new Stack<T>(); }
-const s2 = createStack<string>();   // 显式
+const s2 = createStack<string>();   // 显式指定
 ```
 
 ### 5.3.5 泛型接口 vs 泛型函数（一个容易搞错的点）
@@ -204,7 +202,7 @@ getLength({ length: 5 });// ✅ 鸭子类型
 getLength(123);          // ❌ number 没有 length
 ```
 
-**注意这里的关键词是 `extends`，但语义是「约束 / 必须满足」**，不是「继承」。这是 TS 里 `extends` 的第二个用途（第三个是条件类型里）。
+**关键词是 `extends`，语义是「约束 / 必须满足」**，不是「继承」。同一个词在 TS 里有四种用法：
 
 | `extends` 出现的场景 | 含义 |
 |---|---|
@@ -280,11 +278,7 @@ const res2: ApiResponse<{ id: string }> = { code: 0, data: { id: '1' } };
 interface Bad<T = string, U> { }
 ```
 
-**实战用途**：给工具类型提供合理默认值。
-
-```ts
-type DeepPartial<T, D extends number = 5> = ...
-```
+**实战用途**：给工具类型留默认值，调用方不用每次都写全参数。
 
 ---
 
@@ -320,22 +314,25 @@ const el = document.querySelector<HTMLDivElement>('#app');
 // 不传的话是 Element | null
 ```
 
-### 5.6.3 推断失败时的行为
+### 5.6.3 混合实参与 `NoInfer`
 
 ```ts
 function pair<T>(a: T, b: T): [T, T] { return [a, b]; }
 
-pair(1, 'a');    // ⚠️ T 推断为 number | string（联合），不报错
-// 如果想报错，可以用 NoInfer 或者改成两个参数
+pair(1, 'a');                    // ❌ T 从第一个实参推断为 number，第二个实参不匹配
+pair<number | string>(1, 'a');   // ✅ 显式写联合
 ```
 
-**`NoInfer<T>`（TS 5.4）**：阻止从某个位置推断。
+**`NoInfer<T>`（TS 5.4）**：让某个位置不参与推断，只做检查。
 
 ```ts
 function createFSM<S extends string>(config: {
-  initial: NoInfer<S>;      // 不从 initial 推断 S
+  initial: NoInfer<S>;      // S 只从 states 推断
   states: S[];
 }) { }
+
+createFSM({ initial: 'idle', states: ['idle', 'run'] });   // ✅
+createFSM({ initial: 'idle', states: ['run'] });           // ❌ 'idle' 不在 states 里
 ```
 
 ---
@@ -510,7 +507,7 @@ type Split<S extends string, Sep extends string = ''> =
 type Parts = Split<'a,b,c', ','>;    // ['a', 'b', 'c']
 ```
 
-**⚠️ 递归有深度限制**（约 50 层，或触发 `Type instantiation is excessively deep`）。
+**⚠️ 非尾递归有深度限制**：`Split` 这类写法实测 40 层通过、49 层即触发 `Type instantiation is excessively deep`；TS 4.5 起尾递归形式（如累加数组长度）可到约 1000 层。
 
 ---
 
@@ -568,11 +565,7 @@ type OmitByType<T, U> = {
 
 ### 5.10.1 `Partial` / `Required` / `Readonly`
 
-```ts
-type MyPartial<T> = { [K in keyof T]?: T[K] };
-type MyRequired<T> = { [K in keyof T]-?: T[K] };
-type MyReadonly<T> = { readonly [K in keyof T]: T[K] };
-```
+写法就是 5.9.2 的三个修饰符：`?` 加可选、`readonly` 加只读、`-?` 去可选。
 
 ### 5.10.2 `Pick` / `Omit` / `Record`
 
@@ -586,17 +579,11 @@ type MyExclude<T, U> = T extends U ? never : T;
 type MyOmit<T, K extends keyof any> = MyPick<T, MyExclude<keyof T, K>>;
 ```
 
-**`Omit` 的实现思路值得说**：用 `Exclude` 从 `keyof T` 里减去 `K`，再 `Pick` 出来。
+**`Omit` 的实现思路**：用 `Exclude` 从 `keyof T` 里减去 `K`，再 `Pick` 出来。
 
 ### 5.10.3 `ReturnType` / `Parameters`（用 `infer`）
 
-```ts
-type MyReturnType<T extends (...args: any) => any> =
-  T extends (...args: any) => infer R ? R : never;
-
-type MyParameters<T extends (...args: any) => any> =
-  T extends (...args: infer P) => any ? P : never;
-```
+实现见 5.8.3；内置版本多了 `T extends (...args: any) => any` 约束，传入非函数类型直接报错，而不是静默退化成 `never`。
 
 ### 5.10.4 `DeepPartial`（最常考的一道）
 
@@ -633,17 +620,16 @@ type P = DeepPartial<Config>;
 // {
 //   name?: string;
 //   nested?: { a?: number; b?: { c?: boolean } };
-//   list?: DeepPartial<{ id: string }>[];
+//   list?: { id?: string }[];
 //   fn?: () => void;
 // }
 ```
 
 ### 5.10.5 `UnionToTuple`（类型体操，加分）
 
-```ts
-type UnionToIntersection<U> =
-  (U extends any ? (x: U) => void : never) extends ((x: infer I) => void) ? I : never;
+`UnionToIntersection` 见 5.8.3。联合本身无序，转元组要靠函数参数（逆变位置）逐个取出「最后一个成员」：
 
+```ts
 type LastOfUnion<U> =
   UnionToIntersection<U extends any ? () => U : never> extends () => infer R ? R : never;
 
@@ -651,7 +637,7 @@ type UnionToTuple<U, Last = LastOfUnion<U>> =
   [U] extends [never] ? [] : [...UnionToTuple<Exclude<U, Last>>, Last];
 ```
 
-**这段能写出来基本可以横着走了**，但面试一般不要求。知道「联合是乱序的，转元组要靠函数参数逆变」这个原理就够。
+面试一般不要求，但要能说出它依赖「逆变位置推断成交叉」这条规则。
 
 ---
 
@@ -697,8 +683,6 @@ function fn(x: string | number): string { return String(x); }   // ⚠️ 实现
 fn(1);          // ❌ 仍然报错！因为重载签名里没有 number
 ```
 
-**这是最反直觉的一点**——实现签名宽不等于调用能传。
-
 **② 实现签名必须「兼容」所有重载签名**
 
 ```ts
@@ -709,7 +693,7 @@ function fn(x: number): string { return String(x); }
 //          （因为 string 的重载在实现里没被覆盖）
 ```
 
-**③ 重载从上到下匹配，**更具体的放前面**
+**③ 重载从上到下匹配，更具体的放前面**
 
 ```ts
 // ❌ 错误顺序：第一个 any 吞掉一切
@@ -805,14 +789,14 @@ interface EventMap {
 function on<K extends keyof EventMap>(
   event: K,
   handler: (data: EventMap[K]) => void
-): void;
+): void { ... }
 
 on('click', (d) => d.x);        // ✅ d 推断为 { x: number; y: number }
 on('keydown', (d) => d.key);    // ✅ d 推断为 { key: string }
 on('click', (d) => d.key);      // ❌ 报错：click 的参数没有 key
 ```
 
-**这个模式比重载优雅得多**，而且是类型安全的。**这是「会用泛型」和「只会写 `<T>`」的分界线。**
+`event` 与 `handler` 的类型由同一个 `K` 绑定，所以这个模式比重载更精确：新增事件只需扩展 `EventMap`。
 
 ---
 
@@ -829,8 +813,8 @@ on('click', (d) => d.key);      // ❌ 报错：click 的参数没有 key
 | **分布式条件类型没意识到** | `T extends U ? X : Y` 在 T 是裸类型参数 + 联合时会分发 |
 | **`DeepPartial` 没排除函数** | 函数也是 object，会被递归成 `{}` |
 | **`DeepPartial` 没单独处理数组** | 会变成「带数组方法的对象」而不是数组 |
-| **`typeof` 用在类型上** | ❌ `typeof` 只能用于值；取类型用 `keyof` / 索引访问 |
-| **`NoInfer` 不知道** | TS 5.4 新增，用于阻止某处参与推断 |
+| **把类型名当值取 `typeof`** | ❌ `typeof` 只能作用于值；类型名直接当类型用 |
+| **`NoInfer` 不知道** | TS 5.4 新增，让某个位置不参与推断 |
 | **类型体操写太深** | 会触发 `Type instantiation is excessively deep`，且拖慢编辑器 |
 
 ---
@@ -839,32 +823,24 @@ on('click', (d) => d.key);      // ❌ 报错：click 的参数没有 key
 
 ### 30 秒版（泛型）
 
-> 泛型是「类型参数化」——定义时不指定具体类型，使用时再传，用 `<T>` 表示。
-> 它的核心价值不是「复用」，而是**保持类型之间的关联**：`function identity<T>(x: T): T` 能保证「传 string 进去，出来的就是 string」，而不是联合类型。
-> 泛型可以用在函数、接口、类、类型别名上。配合 `extends` 做约束（比如 `T extends { length: number }`）、配合 `keyof` 做「类型安全的对象取值」（`<T, K extends keyof T>(obj: T, key: K): T[K]`）。
-> 编译后泛型会被完全擦除，运行时拿不到 `T`。
+- 泛型是类型参数化：定义时不指定具体类型，使用时再传，用 `<T>` 表示。
+- 核心价值不是「复用」，而是**保持类型之间的关联**：`function identity<T>(x: T): T` 保证传 `string` 进去、出来的也是 `string`；`any` 和联合类型都会丢掉这个关系。
+- 用在函数、接口、类、类型别名上；配合 `extends` 约束（`T extends { length: number }`）、`keyof` 取值（`<T, K extends keyof T>(obj: T, key: K): T[K]`）。
+- 编译后泛型被完全擦除，运行时拿不到 `T`。
 
 ### 30 秒版（方法重载）
 
-> 方法重载是「多个重载签名 + 一个实现签名」。重载签名对调用方可见，**实现签名对调用方不可见**——所以调用时只按重载签名匹配。
-> 三个要点：实现签名必须兼容所有重载签名；重载从上到下匹配，**更具体的要放前面**（否则被宽泛的吞掉）；箭头函数不能写重载。
-> 重载的价值是让「输入类型 → 输出类型」的映射更精确。如果返回类型不随输入变化，用联合类型参数就够了，不需要重载。重载真正的优势场景是**参数个数不同**。
+- 结构是「多个重载签名 + 一个实现签名」，调用时**只按重载签名匹配，实现签名对调用方不可见**。
+- 三个要点：实现签名必须兼容所有重载签名；重载从上到下匹配，更具体的放前面；箭头函数不能写重载。
+- 返回类型不随输入变化时用联合参数就够；重载真正的优势场景是**参数个数不同**。
 
 ### 2 分钟版（串起来讲）
 
-> 我把泛型分四层说：基础、约束、运算符、高级。
->
-> **基础**：泛型是类型参数化，`<T>` 是约定名。核心价值是**保持类型关联**而不是复用——`identity<T>(x: T): T` 保证了输入输出同一个类型，用联合类型或 any 都会丢掉这个关系。泛型可以用在函数、接口、类、别名上。有个细节：泛型推断会**保留字面量**，`identity('a')` 得到的是 `'a'` 而不是 `string`。
->
-> **约束**：`T extends U` 里的 `extends` 意思是「必须是 U 的子类型」，不是继承。最经典的范式是 `<T, K extends keyof T>(obj: T, key: K): T[K]`——三个能力都用上了：约束 key 的范围、索引访问取精确类型、实现里 `obj[key]` 能通过检查。这也是 lodash.get、React Hook Form 的 register 的底层思路。
->
-> **运算符**：`keyof` 取键的联合，`typeof` 在类型位置取值类型（注意它和运行时 typeof 完全不同），`T[K]` 索引访问。最常用的组合是 `keyof typeof CONST`——从常量表推导联合类型，比手写枚举可靠。`as const` + `typeof obj[keyof typeof obj]` 是现代替代 enum 的标准写法。
->
-> **高级**：条件类型 `T extends U ? X : Y`，配合 `infer` 能提取类型——`ReturnType` 就是 `T extends (...args: any) => infer R ? R : never`。这里有个必考点：**分布式条件类型**——当被检查的是裸类型参数且传入联合类型时，会分发到每个成员，所以 `ToArray<string | number>` 得到的是 `string[] | number[]` 而不是 `(string | number)[]`。要阻止分发就用 `[T] extends [U]` 包一层。`never` 是特例，它不分发。
->
-> 然后是映射类型 `{[K in keyof T]?: T[K]}`，这是「类型层面的 for...in」，`-?` 和 `-readonly` 能去掉修饰符，`as` 子句能做键重映射。手写 `Partial`、`Pick`、`Omit`、`ReturnType` 都是基本功，`DeepPartial` 是最常考的一道——**必须单独处理数组和函数**，否则函数会被递归成 `{}`、数组会变成带数组方法的对象。
->
-> 最后说重载。结构是多个重载签名加一个实现签名，**实现签名对调用方不可见**，所以实现写宽了也不会放宽调用。三个坑：实现签名必须兼容所有重载；重载从上到下匹配，具体的要放前面；箭头函数不能重载。判断要不要用重载：如果返回类型不随输入变，用联合就行；如果参数个数不同，重载最合适。不过更优雅的替代是「泛型 + 映射表」，比如事件系统里 `on<K extends keyof EventMap>(event: K, handler: (d: EventMap[K]) => void)`，比重载清晰得多。
+- **基础**：类型参数化，`<T>` 只是约定名；推断会保留字面量（`identity('a')` 得到 `'a'`）；编译后擦除。
+- **约束**：`T extends U` 是「T 必须是 U 的子类型」；`<T, K extends keyof T>(obj: T, key: K): T[K]` 同时用到约束、索引访问和实现内的类型检查。
+- **运算符**：`keyof` 取键的联合；类型位置的 `typeof` 取值的类型（与运行时 `typeof` 无关）；`T[K]` 索引访问；`keyof typeof CONST` 配合 `as const` 从常量表推联合。
+- **高级**：条件类型 + `infer` 提取类型；裸类型参数遇联合会分发（`ToArray<string | number>` 得 `string[] | number[]`），`[T] extends [U]` 阻止分发，`never` 不分发；映射类型 `{ [K in keyof T]?: T[K] }` 配合 `-?` / `-readonly` / `as` 键重映射，`DeepPartial` 必须单独处理数组和函数。
+- **重载**：实现签名不可见、必须兼容所有重载、具体签名在前、箭头函数不支持；能用「泛型 + 映射表」（事件系统）替代时更精确。
 
 ### 追问表
 
@@ -888,7 +864,7 @@ on('click', (d) => d.key);      // ❌ 报错：click 的参数没有 key
 | 重载的实现签名可见吗 | **不可见**，调用只看重载签名 |
 | 重载顺序有影响吗 | 有，具体的在前，否则被宽泛的吞掉 |
 | 什么时候用重载 | 返回类型随输入变、或参数个数不同 |
-| 重载能替代成泛型吗 | 能，用「泛型 + 映射表」更优雅（事件系统） |
+| 重载能替代成泛型吗 | 能，用「泛型 + 映射表」更精确（事件系统） |
 | 箭头函数能重载吗 | 不能；用函数声明或带调用签名的接口 |
 
 ---
@@ -940,5 +916,5 @@ on('click', (d) => d.key);      // ❌ 报错：click 的参数没有 key
   ★ 从上到下匹配，具体的在前
   ★ 箭头函数不能重载（用带调用签名的 interface）
   用不用？返回类型不随输入变 → 用联合；参数个数不同 → 用重载
-  更优雅替代：泛型 + EventMap 映射表
+  更精确替代：泛型 + EventMap 映射表
 ```

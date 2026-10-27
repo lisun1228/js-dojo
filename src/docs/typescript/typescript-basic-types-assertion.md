@@ -1,7 +1,7 @@
 # TS · 02 类型系统基础：原始类型 · 联合 · 断言
 
-> 本册覆盖：内置数据类型、联合类型数组、变量声明、null/undefined 检查、类型断言
-> 这些是「必须全过」的基础题，但里面藏着几个**高频坑**：`object` vs `Object` vs `{}`、`const` 推断的「拓宽」、`??` vs `||`、`as` 不做运行时转换。
+> 覆盖：内置数据类型、联合类型数组、变量声明、null/undefined 检查、类型断言
+> 四个易错点：`object` vs `Object` vs `{}`、`const` 推断的字面量拓宽、`??` vs `||`、`as` 不做运行时转换。
 
 ---
 
@@ -57,7 +57,7 @@ TS 的类型分四组：**原始类型**（7 种）、**对象类型**（object/
 | **构造器** | `new () => Foo` | |
 | **内置对象** | `Date`、`RegExp`、`Error`、`Promise<T>`、`Map<K,V>`、`Set<T>` | |
 
-### 2.2.3 特殊类型（这四个是必问）
+### 2.2.3 特殊类型
 
 | 类型 | 含义 | 一句话 |
 |---|---|---|
@@ -66,7 +66,7 @@ TS 的类型分四组：**原始类型**（7 种）、**对象类型**（object/
 | **`never`** | 空集，不存在值 | 「永远不会有结果」（抛异常/死循环/穷尽检查） |
 | **`void`** | 无返回值 | 「函数干了事但不返回东西」 |
 
-### 2.2.4 高级类型（可能被问到）
+### 2.2.4 高级类型
 
 | 类别 | 例子 |
 |---|---|
@@ -131,14 +131,12 @@ init('hello');    // ✅ 不报错！但逻辑上肯定错了
 init(123);        // ✅ 不报错！
 
 // ✅ 正确写法
-function init(options: Record<string, unknown>) { }
+function initRecord(options: Record<string, unknown>) { }
 // 或
-function init(options: object) { }
+function initObject(options: object) { }
 // 或定义具体形状
-function init(options: { debug?: boolean }) { }
+function initShape(options: { debug?: boolean }) { }
 ```
-
-> **面试话术**：「`object` 是『非原始类型』，`Object` 和 `{}` 几乎等价，都接受原始类型。所以 `{}` 经常被误用成『空对象』——它实际接受任何非 null/undefined 的值。要表达『一个对象』应该用 `object` 或 `Record<string, unknown>`。」
 
 ---
 
@@ -155,8 +153,6 @@ let c: (string | number)[];  // ✅ 元素是 string 或 number
 let d: string | number[];    // ⚠️ 这是「string 或 number 数组」，完全不同的意思！
 ```
 
-**题 17 的考点就在这里**——问「元素可能是字符串也可能是数值的数组」，答案必须是 `(string | number)[]` 或 `Array<string | number>`，**括号不能少**。
-
 ### 2.4.2 元组（Tuple）
 
 ```ts
@@ -165,7 +161,7 @@ let point: [number, number] = [1, 2];
 
 point[0] = 3;        // ✅
 point[2] = 3;        // ❌ 报错：长度为 2 的元组没有索引 2
-point[2];            // ❌ 报错（注意：数组越界不报错，元组报错！）
+point[2];            // ❌ 报错：元组越界（数组越界不报错）
 
 // 可选元素（必须在末尾）
 let entry: [string, number?] = ['a'];
@@ -183,10 +179,8 @@ let range: [start: number, end: number] = [1, 10];
 | | 数组 `number[]` | 元组 `[number, number]` |
 |---|---|---|
 | 长度 | 不固定 | **固定** |
-| 越界访问 | ✅ 允许（类型仍是 `number`，运行时 `undefined`） | ❌ **编译期报错** |
+| 越界访问 | ✅ 允许（类型仍是 `number`，运行时 `undefined`，TS 不健全之处） | ❌ **编译期报错** |
 | 元素类型 | 全部相同 | **可以不同** |
-
-> **这个差异很重要**：`arr[10]` 在数组上不报错（TS 的不健全之处），但在元组上会报错。
 
 ---
 
@@ -219,7 +213,7 @@ if ('a' in x) {
 }
 ```
 
-**判别联合（Discriminated Union）**——这是 TS 最实用的模式之一：
+**判别联合（Discriminated Union）**：
 
 ```ts
 type Result =
@@ -265,7 +259,7 @@ const s: string = 'a';
 function add(a: number, b: number): number { return a + b; }
 ```
 
-### 2.6.2 `let` vs `const` 的推断差异（这是高频考点）
+### 2.6.2 `let` vs `const` 的推断差异
 
 **TS 有一个「字面量拓宽（literal widening）」规则**：
 
@@ -303,8 +297,6 @@ const arr = [1, 2, 3] as const;
 obj.x = 2;    // ❌ 报错（readonly）
 ```
 
-**这个知识点在实战里非常有用**：定义配置、常量表、枚举替代品。
-
 ```ts
 // 用 as const 代替 enum
 const Status = {
@@ -316,8 +308,6 @@ const Status = {
 type Status = typeof Status[keyof typeof Status];
 // → 'idle' | 'loading' | 'success'
 ```
-
-> **这段代码是「现代替代 enum」的标准写法**，值得背下来。
 
 ### 2.6.3 `var` / `let` / `const` 在 TS 里的差异
 
@@ -337,7 +327,7 @@ type Status = typeof Status[keyof typeof Status];
 
 ### 2.7.1 `strictNullChecks` 是分水岭
 
-**关闭时（TS 早期默认，非常危险）**：
+**关闭时（旧版默认关闭；现在需显式 `strictNullChecks: false`）**：
 
 ```ts
 let s: string = null;        // ✅ 不报错！
@@ -353,7 +343,7 @@ t.toUpperCase();             // ❌ 报错：可能是 null
 t?.toUpperCase();            // ✅
 ```
 
-**`strict: true` 会自动开启 `strictNullChecks`**——这是 TS 最重要的一个开关，**不开等于白用 TS**。
+**`strict: true` 会自动开启 `strictNullChecks`**；不开它，`null` 能赋给任何类型。
 
 ### 2.7.2 四种检查方式
 
@@ -379,9 +369,9 @@ if (x) { }
 const len = x?.length ?? 0;
 ```
 
-**为什么 `x == null` 是推荐的**：它同时匹配 `null` 和 `undefined`，比 `x === null || x === undefined` 简洁得多。**这是 ESLint 唯一允许 `==` 的场景**（`eqeqeq: ["error", "always", { null: "ignore" }]`）。
+**为什么 `x == null` 是推荐的**：它同时匹配 `null` 和 `undefined`，比 `x === null || x === undefined` 简洁得多。`eqeqeq` 规则可用 `{ null: "ignore" }` 单独放行这一写法。
 
-### 2.7.3 `??` vs `||`（高频坑）
+### 2.7.3 `??` vs `||`
 
 ```ts
 const a = 0;
@@ -444,7 +434,7 @@ if (el instanceof HTMLDivElement) {
 }
 
 // 用默认值
-const el = document.querySelector('#app') ?? document.body;
+const fallbackEl = document.querySelector('#app') ?? document.body;
 
 // 用可选链
 arr.find(x => x.id === 1)?.name;
@@ -481,26 +471,19 @@ x.toFixed(); // 💥 运行时崩：x.toFixed is not a function
 1. 检查「这两个类型是否有重叠」（没有重叠会报错，需要 `as unknown as T` 双重断言）
 2. 通过后，**让编译器相信你是对的**
 
-**所以断言错了，编译期不一定报错，运行时一定崩。**
+**所以断言错了，编译期不报错，运行时值也不变**——按断言的类型调用方法才会崩。
 
 ### 2.8.3 `as const`：一个特殊的断言
 
-```ts
-const a = ['x', 'y'] as const;
-// 类型：readonly ['x', 'y']（不是 string[]）
+对 2.6.2 的字面量加 `as const`，三个作用：
 
-const b = { type: 'success' } as const;
-// 类型：{ readonly type: 'success' }（不是 { type: string }）
-```
-
-**三个作用**：
 1. **保留字面量类型**（`'x'` 而不是 `string`）
 2. **加 `readonly`**
 3. **数组变元组**（`string[]` → `readonly ['x', 'y']`）
 
 **典型用途**：常量表、配置、枚举替代品（见 2.6.2）。
 
-### 2.8.4 `satisfies`（TS 4.9 新增，能答出来很加分）
+### 2.8.4 `satisfies`（TS 4.9 新增）
 
 **问题**：类型注解会「覆盖」推断，导致类型变宽。
 
@@ -527,12 +510,8 @@ config.hots;               // ❌ 报错：拼写错误也能抓出来
 | 写法 | 校验形状 | 保留精确推断 |
 |---|---|---|
 | **类型注解** `const x: T = ...` | ✅ | ❌ 类型被写成 T |
-| **类型断言** `const x = ... as T` | ❌ **不校验** | ❌ |
+| **类型断言** `const x = ... as T` | ⚠️ 只检查可比较性，不校验完整形状 | ❌ |
 | **`satisfies`** | ✅ | ✅ |
-
-**这是三者最关键的区别，值得单独记住。**
-
-> 面试话术：「`satisfies` 是 TS 4.9 加的，解决的是『既要校验形状、又要保留精确推断』的问题。用类型注解会把变量类型写成那个宽泛的类型，用 `as` 又完全不校验。`satisfies` 两边都要——它会检查对象是否符合约束，但不改变推断出来的类型。典型场景是配置对象：既要保证字段类型对，又想在后续代码里拿到精确的字面量类型。」
 
 ### 2.8.5 一个安全的替代：类型守卫
 
@@ -549,9 +528,9 @@ function isUser(x: unknown): x is User {
   );
 }
 
-const data: unknown = JSON.parse(str);
-if (isUser(data)) {
-  data.name;    // ✅ 且保证运行时真的是 User
+const raw: unknown = JSON.parse(str);
+if (isUser(raw)) {
+  raw.name;    // ✅ 且保证运行时真的是 User
 }
 ```
 
@@ -579,26 +558,26 @@ if (isUser(data)) {
 
 ### 30 秒版（类型有哪些）
 
-> 分四组说。**原始类型**七种：string、number、boolean、null、undefined、symbol、bigint。**对象类型**：object、数组 `T[]`、元组 `[T, U]`、对象字面量、函数类型，还有内置的 Date、Promise、Map 等。**特殊类型**四个：any 关闭检查、unknown 安全但必须收窄、never 表示不存在、void 表示无返回。**字面量类型**：`'a'`、`1`、`true`，配合联合类型可以当枚举用。
-> 再往上还有联合/交叉、条件类型、映射类型、模板字面量类型，以及 Partial/Pick/Omit 这些工具类型。
+- **原始类型 7 种**：`string`、`number`、`boolean`、`null`、`undefined`、`symbol`、`bigint`；TS 不区分整数与浮点，都叫 `number`。
+- **对象类型**：`object`、`T[]`、`readonly T[]`、元组 `[T, U]`、对象字面量、函数类型，以及 `Date`、`Promise`、`Map` 等内置对象。
+- **特殊类型 4 个**：`any` 关闭检查、`unknown` 必须收窄、`never` 空集、`void` 无返回值。
+- **字面量类型**：`'a'`、`1`、`true`，配合联合类型可当枚举用。
+- 再往上：联合/交叉、条件类型、映射类型、模板字面量类型，以及 `Partial`/`Pick`/`Omit` 等工具类型。
 
 ### 30 秒版（类型断言）
 
-> 类型断言是告诉编译器「我知道这个值是什么类型」，有两种写法：`as T` 和 `<T>`，但 TSX 里只能用 `as`。
-> **它和 Java 的强制转换完全不同——不做任何运行时检查或转换**。`'hello' as unknown as number` 编译能过，但运行时 `typeof` 还是 string，调用 `toFixed` 直接崩。
-> 所以断言错了就是错了。安全的替代是类型守卫（`x is T`），或者用 `satisfies` ——它既校验形状又保留精确推断，而 `as` 完全不校验。
+- 两种写法：`as T` 与 `<T>`；TSX 里 `<T>` 与 JSX 标签冲突，只能用 `as`。
+- `as` 是编译期指令，不做运行时检查或转换：`'hello' as unknown as number` 编译通过，运行时 `typeof` 仍是 `string`，调用 `toFixed` 抛 `TypeError`。
+- 断言只要求两个类型可比较；无重叠时必须 `as unknown as T`。
+- 更安全的替代：类型守卫（`x is T`）在运行时真的检查；`satisfies` 校验形状且保留精确推断，`as` 不校验完整形状。
 
 ### 2 分钟版（把本册串起来讲）
 
-> 我按「类型从哪来」和「怎么用」两块讲。
->
-> **类型从哪来**：TS 的类型可以分成四组。原始类型七种——string、number、boolean、null、undefined、symbol、bigint，注意 **TS 不区分整数和浮点**，都叫 number。对象类型里最容易被问的是 `object` 和 `Object` 的区别：小写 `object` 表示「非原始类型」，所以字符串数字不行；大写 `Object` 和空对象字面量 `{}` 几乎等价，**接受任何非 null/undefined 的值**——这是最高频的坑，很多人以为 `{}` 表示「空对象」，结果传个字符串也通过。特殊类型四个：any、unknown、never、void。再加上字面量类型和联合类型。
->
-> **怎么用**：写类型有三种方式，优先推断，其次注解，慎用断言。这里有个细节：`let a = 'x'` 推断成 string，`const b = 'x'` 推断成 `'x'`，因为 TS 有「字面量拓宽」规则。**但对象和数组例外**——`const obj = { x: 1 }` 的属性仍然被拓宽成 number，要保留字面量必须加 `as const`，这个规则在写配置表和枚举替代品时特别有用。
->
-> 然后是 null 检查。`strictNullChecks` 是关键开关，关了的话 null 能赋给任何类型，等于白用 TS。检查手段里最推荐 `x == null`——它同时匹配 null 和 undefined，是 ESLint 唯一允许 `==` 的场景。另外 `??` 和 `||` 必须分清：`||` 遇到 0、空字符串、false 也会取默认值，`??` 只在 null/undefined 时取。这个坑在音量、分页、开关这些场景里经常出现。
->
-> 最后是断言。`as` 是编译期指令，不做运行时转换，所以断言错了运行时直接崩。更安全的做法是类型守卫，或者用 TS 4.9 的 `satisfies`——它和类型注解的区别是，注解会把变量类型写成那个宽泛类型，`satisfies` 只校验形状、保留精确推断。
+- **范围与写法**：类型分四组（原始 7 / 对象 / 特殊 4）+ 字面量类型，见 30 秒版；写类型优先推断、其次注解、慎用断言，函数参数与导出的 API 必须写注解。
+- **三个易混**：`object` 只接受非原始类型；`Object` 与 `{}` 几乎等价，接受任何非 `null`/`undefined` 的值，所以 `{}` 不能表达「空对象」。
+- **拓宽**：`let a = 'x'` 推断 `string`，`const b = 'x'` 推断 `'x'`；但对象/数组的属性与元素仍会拓宽（`{ x: number }`、`number[]`），保留字面量要 `as const`。
+- **null 检查**：`strictNullChecks` 关闭时 `null` 能赋给任何类型；`x == null` 同时匹配 `null` 与 `undefined`；`??` 只在 `null`/`undefined` 触发，`||` 在 `0`、`''`、`false` 时也触发。
+- **断言**：`as` 不做运行时转换，断言错了运行时按错误类型继续跑；更安全的是类型守卫，配置对象可用 `satisfies` 校验形状并保留推断。
 
 ### 追问表
 
@@ -648,12 +627,12 @@ const 与拓宽
   枚举替代：const S = {...} as const; type S = typeof S[keyof typeof S]
 
 null 检查
-  strictNullChecks 是关键；x == null 同时匹配两者（唯一合法 ==）
+  strictNullChecks 是关键；x == null 同时匹配两者（eqeqeq 可放行）
   ?? 只在 null/undefined 触发；|| 在 falsy（0 '' false NaN）也触发 ← 高频坑
   ! 只是关检查，不做运行时判断
 
 断言三兄弟
-  as T        → 编译期指令，不做运行时转换，错了就崩
+  as T        → 编译期指令，运行时值不变，用错方法才崩
   as const    → 保留字面量 + readonly + 元组化
   satisfies   → 校验形状 + 保留精确推断（vs 注解覆盖推断、as 不校验）
 ```

@@ -20,7 +20,7 @@
 
 ## 一、32 题分类地图
 
-题单是按「别人整理的顺序」排的，不是按知识依赖排的。下面按**知识域**重新归类，共 7 个域 + 1 个总览：
+题单的原始顺序不是按知识依赖排的。下面按**知识域**重新归类，共 7 个域 + 1 个总览：
 
 | 分册 | 知识域 | 覆盖题号 | 题数 | 核心考点 |
 |---|---|---|---|---|
@@ -33,7 +33,7 @@
 | **06** | 集合 / 迭代 / 数组扩展 | 17、18、16、22、7 | 5 | SameValueZero、弱引用、迭代协议 |
 | **07** | 类型转换与隐式规则 | 30、20 | 2 | ToPrimitive、`==` 规则表 |
 
-> **合计 32 题**（含 3 组重复题，去重后实际独立考点约 **26 个**）
+> **合计 32 题**（含 3 组重复题）
 
 ### 按「面试出现频率」排序（建议投入时间）
 
@@ -51,7 +51,7 @@
 01（作用域与 this）→ 02（原型与对象）→ 03（响应式）→ 04（异步）→ 06（集合）→ 07（类型转换）→ 05（模块）
 ```
 
-原因：`02 原型链`是 `05 class` 的前提；`03 Proxy` 依赖 `02 对象`；`04 Promise` 依赖 `01 闭包`；`07 隐式转换`依赖 `02 ToPrimitive`（对象转原始值走 `valueOf`）。
+原因：`02 原型链`是 `05 class` 的前提；`03 Proxy` 依赖 `02 对象`；`04 Promise` 依赖 `01 闭包`；`07 隐式转换`依赖 `02 ToPrimitive`（对象转原始值默认 hint 先走 `valueOf`）。
 
 ---
 
@@ -73,15 +73,15 @@
 | **21. 事件循环** | **JS 运行时（HTML 规范 + Node）** | 属 JS 基础，不是 ES6 语法 |
 | **13. 监听对象属性变化** | **响应式原理** | 横跨 `defineProperty`（ES5）和 `Proxy`（ES6） |
 
-> **面试遇到这种「题不达意」的情况怎么办**：不要纠正面试官，先答，答完补一句「严格来说这块属于 XX，不是 ES6 语法本身，但工程里确实常放在一起问」——这句话本身就是加分项，说明你对知识边界清楚。
+> **遇到「题不达意」**：先答，不要纠正面试官，答完补一句「严格来说这块属于 XX，不是 ES6 语法本身，但工程里确实常放在一起问」。
 
 ### 2.3 有三道题只给了「结论」没给「为什么」
 
-题单里第 5、15、32 题的参考答案都是一句话概括，而这些恰好是面试最爱深挖的。分册 02、03 会把它们展开到源码/规范层面（比如 `class` 的 `[[ConstructorKind]]`、Proxy 的 `receiver` 参数为什么要传）。
+第 5、15、32 题是面试常深挖的点，分册 02、03 会把它们展开到源码/规范层面（比如 `class` 的 `[[ConstructorKind]]`、Proxy 的 `receiver` 参数为什么要传）。
 
 ### 2.4 第 20 题是「趣味题」，但考的是真知识
 
-`(a==1 && a==2 && a==3)` 看似脑筋急转弯，实际考的是 **`ToPrimitive` 抽象操作 + `valueOf` 优先级**。能答出来不算厉害，能顺带说清「`==` 在对象 vs 原始值时先走哪条路径、hint 是什么」才是加分。详见分册 07。
+`(a==1 && a==2 && a==3)` 考的是 **`ToPrimitive` 抽象操作 + `valueOf` 优先级**，还要能说清 `==` 在对象与原始值之间先走哪条路径、hint 是什么。详见分册 07。
 
 ---
 
@@ -100,11 +100,11 @@
 
 **问题有三**：
 
-1. **混杂了版本**：`可选链`、`空值合并` 是 **ES2020**，不是 ES6。被追问「这是 ES6 吗」就露馅了。
+1. **混杂了版本**：`可选链`、`空值合并` 是 **ES2020**，不是 ES6；被追问版本时会答错。
 2. **没有结构**：面试官听完记不住，也无法顺着问。
-3. **没有体感**：全是名词，没有一个「解决了我什么实际问题」。
+3. **没有体感**：全是名词，没有一个「解决了什么实际问题」。
 
-**正确做法**：先说一句「ES6 的新特性我一般按五层来看」，然后每层点名 2-3 个最关键的，最后落到「其中对我影响最大的是 X，因为……」
+**正确做法**：先说「ES6 的新特性按五层来看」，每层点名 2-3 个最关键的，最后落到「影响最大的是 X，因为……」
 
 ### 3.2 五层结构（推荐答题框架）
 
@@ -122,18 +122,20 @@
 | 对象字面量增强 | `{a: a}` 冗余 | 属性简写、方法简写、计算属性名 |
 
 ```js
-// 一眼看出「糖」有多甜：ES5 vs ES6
+// ES5 vs ES6 对照
 // ES5
-var self = this;
+var name = 'demo';
 function sum() {
   var nums = Array.prototype.slice.call(arguments);
   return nums.reduce(function (a, b) { return a + b; }, 0);
 }
 var obj = { name: name, sum: sum };
 
-// ES6
-const sum = (...nums) => nums.reduce((a, b) => a + b, 0);
-const obj = { name, sum };
+// ES6（块级作用域，避免与上面重名）
+{
+  const sum = (...nums) => nums.reduce((a, b) => a + b, 0);
+  const obj = { name, sum };
+}
 ```
 
 #### 第二层：数据能力 —— 原生就有合适的数据结构
@@ -147,7 +149,7 @@ const obj = { name, sum };
 | `Object` 静态方法 | `Object.assign`、`Object.is`（修掉 `NaN !== NaN` 和 `+0 === -0`） |
 | 二进制与字符串 | `ArrayBuffer`/`TypedArray`、`String.prototype.includes/startsWith/endsWith/repeat` |
 
-> **能加分的细节**：`Set` 判重的相等算法是 **SameValueZero**，所以 `new Set([NaN, NaN])` 只剩一个（这点和 `indexOf` 不同，`indexOf` 找不到 `NaN`）。详见分册 06。
+> **细节**：`Set` 判重的相等算法是 **SameValueZero**，所以 `new Set([NaN, NaN])` 只剩一个（这点和 `indexOf` 不同，`indexOf` 找不到 `NaN`）。详见分册 06。
 
 #### 第三层：异步 —— 从回调到「同步写法」
 
@@ -163,7 +165,7 @@ const obj = { name, sum };
 | `Generator` | `function*` + `yield`，可暂停/恢复的函数；`co` 库用它模拟 `await` |
 | 迭代协议 | `for...of` 能遍历任何实现了 `Symbol.iterator` 的对象 |
 
-> **面试话术**：「`async/await` 不是 ES6，是 ES2017。但它的底层就是 **Generator + 自动执行器 + Promise**，所以讲 ES6 的异步绕不开 Generator。」——把版本边界说清，同时展示你知道实现原理。
+> **版本边界**：`async/await` 不是 ES6，是 ES2017；它的本质是 **Generator + 自动执行器 + Promise**，所以讲 ES6 的异步绕不开 Generator。
 
 #### 第四层：模块化 —— JS 终于有了语言级模块
 
@@ -175,14 +177,14 @@ const obj = { name, sum };
 | Tree-shaking | 支持 | 不支持 |
 | 顶层 `this` | `undefined` | `module.exports` |
 
-> 这是分册 05 的核心，这里只需一句带过：「ESM 是**静态**的，所以打包工具能做 tree-shaking，这是 ES6 对现代前端工程最大的贡献之一。」
+> ESM 是**静态**的，所以打包工具能做 tree-shaking。详见分册 05。
 
 #### 第五层：元编程 —— 能改写语言默认行为
 
 | 特性 | 作用 |
 |---|---|
 | `Proxy` | 拦截对象的 13 种内部操作（`get`/`set`/`has`/`deleteProperty`/`apply`/`construct`…） |
-| `Reflect` | 把 `Object` 上的内部方法搬到统一命名空间，**与 Proxy trap 一一对应**，作为「默认行为」的兜底 |
+| `Reflect` | 把零散的内部操作整理成统一命名空间，**与 Proxy trap 一一对应**，作为「默认行为」的兜底 |
 | `Symbol.toPrimitive`、`Symbol.iterator` 等 | 用 well-known symbol 定制对象在语言内部的行为 |
 
 > 这是 Vue3 响应式的基石。`Proxy` 相比 `Object.defineProperty` 的核心优势：**能监听新增/删除属性、能直接监听数组、惰性劫持**。详见分册 03。
@@ -191,44 +193,48 @@ const obj = { name, sum };
 
 ```js
 // ============ ES5 时代 ============
-function User(name, age) {
-  this.name = name;
-  this.age = age;
-}
-User.prototype.greet = function () {
-  return 'Hi, ' + this.name;
-};
-
-var list = [1, 2, 3];
-var doubled = list.map(function (n) { return n * 2; });
-
-getUser(function (err, user) {
-  if (err) return handle(err);
-  getOrders(user.id, function (err, orders) {
-    if (err) return handle(err);
-    render(orders);   // 再深一层就成金字塔了
-  });
-});
-
-// ============ ES6+ 时代 ============
-class User {
-  constructor(name, age) {
+(function () {
+  function User(name, age) {
     this.name = name;
     this.age = age;
   }
-  greet() {
-    return `Hi, ${this.name}`;
+  User.prototype.greet = function () {
+    return 'Hi, ' + this.name;
+  };
+
+  var list = [1, 2, 3];
+  var doubled = list.map(function (n) { return n * 2; });
+
+  getUser(function (err, user) {
+    if (err) return handle(err);
+    getOrders(user.id, function (err, orders) {
+      if (err) return handle(err);
+      render(orders);   // 再深一层就成金字塔了
+    });
+  });
+})();
+
+// ============ ES6+ 时代 ============
+{
+  class User {
+    constructor(name, age) {
+      this.name = name;
+      this.age = age;
+    }
+    greet() {
+      return `Hi, ${this.name}`;
+    }
   }
-}
 
-const doubled = [1, 2, 3].map((n) => n * 2);
+  const doubled = [1, 2, 3].map((n) => n * 2);
 
-try {
-  const user = await getUser();
-  const orders = await getOrders(user.id);
-  render(orders);
-} catch (e) {
-  handle(e);
+  try {
+    const user = await getUser();
+    const orders = await getOrders(user.id);
+    render(orders);
+  } catch (e) {
+    handle(e);
+  }
 }
 ```
 
@@ -236,7 +242,7 @@ try {
 
 ## 四、ES 版本演进速查表（ES2015 → ES2025）
 
-> **背这张表的价值**：面试官问「你说的可选链是 ES6 吗」，你能立刻纠正并给出正确版本，可信度会明显上升。
+> 用于确认某个特性属于哪个版本。
 
 | 版本 | 年份 | 关键新增（只列面试常问） |
 |---|---|---|
@@ -252,7 +258,7 @@ try {
 | ES2024 | 2024 | `Object.groupBy`/`Map.groupBy`、`Promise.withResolvers`、正则 `v` 标志 |
 | ES2025 | 2025 | `Set` 集合运算（`union/intersection/difference`）、`Promise.try`、迭代器助手（`map/filter/take`）、`RegExp.escape` |
 
-> ⚠️ **注意**：`??` 和 `?.` 常被误认为是 ES6，实际是 **ES2020**。这是本题最高频的扣分点。
+> ⚠️ **注意**：`??` 和 `?.` 常被误认为 ES6，实际是 **ES2020**。
 
 ---
 
@@ -260,27 +266,21 @@ try {
 
 ### 5.1 30 秒版（初面 / 电话面）
 
-> "ES6 是 2015 年的版本，是 JS 最大的一次升级。我一般分五块看：
-> **语法上**有 `let/const` 的块级作用域、箭头函数、模板字符串、解构和 `class`；
-> **数据上**有 `Set/Map`、`WeakMap` 和 `Symbol`；
-> **异步上**有 `Promise` 和 `Generator`；
-> **模块上**有了语言级的 `import/export`，这是 tree-shaking 的前提；
-> **元编程上**有 `Proxy/Reflect`，Vue3 的响应式就是基于它重写的。
-> 对我影响最大的是 `Promise` 和 `模块化`，前者终结了回调地狱，后者让前端能真正做工程化拆分。"
-
-**30 秒版的要点**：五层 + 每层 2-3 个 + 一句「影响最大的是什么」。**不要超过 8 个名词**。
+- 定位：ES2015，JS 最大的一次升级。
+- 五层各点 2-3 个：语法 `let/const`、箭头函数、`class`；数据 `Set/Map`、`WeakMap`、`Symbol`；异步 `Promise`、`Generator`；模块 `import/export`；元编程 `Proxy/Reflect`。
+- 收尾：影响最大的是 `Promise`（终结回调地狱）与模块化（支撑工程拆分）；名词总数控制在 8 个以内。
 
 ### 5.2 2 分钟版（技术面，需要展开 2-3 个点）
 
 结构：**定位（10 秒）→ 五层（60 秒）→ 深挖 2 个（40 秒）→ 收尾（10 秒）**
 
-深挖建议挑这两个（最容易接着问，且你能答）：
+深挖建议挑这两个（最容易继续追问）：
 1. **块级作用域**：讲 `var` 在 `for` 循环 + `setTimeout` 的经典问题，以及 `let` 的**每轮迭代新建绑定**
 2. **Proxy 相比 defineProperty**：讲 Vue2 为什么需要 `$set`、Vue3 为什么能直接监听数组
 
 ### 5.3 如果面试官是 Vue/React 方向
 
-**主动往框架上挂**，这是最好的加分方式：
+**主动往框架上挂**：
 
 | ES6 特性 | 框架里的体现 |
 |---|---|
@@ -295,24 +295,23 @@ try {
 
 ### 5.4 如果面试官追问「你实际用过哪些」
 
-**千万别再罗列**，改说场景：
+改说使用场景，不再罗列特性：
 
-> "用得最多的是三块：
-> 一是**解构 + 默认值**做接口数据的兜底，避免 `a && a.b && a.b.c`；
-> 二是 **`Promise.all` + 解构**处理无依赖的并发请求，比 `await` 串行快很多；
-> 三是 **`Map` 替代对象做字典**，因为 `Map` 的键可以是对象、有序、有 `size`，而且不会像对象那样被原型链上的 `toString` 之类污染。"
+- **解构 + 默认值**：接口数据兜底，避免 `a && a.b && a.b.c`。
+- **`Promise.all` + 解构**：处理无依赖的并发请求，比 `await` 串行快。
+- **`Map` 替代对象做字典**：键可以是对象、有序、有 `size`，且不受原型链属性干扰。
 
 ### 5.5 如果面试官问「ES6 有什么缺点」
 
-这是压力测试，答得出说明你有判断力：
+常见问题：
 
 | 问题 | 说明 |
 |---|---|
-| **兼容性** | ES6 需要 Babel 转译 + polyfill（`Promise`、`Set/Map`、`Symbol` 无法完全 polyfill，只能降级或引入 core-js） |
+| **兼容性** | ES6 需要 Babel 转译 + polyfill（`Promise`、`Set/Map`、`Symbol` 需引入 core-js 等） |
 | **`Proxy` 无法 polyfill** | 这是 Vue3 不支持 IE11 的**根本原因**，不是「不想支持」 |
 | **`class` 的误解成本** | 看着像 Java，实际仍是原型；`this` 绑定问题在 `class` 里更容易踩（方法传给回调就丢 `this`） |
 | **新语法增加编译产物** | 转译后代码体积变大，`async/await` 在低版本需要 `regeneratorRuntime` |
-| **`let` 的 TDZ 反而更"严厉"** | `typeof undeclaredVar` 返回 `'undefined'`，但 `typeof tdzVar` 直接抛 `ReferenceError` |
+| **TDZ 与 `typeof`** | `typeof undeclaredVar` 返回 `'undefined'`，但 `typeof tdzVar` 直接抛 `ReferenceError` |
 
 ---
 
@@ -335,7 +334,7 @@ try {
 【高频追问】
   var vs let  → 作用域 + 提升 + 重复声明 + 全局挂载 + 循环绑定
   class 本质  → 原型继承 + 不可调用 + 方法不可枚举 + 严格模式
-  Proxy 优势  → 增删属性可监听 + 数组直接监听 + 惰性劫持 + 无法 polyfill
+  Proxy 优势  → 增删属性可监听 + 数组直接监听 + 惰性劫持；局限 → 无法 polyfill
   ESM 优势    → 静态分析 + 活绑定 + tree-shaking
 ```
 
@@ -371,7 +370,7 @@ try {
 
 - [ ] 说出 4 种「监听对象属性变化」的方案及代表框架
 - [ ] 说清 `defineProperty` 的 3 个致命缺陷
-- [ ] 说清 `Proxy` 的 3 个优势 + 2 个局限
+- [ ] 说清 `Proxy` 的 3 个优势 + 主要局限
 - [ ] 说出至少 8 个 Proxy trap
 - [ ] 解释 Proxy 里 `receiver` 参数的作用，以及 `Reflect.get` 为什么要传它
 - [ ] 用 `Proxy` 写一个「访问不存在属性时返回默认值」的代理
@@ -405,7 +404,7 @@ try {
 - [ ] 说清 `Map` 相比 `Object` 的 4 个优势
 - [ ] 说清 `WeakMap` 的 3 个限制，以及它为什么不会内存泄漏
 - [ ] 说清 `for...in` / `for...of` 的 5 个差异
-- [ ] 说出 `Array.from` 与扩展运算符的差异（类数组 vs 可迭代）
+- [ ] 说出 `Array.from` 与扩展运算符的差异（前者兼容类数组，后者只认可迭代）
 - [ ] 说出 `Array.prototype.includes` 与 `indexOf` 的差异（`NaN`）
 
 ### 7.7 类型转换（分册 07）
@@ -421,14 +420,4 @@ try {
 
 ## 附：分册文件清单
 
-```
-ES6-32题/
-├── ES6-00-新特性总览与索引.md            ← 你在这里
-├── ES6-01-变量-作用域-闭包-this.md       
-├── ES6-02-对象-原型-继承.md              
-├── ES6-03-响应式原理-Proxy与defineProperty.md  
-├── ES6-04-异步-Promise-async与事件循环.md  
-├── ES6-05-模块与工程化.md                 
-├── ES6-06-集合-迭代-数组.md               
-└── ES6-07-类型转换与隐式规则.md            
-```
+分册顺序与文件位置以 `src/router/tutorials.ts` 的 `categories` 为准，侧边栏即为实际目录。

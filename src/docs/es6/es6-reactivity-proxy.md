@@ -1,7 +1,7 @@
 # 分册 03 · 响应式原理：Proxy 与 Object.defineProperty
 
 > 覆盖题号：**13**（JS 监听对象属性变化有哪些方法）、**15**（`defineProperty` 和 `Proxy` 的区别）、**4**（`Proxy` 可以实现什么）
-> 共 **3 题**，是 Vue2 / Vue3 差异的底层依据，也是「框架原理」类面试的必考题
+> 共 **3 题**，是 Vue2 / Vue3 响应式差异的底层依据
 
 ---
 
@@ -19,21 +19,20 @@
 
 ### 3.1.0 一句话结论
 
-> 主流的只有两条路：**`Object.defineProperty` 劫持属性的 `getter/setter`**（Vue2）和 **`Proxy` 代理整个对象**（Vue3）。另外两条是历史方案：**脏检查**（AngularJS，靠对比新旧值）和**手动通知 / 发布订阅**（React 的 `setState`、Redux）。现代还有 `Proxy` 的变体写法（装饰器、`Object.observe` 已废弃）。
+> 主流只有两条：**`Object.defineProperty` 劫持属性的 `getter/setter`**（Vue2）和 **`Proxy` 代理整个对象**（Vue3）。另外两条是旁路方案：**脏检查**（AngularJS，对比新旧值）和**手动通知 / 不可变数据**（React、Redux）。`Object.observe` 曾尝试原生监听，已废弃；`MutationObserver` 只能监听 DOM。
 
 ### 3.1.1 四种方案对照
 
-| 方案 | 代表 | 原理 | 能否检测新增属性 | 能否检测数组 | 性能特征 |
+| 方案 | 代表 | 原理 | 新增属性 | 数组索引 / length | 性能特征 |
 |---|---|---|---|---|---|
-| **`Object.defineProperty`** | Vue2 | 递归遍历，为每个属性定义 `get/set` | ❌ 需要 `$set` | 需重写 7 个方法 | 初始化时全量递归，开销大 |
-| **`Proxy`** | Vue3 | 代理整个对象，拦截 13 种操作 | ✅ | ✅ | 惰性（访问到才代理），初始开销小 |
-| **脏检查** | AngularJS | 每轮 `$digest` 遍历所有 `watcher` 对比新旧值 | ✅ | ✅ | O(n) 每轮，watcher 多时卡 |
-| **手动通知 / 不可变** | React、Redux | 每次 `setState` 创建新对象，靠引用变化判断 | ✅ | ✅ | 依赖浅比较，大对象浅比较也会慢 |
+| **`Object.defineProperty`** | Vue2 | 递归遍历，为每个属性定义 `get/set` | ❌ 需要 `$set` | ❌ 需要重写方法 | 初始化时全量递归 |
+| **`Proxy`** | Vue3 | 代理整个对象，拦截 13 种操作 | ✅ | ✅ | 只包第一层，嵌套按需再代理 |
+| **脏检查** | AngularJS | 每轮 `$digest` 遍历所有 `watcher` 对比新旧值 | ✅ | ✅ | 每轮 O(n)，watcher 多时慢 |
+| **手动通知 / 不可变** | React、Redux | 每次 `setState` 创建新对象，靠引用变化判断 | ✅ | ✅ | 依赖浅比较 |
 
 ### 3.1.2 方案一：`Object.defineProperty`（Vue2 的思路）
 
 ```js
-// 最基础的单个属性劫持
 const data = {};
 let _value = 1;
 
@@ -47,7 +46,7 @@ Object.defineProperty(data, 'count', {
   set(newVal) {
     console.log('设置 count:', newVal);
     _value = newVal;
-    // 这里就是"通知依赖更新"的钩子 → Vue 的 dep.notify()
+    // 这里是"通知依赖更新"的钩子 → Vue 的 dep.notify()
   },
 });
 
@@ -58,7 +57,6 @@ data.count = 2;  // 打印"设置 count: 2"
 **Vue2 的完整流程（简化）**：
 
 ```js
-// 1. 递归遍历 data，为每个属性 defineReactive
 function observe(obj) {
   if (typeof obj !== 'object' || obj === null) return;
   Object.keys(obj).forEach((key) => defineReactive(obj, key, obj[key]));
@@ -74,10 +72,10 @@ function defineReactive(obj, key, val) {
       if (Dep.target) dep.depend();  // 收集当前 watcher
       return val;
     },
-    set(newVal) {
-      if (newVal === val) return;
-      val = newVal;
-      observe(newVal);               // 新值是对象也要递归
+    set(next) {
+      if (next === val) return;
+      val = next;
+      observe(next);                 // 新值是对象也要递归
       dep.notify();                  // 通知所有 watcher 更新
     },
   });
@@ -87,45 +85,29 @@ function defineReactive(obj, key, val) {
 **三个绕不过去的缺陷**：
 
 ```js
-// ① 新增属性检测不到
 const vm = { obj: { a: 1 } };
 observe(vm.obj);
-vm.obj.b = 2;          // ❌ 没有 getter/setter，视图不更新
-// 必须用 Vue.set(vm.obj, 'b', 2) → 内部调用 defineReactive 补上劫持
+vm.obj.b = 2;      // 不触发：b 上没有 getter/setter，必须 Vue.set
+delete vm.obj.a;   // 不触发，必须 Vue.delete
 
-// ② 删除属性检测不到
-delete vm.obj.a;       // ❌ 视图不更新
-// 必须用 Vue.delete(vm.obj, 'a')
-
-// ③ 数组的索引和 length 不行
 const arr = [1, 2, 3];
 observe(arr);
-arr[0] = 100;          // ❌ 检测不到（Vue2 故意不劫持索引，性能太差）
-arr.length = 1;        // ❌ 检测不到
-arr.push(4);           // ✅ 可以（Vue2 重写了 7 个数组方法）
+arr[0] = 100;      // 不触发
+arr.length = 1;    // 不触发
+arr.push(4);       // 在 Vue2 中触发（它重写了 7 个方法；上面的简化 observe 不含这步）
 ```
 
-**Vue2 为什么重写数组方法？**
-
-因为数组的索引访问（`arr[0]`）如果每个都 `defineProperty`，成本极高（一个大数组几百个元素就崩了），而且 `length` 是**不可配置属性**，根本无法劫持。所以 Vue2 采用"**拦截会修改数组的方法**"的策略：
+数组索引逐个 `defineProperty` 成本高；`length` 的 `configurable` 为 `false`，不能改成访问器（实测 `Object.defineProperty([], 'length', { get() {} })` 抛 `TypeError: Cannot redefine property: length`）。Vue2 因此改为**拦截会修改数组的方法**：
 
 ```js
-// Vue2 重写的 7 个方法
-const methodsToPatch = [
-  'push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse',
-];
+const arrayProto = Object.create(Array.prototype);
 
-methodsToPatch.forEach((method) => {
+['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'].forEach((method) => {
   const original = Array.prototype[method];
   Object.defineProperty(arrayProto, method, {
-    value: function mutator(...args) {
+    value(...args) {
       const result = original.apply(this, args);
-      const ob = this.__ob__;
-      let inserted;
-      if (method === 'push' || method === 'unshift') inserted = args;
-      else if (method === 'splice') inserted = args.slice(2);
-      if (inserted) ob.observeArray(inserted);   // 新插入的元素也要劫持
-      ob.dep.notify();                           // 通知更新
+      notify(this, method, args);   // Vue2 里是 this.__ob__.dep.notify()
       return result;
     },
     enumerable: false,
@@ -135,7 +117,7 @@ methodsToPatch.forEach((method) => {
 });
 ```
 
-> **注意**：这是**修改数组实例的原型链**（`arr.__proto__` 指向一个被改过的 `arrayProto`），不是改 `Array.prototype` 全局。这样只影响被 observe 过的数组。
+把被 observe 过的数组的 `__proto__` 指向 `arrayProto`，只影响这些实例，不改全局 `Array.prototype`。
 
 ### 3.1.3 方案二：`Proxy`（Vue3 的思路）
 
@@ -164,34 +146,32 @@ function reactive(target) {
 
 **三个"天生"的优势**：
 
-1. **新增 / 删除属性自动可检测**——因为拦截的是对象的操作，不是属性
+1. **新增 / 删除属性可检测**——拦截的是对象操作，不是属性
 2. **数组直接可监听**——`arr[0] = 1`、`arr.length = 0` 都能拦到
-3. **惰性**——只代理第一层，嵌套对象在**访问时才代理**，初始化开销小
+3. **嵌套对象按需代理**——`Proxy` 本身只包第一层，Vue3 在 `get` 里把对象返回值再包一层并缓存
 
 ```js
-// Vue3 的惰性代理
 const state = reactive({ a: { b: { c: 1 } } });
-// 此时只有 state 被代理，a 和 b 还是普通对象
+// 此时只有 state 是代理，a、b 仍是普通对象
 
-state.a;        // ← 读 a 时，返回值被 reactive() 包一层（proxyRefs/reactive 缓存）
-state.a.b;      // ← 再包一层
-// 每一层只在被访问时才创建代理 → 深层但用不到的数据零开销
+state.a;        // get('a') 触发，返回值被 reactive() 包一层
+state.a.b;      // 再包一层
 ```
 
 ### 3.1.4 方案三：脏检查（AngularJS）
 
 ```js
-// 极简脏检查
 function digest(watchers) {
   let dirty = true;
   let ttl = 10;                     // 最多循环 10 次，防止死循环
   while (dirty && ttl-- > 0) {
     dirty = false;
     for (const w of watchers) {
-      const newVal = w.getter();
-      if (newVal !== w.last) {
-        w.last = newVal;
-        w.listener(newVal, w.last);
+      const next = w.getter();
+      if (next !== w.last) {
+        const prev = w.last;
+        w.last = next;
+        w.listener(next, prev);
         dirty = true;               // 有变化就再跑一轮
       }
     }
@@ -203,16 +183,16 @@ function digest(watchers) {
 
 - ✅ 不入侵数据，任何赋值都能检测（包括 `arr[0] = x`）
 - ❌ 每轮 `$digest` 要遍历**所有** watcher，watcher 越多越慢
-- ❌ 必须手动触发 `$apply()`（`setTimeout` 里改数据不会自动更新）
-- ❌ 无法知道"哪个数据变了"，只知道"某一轮有变化"
+- ❌ 必须手动触发一轮 digest（`setTimeout` 里改数据不会自动更新）
+- ❌ 只知道"这一轮有变化"，不知道是哪个数据变了
 
-> **一句话总结脏检查**：它是"**穷举对比**"，用算力换实现简单。Vue 的 `getter/setter` 是"**精准通知**"，用内存换性能。
+> 脏检查是"**穷举对比**"，用算力换实现简单；`getter/setter` 是"**精准通知**"，用内存换性能。
 
 ### 3.1.5 方案四：手动通知 / 不可变数据（React 路线）
 
 ```js
 // React：靠 setState 显式触发，靠引用比较判断是否变化
-setState({ count: 1 });   // 内部合并 + 调度重渲染
+setState({ count: 1 });
 
 // Redux：reducer 返回新对象，靠引用变化判断
 const next = { ...state, count: state.count + 1 };
@@ -223,13 +203,12 @@ const next = { ...state, count: state.count + 1 };
 
 - ✅ 数据是普通对象，没有代理开销
 - ✅ 变化可预测、可回溯（时间旅行调试）
-- ❌ 需要手动处理不可变更新（深层嵌套很啰嗦）
-- ❌ 依赖浅比较，对象层级深时容易漏更新（所以要用 `useMemo`/`memo`）
+- ❌ 深层嵌套的不可变更新很啰嗦
+- ❌ 依赖浅比较，层级深时容易漏更新（需要 `memo` / `useMemo`）
 
 ### 3.1.6 还有个"民间方案"：自己写 getter/setter
 
 ```js
-// Vue2 之前的老做法：手写访问器
 const data = {
   _count: 0,
   get count() { return this._count; },
@@ -240,34 +219,28 @@ const data = {
 };
 ```
 
-**问题**：要写两倍代码，且新增属性依然无法自动处理。这就是为什么框架要用 `defineProperty` 自动生成。
+每个属性都要手写一对访问器，新增属性仍需手动补。框架用 `defineProperty` 自动生成，就是为了消掉这份重复。
 
 ### 3.1.7 答题模板
 
-**30 秒版：**
-
-> "主流有四种。**Vue2 用 `Object.defineProperty`** 递归给每个属性定义 `get/set`，读的时候收集依赖、写的时候通知更新；**Vue3 用 `Proxy`** 代理整个对象，能监听新增/删除属性和数组变化；**AngularJS 用脏检查**，每轮 `$digest` 遍历所有 watcher 对比新旧值；**React 是手动通知**，靠 `setState` 显式触发，配合不可变数据做引用比较。
-> 现在新项目基本都是 `Proxy` 路线，因为 `defineProperty` 有三个硬伤：新增属性、删除属性、数组索引都检测不到。"
-
-**2 分钟版补充：**
-
-> "可以补两个细节：
-> 一是**Vue2 对数组的处理**。它没有劫持数组索引，因为性能太差，而且 `length` 是不可配置属性根本劫持不了。所以它改成**重写 7 个会修改数组的方法**（`push/pop/shift/unshift/splice/sort/reverse`），在方法内部手动 `notify`。这也是为什么 `arr[0] = x` 在 Vue2 里不更新。
-> 二是**性能模型不同**。`defineProperty` 是"初始化时全量递归"，一个深层大对象初始化就很慢；`Proxy` 是"惰性代理"，只在访问到某个属性时才代理它的值，深层但没被访问的数据零开销。这是 Vue3 首屏性能提升的一个来源。"
+- 主流两套：`defineProperty` 是**属性级**劫持，`Proxy` 是**对象级**代理。
+- `defineProperty` 三处检测不到：新增属性、删除属性、数组索引 / `length`；Vue2 用 `$set` / `$delete` 和重写 7 个数组方法补齐。
+- 脏检查每轮遍历所有 watcher 对比新旧值，慢但不入侵数据；React 靠 `setState` + 不可变引用。
+- 性能模型不同：Vue2 初始化时递归整棵对象树；Vue3 只代理第一层，在 `get` 里按需代理嵌套对象。
 
 ### 3.1.8 追问表
 
 | 追问 | 答题要点 |
 |---|---|
 | 一共几种方案？ | 4 种：`defineProperty`、`Proxy`、脏检查、手动通知 |
-| Vue2 为什么不用 `Proxy`？ | 当时 `Proxy` 刚出（ES6），浏览器支持不全，且无法 polyfill，要兼容 IE |
-| Vue3 为什么不用 `defineProperty`？ | 三个硬伤：新增/删除属性、数组；且全量递归初始化慢 |
+| Vue2 为什么不用 `Proxy`？ | 当时浏览器支持不全，且 `Proxy` 无法 polyfill，需要兼容 IE |
+| Vue3 为什么不用 `defineProperty`？ | 新增 / 删除属性、数组索引都检测不到，且初始化要全量递归 |
 | Vue2 的 `$set` 做了什么？ | 对新增属性调用 `defineReactive` 补上 `get/set`，再 `notify` |
 | Vue2 重写了哪些数组方法？ | 7 个：`push/pop/shift/unshift/splice/sort/reverse` |
 | Vue2 为什么能监听 `push`？ | 改的是数组**实例的原型**，不是全局 `Array.prototype` |
 | 脏检查为什么慢？ | 每轮遍历所有 watcher，O(n)，且无法定位变化源 |
 | React 为什么不需要 `Proxy`？ | 它靠显式 `setState` 触发，不需要自动追踪 |
-| `Proxy` 能完全替代 `defineProperty` 吗？ | 功能上可以，但兼容性不行（无法 polyfill） |
+| `Proxy` 能完全替代 `defineProperty` 吗？ | 功能上可以，兼容性不行（无法 polyfill） |
 | 还有别的方案吗？ | `Object.observe`（已废弃）、`MutationObserver`（只能监听 DOM） |
 
 ---
@@ -276,39 +249,37 @@ const data = {
 
 ### 3.2.0 一句话结论
 
-> **`Object.defineProperty` 是"改属性"，`Proxy` 是"换对象"。** 前者只能对**已存在的属性**定义 `getter/setter`，是**静态的、逐个的**；后者创建一个**代理对象**，拦截对这个对象的所有操作，是**动态的、整体的**。这一个根本差异，推导出了所有其他区别。
+> **`Object.defineProperty` 是"改属性"，`Proxy` 是"换对象"。** 前者**逐个属性**定义 `getter/setter`，只覆盖被定义过的那几个属性；后者创建**代理对象**，拦截对这个对象的所有操作。前者静态、逐个，后者动态、整体。其他差异都由这一条推出。
 
-### 3.2.1 五个本质差异
+### 3.2.1 差异对照
 
 | 维度 | `Object.defineProperty` | `Proxy` |
 |---|---|---|
 | **拦截粒度** | **属性级**：给每个属性单独定义描述符 | **对象级**：拦截 13 种内部操作 |
 | **新增属性** | ❌ 检测不到（属性还没被定义过） | ✅ 自动拦截 `set` |
 | **删除属性** | ❌ 检测不到 | ✅ 拦截 `deleteProperty` |
-| **数组** | 索引需逐个定义（性能不可接受），`length` 不可配置，只能重写方法 | ✅ 直接拦截索引和 `length` |
+| **数组** | 索引逐个定义成本高，`length` 不能改成访问器，只能重写方法 | ✅ 直接拦截索引和 `length` |
 | **拦截范围** | 只有 `get`/`set`（本质是 2 种） | 13 种：`get/set/has/deleteProperty/ownKeys/...` |
-| **初始化成本** | **高**：必须递归遍历整棵对象树 | **低**：惰性，访问到才代理下一层 |
+| **初始化成本** | 高：要递归整棵对象树 | 低：只包第一层，嵌套按需代理 |
 | **返回值** | 返回**原对象** | 返回**新代理对象**（`proxy !== target`） |
 | **兼容性** | ES5，IE9+ | ES6，**无法 polyfill** |
-| **性能** | 单次读写略快（原生访问器） | 有 trap 调用开销，但初始化省 |
+| **单次访问开销** | 无 trap 调用 | 每次操作过一层 trap |
 
 ### 3.2.2 差异的根源：为什么 `defineProperty` 检测不到新增属性
 
 ```js
 const obj = { a: 1 };
 
-// 只给 a 装上了"陷阱"
 Object.defineProperty(obj, 'a', {
   get() { console.log('read a'); return 1; },
   set(v) { console.log('write a'); },
 });
 
-obj.a = 2;      // ✅ 打印 'write a'
-obj.b = 3;      // ❌ 没有任何输出 —— b 上根本没有陷阱
-
-// 为什么？因为 defineProperty 是"在属性上动手脚"，不是"在对象上装门卫"
-// 新增属性这个动作，属性还不存在，无从下手
+obj.a = 2;   // 'write a'
+obj.b = 3;   // 无输出：b 上根本没有陷阱
 ```
+
+`defineProperty` 是"在属性上动手脚"，新增属性时属性还不存在，无从下手。
 
 ```js
 // Proxy 是"在对象外面装门卫"，任何操作都要过门卫
@@ -320,130 +291,133 @@ const proxy = new Proxy(obj, {
   },
 });
 
-proxy.b = 3;    // ✅ 打印 'write b'
+proxy.b = 3;   // 'write b'
 ```
 
 **一句话记忆**：
 
-> `defineProperty` 是**给每个房间装门锁**，新盖的房间（新属性）没有锁；
-> `Proxy` 是**在大门口设岗**，无论进哪个房间都得过岗。
+> `defineProperty` 给每个房间装门锁，新盖的房间（新属性）没有锁；
+> `Proxy` 在大门口设岗，无论进哪个房间都得过岗。
 
 ### 3.2.3 数组：差距最明显的地方
 
 ```js
 // ===== defineProperty 处理数组 =====
 const arr = [1, 2, 3];
-arr.forEach((_, i) => {
+arr.forEach((value, i) => {
+  let current = value;
   Object.defineProperty(arr, i, {
-    get() { /* ... */ },
-    set(v) { /* ... */ },
+    configurable: true,
+    enumerable: true,
+    get() { return current; },
+    set(next) { current = next; },
   });
 });
-// 问题 1：大数组要定义 N 次，性能崩
-// 问题 2：arr.length = 0 完全拦不到
-// 问题 3：arr.push(4) 新增的索引没有陷阱
+// 问题 1：大数组要定义 N 次
+// 问题 2：arr.length = 1 拦不到（length 不是访问器）
+// 问题 3：arr.push(4) 新增的索引 3 没有陷阱
 ```
 
 ```js
 // ===== Proxy 处理数组 =====
 const arrProxy = new Proxy([1, 2, 3], {
-  get(t, k, r) { return Reflect.get(t, k, r); },
-  set(t, k, v, r) {
-    console.log('set', k, '=', v);
-    return Reflect.set(t, k, v, r);
-  },
+  get(t, k, r) { console.log('get', String(k)); return Reflect.get(t, k, r); },
+  set(t, k, v, r) { console.log('set', String(k), '=', v); return Reflect.set(t, k, v, r); },
 });
 
-arrProxy[0] = 100;    // 打印 'set 0 = 100'
-arrProxy.length = 1;  // 打印 'set length = 1'
-arrProxy.push(4);     // 内部会 set '3' 和 'length'
+arrProxy[0] = 100;    // set 0 = 100
+arrProxy.length = 1;  // set length = 1
+arrProxy.push(4);     // get push → get length → set 1 = 4 → set length = 2
 ```
 
-> **Vue3 为什么能"直接"支持数组？** 因为 `push` 内部就是 `arr[arr.length] = x`，而 `Proxy` 能拦到索引赋值和 `length` 赋值。Vue2 只能靠重写 `push` 方法。
+`push` 先读到原型上的方法，再走"索引赋值 + `length` 赋值"两步，所以两步都能拦到。Vue3 因此不需要重写数组方法；Vue2 只能靠方法拦截。
 
 ### 3.2.4 三个必须讲的实现细节
 
-#### 细节 1：`receiver` 参数与 `Reflect`
-
-这是 `Proxy` 最容易写错的地方，也是"懂不懂"的分水岭：
-
-```js
-// ❌ 错误写法：直接用 target[key]
-const bad = new Proxy({}, {
-  get(target, key) {
-    return target[key];      // 如果 target 有 getter，this 会是 target，不是 proxy
-  },
-});
-
-// ✅ 正确写法：Reflect + receiver
-const good = new Proxy({}, {
-  get(target, key, receiver) {
-    return Reflect.get(target, key, receiver);   // receiver 让 getter 里的 this 指向 proxy
-  },
-});
-```
-
-**为什么必须传 `receiver`？**
+#### 细节 1：`receiver`、`Reflect` 与 `set` / `defineProperty` 的分工
 
 ```js
 const target = {
   _private: 1,
-  get value() {
-    return this._private;      // 这里的 this 是谁？
-  },
+  get value() { return this._private; },
 };
 
-const p = new Proxy(target, {
-  get(t, k, r) {
-    console.log('拦截读取:', k);
-    return Reflect.get(t, k, r);
-  },
+const bad = new Proxy(target, {
+  get(t, k) { return t[k]; },                    // getter 里 this === target
 });
 
-p.value;
-// 若 get 里写 target[key]  → getter 里 this === target → 读 _private 不经过代理
-// 若传 receiver（=p）      → getter 里 this === p     → 读 _private 也经过代理
+const good = new Proxy(target, {
+  get(t, k, r) { return Reflect.get(t, k, r); }, // getter 里 this === good
+});
 ```
 
-**结论**：不传 `receiver`，**getter 内部的属性访问会绕过代理**，导致依赖收集漏掉、响应式断裂。这就是 Vue3 源码里到处是 `Reflect.get(target, key, receiver)` 的原因。
+实测 `bad.value` 只经过一次 `get` trap；`good.value` 会再经过一次 `_private` 的 `get` trap。**不传 `receiver`，getter 内部的属性访问会绕过代理**，依赖收集就会漏。
+
+赋值和 `Object.defineProperty` 走的是两条不同的内部方法：
+
+```js
+p.x = 1;                                       // [[Set]]              → set trap
+Object.defineProperty(p, 'x', { value: 1 });   // [[DefineOwnProperty]] → defineProperty trap
+```
+
+如果 target 自身或原型上有 setter，赋值会调用 setter；`Object.defineProperty` 直接替换属性描述符，不经过 setter（实测 setter 调用次数不变）。
+
+`set` trap 里转发时还有一个容易忽略的点：
+
+```js
+const p = new Proxy({}, {
+  set(t, k, v, r) { return Reflect.set(t, k, v, r); },        // receiver 是代理
+  defineProperty(t, k, d) { return Reflect.defineProperty(t, k, d); },
+});
+
+p.x = 1;   // set → defineProperty
+```
+
+`Reflect.set` 收到 `receiver = 代理` 时，会以代理为 receiver 定义属性，于是再进一次 `defineProperty` trap；写成 `Reflect.set(t, k, v)`（receiver 默认是 target）或 `t[k] = v` 时只触发 `set`。
 
 #### 细节 2：`Proxy` 的 trap 必须遵守"不变量"
 
 ```js
 const frozen = Object.freeze({ a: 1 });
-
 const bad = new Proxy(frozen, {
-  get() { return 999; },     // ❌ 违反不变量：不可配置、不可写属性必须返回真实值
+  get() { return 999; },
 });
 
-bad.a;   // TypeError: 'get' on proxy: property 'a' is a read-only and non-configurable
+bad.a;
+// TypeError: 'get' on proxy: property 'a' is a read-only and non-configurable data property
+// on the proxy target but the proxy did not return its actual value (expected '1' but got '999')
 ```
 
-**规则**：对于**不可配置 + 不可写**的属性，`get` 必须返回真实值，否则抛 `TypeError`。这是为了保证代理的透明性——不能让代理"凭空创造"一个已冻结属性的值。
+实测会抛错的几类不变量：
 
-#### 细节 3：`Proxy` 无法代理内置对象的"内部槽"
+- **不可配置 + 不可写**：`get` 必须返回原值；`set` 不能改成不同值。
+- **不可配置**：`has` 不能报 `false`，`ownKeys` 必须包含该键，`deleteProperty` 不能返回成功。
+- **目标不可扩展**：`ownKeys` 不能多报键，`has` 不能把已有属性报 `false`，`defineProperty` 不能加新属性。
 
-这是 Vue3 源码里专门处理 `Map`/`Set` 的原因：
+这是为了保证代理的透明性——不能让代理凭空改写目标对象的锁定状态。
+
+#### 细节 3：`Proxy` 代理内置对象时的内部槽问题
 
 ```js
 const map = new Map([['a', 1]]);
 const p = new Proxy(map, {});
 
 p.get('a');
-// ❌ TypeError: Method Map.prototype.get called on incompatible receiver #<Map>
-// 因为 map.get 内部的 this 是 proxy，而 proxy 不是真正的 Map（没有 [[MapData]] 内部槽）
+// TypeError: Method Map.prototype.get called on incompatible receiver #<Map>
 ```
 
-**修复方式**：`get` 时把 `this` 绑回 `target`，并递归代理返回值（Vue3 的 `collectionHandlers` 就是这么做的）：
+`map.get` 内部的 `this` 是 proxy，而 proxy 没有 `[[MapData]]` 内部槽。`Set` 同理（`Set.prototype.has` 报同样的错）。
+
+**修复方式**：`get` 时把 `this` 绑回 `target`；返回值是对象时同样按需再代理（下面只演示方法绑定）：
 
 ```js
-const p = new Proxy(map, {
-  get(target, key, receiver) {
+const p2 = new Proxy(map, {
+  get(target, key) {
     const value = Reflect.get(target, key, target);   // ← this 用 target
     return typeof value === 'function' ? value.bind(target) : value;
   },
 });
-p.get('a');   // ✅ 1
+p2.get('a');   // 1
 ```
 
 ### 3.2.5 手写两个版本的"响应式"（对比最直观）
@@ -473,8 +447,8 @@ function observeV2(obj, onUpdate) {
 
 const dataA = { user: { name: 'Tom' } };
 observeV2(dataA, (k, v) => console.log('更新:', k, v));
-dataA.user.name = 'Jerry';   // ✅ 触发（因为递归过了）
-dataA.user.age = 18;         // ❌ 不触发（新增属性）
+dataA.user.name = 'Jerry';   // 触发（已经递归过）
+dataA.user.age = 18;         // 不触发（新增属性）
 ```
 
 ```js
@@ -511,34 +485,27 @@ function observeV3(obj, onUpdate) {
 }
 
 const dataB = observeV3({ user: { name: 'Tom' } }, (k, v) => console.log('更新:', k, v));
-dataB.user.name = 'Jerry';   // ✅
-dataB.user.age = 18;         // ✅ 新增也能触发
-delete dataB.user.name;      // ✅ 删除也能触发
+dataB.user.name = 'Jerry';   // 触发
+dataB.user.age = 18;         // 新增也能触发
+delete dataB.user.name;      // 删除也能触发
 ```
 
-### 3.2.6 Proxy 的四个局限（答出来显水平）
+### 3.2.6 Proxy 的局限
 
 | 局限 | 说明 |
 |---|---|
-| **无法 polyfill** | ES5 时代没有任何 API 能拦截任意属性访问，`Object.defineProperty` 只能模拟 `get/set` 一部分。所以 **Vue3 不支持 IE11** 是技术必然，不是选择 |
-| **不能拦截严格相等** | `proxy === target` 永远是 `false`，无法拦截。如果代码里有 `if (obj === someRef)` 这种判断，传入 proxy 会失效 |
-| **不能拦截私有字段** | `class A { #x }` 里 `this.#x` 的访问完全绕过 `get` trap |
-| **内置对象需特殊处理** | `Map`/`Set`/`Date`/`RegExp` 的方法依赖内部槽（`[[MapData]]` 等），`this` 是 proxy 会报错，必须手动绑回 `target` |
-| **性能开销** | 每次属性访问都过一层函数调用，高频读写的场景比原生对象慢（Vue3 用 `shallowRef`/`markRaw` 规避） |
+| **无法 polyfill** | ES5 没有 API 能拦截任意属性访问；需要兼容 IE 的项目不能用 `Proxy` |
+| **`===` 失效** | `proxy !== target` 永远成立；`if (obj === someRef)` 传入代理会判断失败 |
+| **私有字段不受拦截** | `#x` 不经过 `get` trap；方法以代理为 `this` 时读 `#x` 抛 `TypeError: Cannot read private member #x ...` |
+| **内置对象需特殊处理** | `Map`/`Set`/`RegExp` 的方法依赖内部槽，`this` 是代理会报 `incompatible receiver`；`Date` 报 `this is not a Date object` |
+| **trap 开销** | 每次属性访问都过一层函数调用，高频读写比原生对象慢（可用浅层代理或 `markRaw` 跳过） |
 
 ### 3.2.7 答题模板
 
-**30 秒版：**
-
-> "最本质的区别是**粒度不同**：`defineProperty` 是给**属性**装 `getter/setter`，`Proxy` 是给**整个对象**装代理。
-> 这导致三个直接后果：`defineProperty` **检测不到新增和删除属性**，所以 Vue2 需要 `$set`/`$delete`；**数组要重写 7 个方法**，因为索引逐个劫持性能太差、`length` 又不可配置；而 `Proxy` 能直接拦截 `set`/`deleteProperty`，数组也不用特殊处理。
-> 另外 `Proxy` 是**惰性**的，访问到才代理下一层，初始化比 `defineProperty` 的全量递归快得多。代价是 `Proxy` **无法 polyfill**，这也是 Vue3 不支持 IE11 的根本原因。"
-
-**2 分钟版补充：**
-
-> "再补两个实现层面的点：
-> 一是 `Proxy` 的 `get` trap 里必须用 `Reflect.get(target, key, receiver)`，**必须传 `receiver`**。因为对象如果有 getter，getter 里的 `this` 默认会指向 `target`，那样 getter 内部的属性访问就绕过代理了，依赖收集会漏。传 `receiver` 才能让 `this` 指向 proxy。
-> 二是 `Proxy` 不能直接代理 `Map`/`Set`。因为 `map.get` 依赖内部的 `[[MapData]]` 槽，`this` 是 proxy 时会报 `incompatible receiver`。Vue3 的做法是把 `this` 绑回 `target`，再对返回值单独做响应式处理。"
+- 最本质区别是**粒度**：`defineProperty` 给属性装 `getter/setter`，`Proxy` 给整个对象装代理。
+- 三个直接后果：检测不到新增 / 删除属性（Vue2 需要 `$set`/`$delete`）；数组要重写 7 个方法；`Proxy` 能直接拦 `set`/`deleteProperty`。
+- `Proxy` 只包第一层，嵌套对象在 `get` 里按需代理，初始化比全量递归快。
+- 实现上 `get` 必须传 `receiver`；`Map`/`Set` 要把 `this` 绑回 target；代价是无法 polyfill。
 
 ### 3.2.8 追问表
 
@@ -548,15 +515,13 @@ delete dataB.user.name;      // ✅ 删除也能触发
 | `defineProperty` 为什么检测不到新增属性？ | 陷阱装在已存在的属性上，新属性没有 |
 | Vue2 怎么解决新增属性？ | `Vue.set` 内部补 `defineReactive` |
 | Vue2 为什么重写数组方法？ | 索引劫持性能差 + `length` 不可配置 |
-| `Proxy` 为什么能监听数组？ | 拦截 `set`，`push` 内部就是索引赋值 |
-| `Proxy` 的性能优势在哪？ | 惰性代理，初始不递归 |
+| `Proxy` 为什么能监听数组？ | 拦截 `set`，`push` 内部就是索引赋值 + `length` 赋值 |
+| `Proxy` 的性能优势在哪？ | 只代理第一层，嵌套对象访问时才继续代理 |
 | `Proxy` 的性能劣势在哪？ | 每次读写都有 trap 开销 |
-| `Reflect` 有什么用？ | 提供 trap 对应的默认行为，且能正确传递 `receiver` |
-| 为什么 `get` 里要传 `receiver`？ | 让 getter 的 `this` 指向 proxy，否则绕过代理 |
-| `Proxy` 能代理 `Map` 吗？ | 能但需特殊处理（`this` 绑回 target） |
-| `Proxy` 不能拦截什么？ | `===`、私有字段 `#x`、某些内部槽操作 |
-| 为什么 Vue3 不支持 IE11？ | `Proxy` 无法 polyfill |
-| `defineProperty` 能被 `Proxy` 完全替代吗？ | 功能上可以，兼容性上不行 |
+| `Reflect` 有什么用？ | 提供 trap 对应的默认行为，且能显式传递 `receiver` |
+| 为什么 `get` 里要传 `receiver`？ | 让 getter 的 `this` 指向代理，否则 getter 内部访问绕过代理 |
+| `Proxy` 能代理 `Map` 吗？ | 能，但方法要把 `this` 绑回 target |
+| `Proxy` 不能拦截什么？ | `===`、私有字段 `#x`、内置对象的内部槽 |
 | `defineProperty` 还有什么用途？ | 定义不可枚举属性、getter/setter、`Object.freeze` 的底层 |
 
 ---
@@ -565,7 +530,7 @@ delete dataB.user.name;      // ✅ 删除也能触发
 
 ### 3.3.0 一句话结论
 
-> `Proxy` 能**拦截并自定义对象的所有基本操作**——读写属性、判断存在、删除、枚举、函数调用、`new`、原型操作等共 **13 种**。典型用途有：**响应式系统**（Vue3）、**数据校验**、**默认值/负索引**、**私有属性**、**日志与埋点**、**不可变数据**、**懒加载**、**Mock**。配套的 `Reflect` 提供每种操作的默认行为。
+> `Proxy` 能**拦截并自定义对象的所有基本操作**——读写属性、判断存在、删除、枚举、函数调用、`new`、原型操作等共 **13 种**。典型用途：**响应式系统**、**数据校验**、**默认值 / 负索引**、**私有属性**、**日志埋点**、**不可变数据**、**懒加载**、**Mock**。配套的 `Reflect` 提供每种操作的默认行为。
 
 ### 3.3.1 13 个 trap 全表
 
@@ -575,53 +540,58 @@ delete dataB.user.name;      // ✅ 删除也能触发
 | 2 | `set` | `obj.key = v`、`Reflect.set` | `Reflect.set` |
 | 3 | `has` | `'key' in obj` | `Reflect.has` |
 | 4 | `deleteProperty` | `delete obj.key` | `Reflect.deleteProperty` |
-| 5 | `ownKeys` | `Object.keys`、`for...in`、`JSON.stringify`、`Object.getOwnPropertyNames` | `Reflect.ownKeys` |
-| 6 | `getOwnPropertyDescriptor` | `Object.getOwnPropertyDescriptor`、`for...in` 的可枚举判断 | `Reflect.getOwnPropertyDescriptor` |
+| 5 | `ownKeys` | `Object.keys`、`Object.getOwnPropertyNames`、`for...in`、`JSON.stringify` | `Reflect.ownKeys` |
+| 6 | `getOwnPropertyDescriptor` | `Object.getOwnPropertyDescriptor`、`Object.keys` / `for...in` 的可枚举过滤 | `Reflect.getOwnPropertyDescriptor` |
 | 7 | `defineProperty` | `Object.defineProperty` | `Reflect.defineProperty` |
-| 8 | `getPrototypeOf` | `Object.getPrototypeOf`、`instanceof`、`obj.__proto__` | `Reflect.getPrototypeOf` |
+| 8 | `getPrototypeOf` | `Object.getPrototypeOf`、`obj.__proto__`、`proxy instanceof F`（代理在左侧） | `Reflect.getPrototypeOf` |
 | 9 | `setPrototypeOf` | `Object.setPrototypeOf` | `Reflect.setPrototypeOf` |
 | 10 | `isExtensible` | `Object.isExtensible` | `Reflect.isExtensible` |
 | 11 | `preventExtensions` | `Object.preventExtensions` | `Reflect.preventExtensions` |
 | 12 | `apply` | `fn()`、`fn.apply`、`fn.call` | `Reflect.apply` |
 | 13 | `construct` | `new fn()` | `Reflect.construct` |
 
-> **注意**：`in` 走 `has`，但 `for...in` 走 `ownKeys` + `getOwnPropertyDescriptor` 组合。`instanceof` 会走 `getPrototypeOf`（这是很多人不知道的细节）。
+实测触发顺序：
+
+```
+Object.keys(p)       → ownKeys → getOwnPropertyDescriptor
+for...in             → ownKeys → getPrototypeOf → getOwnPropertyDescriptor
+JSON.stringify(p)    → get('toJSON') → ownKeys → getOwnPropertyDescriptor → get
+p instanceof F       → getPrototypeOf（p 是代理）
+new Proxy(Fn)()      → construct → get('prototype')（构造器是代理时，instanceof 走 get）
+```
 
 ### 3.3.2 `Reflect` 存在的意义（常被追问）
 
 ```js
-// ① 语义统一：把 Object 上零散的内部方法归到一个命名空间
-Reflect.get / Reflect.set / Reflect.has / Reflect.deleteProperty ...
-// 之前分散在：obj[key] / obj[key]=v / 'k' in obj / delete obj[k]
-// 这些都不是函数，无法作为"默认行为"来调用
+// ① 语义统一：把零散的内部方法归到一个命名空间
+//    Reflect.get / Reflect.set / Reflect.has / Reflect.deleteProperty / ...
 
 // ② 返回值更合理
-Object.defineProperty(obj, 'x', { value: 1 });   // 失败抛错或返回 obj
+Object.defineProperty(obj, 'x', { value: 1 });   // 成功返回 obj，失败抛 TypeError
 Reflect.defineProperty(obj, 'x', { value: 1 });  // 返回 boolean
 
-// ③ 接收 receiver，能正确传递 this
+// ③ 可以显式传 receiver，obj[key] 做不到
 Reflect.get(target, key, receiver)
 
-// ④ 与 Proxy trap 一一对应 → 写 trap 时的"默认行为"就是 Reflect 同名方法
+// ④ 与 Proxy trap 一一对应，写 trap 时的默认行为就是 Reflect 同名方法
 const p = new Proxy(t, {
-  get: (t, k, r) => Reflect.get(t, k, r),   // 完美的透明代理
+  get: (t, k, r) => Reflect.get(t, k, r),   // 透明代理
 });
-
-// ⑤ 用 Reflect 替代 `with` 做动态取值
-Reflect.get(obj, dynamicKey);   // 比 obj[dynamicKey] 更"函数式"
 ```
 
-### 3.3.3 八个实战场景（每个都能当项目经验讲）
+### 3.3.3 八个实战场景
 
 #### 场景 1：响应式（Vue3 的核心）
+
+骨架与 3.1.3 相同，关键是在 `get` 里对对象返回值继续代理：
 
 ```js
 function reactive(target) {
   return new Proxy(target, {
     get(t, k, r) {
       track(t, k);
-      const v = Reflect.get(t, k, r);
-      return typeof v === 'object' && v !== null ? reactive(v) : v;
+      const value = Reflect.get(t, k, r);
+      return typeof value === 'object' && value !== null ? reactive(value) : value;
     },
     set(t, k, v, r) {
       const old = t[k];
@@ -632,6 +602,8 @@ function reactive(target) {
   });
 }
 ```
+
+没有缓存时 `state.a !== state.a`（每次读到新代理），生产实现要用 `WeakMap` 缓存。
 
 #### 场景 2：数据校验（表单 / API 入参）
 
@@ -655,14 +627,13 @@ const user = validated({
   name: (v) => typeof v === 'string' && v.length > 0,
 })({});
 
-user.age = 18;    // ✅
-user.age = -1;    // ❌ TypeError: 字段 age 不合法
+user.age = 18;    // ok
+user.age = -1;    // TypeError: 字段 age 不合法: -1
 ```
 
 #### 场景 3：默认值 / 负索引
 
 ```js
-// 访问不存在的属性返回默认值（配置对象很好用）
 function withDefault(target, defaultValue) {
   return new Proxy(target, {
     get(t, k, r) {
@@ -671,10 +642,10 @@ function withDefault(target, defaultValue) {
   });
 }
 const config = withDefault({ timeout: 3000 }, 0);
-console.log(config.timeout);   // 3000
-console.log(config.retries);   // 0
+config.timeout;   // 3000
+config.retries;   // 0
+// 注意：已有属性的值为 undefined 时返回 undefined，不会落到默认值
 
-// 负索引（arr[-1] 取最后一个）—— 类似 Python
 function negativeIndex(arr) {
   return new Proxy(arr, {
     get(t, k, r) {
@@ -685,7 +656,7 @@ function negativeIndex(arr) {
   });
 }
 const a = negativeIndex([1, 2, 3]);
-console.log(a[-1]);   // 3
+a[-1];   // 3
 ```
 
 #### 场景 4：私有属性保护
@@ -699,7 +670,7 @@ function protect(target, privateKeys) {
       return Reflect.get(t, k, r);
     },
     has(t, k) {
-      if (blocked.has(k)) return false;    // 对外隐藏
+      if (blocked.has(k)) return false;
       return Reflect.has(t, k);
     },
     ownKeys(t) {
@@ -709,10 +680,12 @@ function protect(target, privateKeys) {
 }
 
 const api = protect({ _secret: 'x', name: 'api' }, ['_secret']);
-console.log(api.name);      // 'api'
-console.log(api._secret);   // ❌ Error
-console.log(Object.keys(api));  // ['name']  ← _secret 被隐藏
+api.name;                 // 'api'
+api._secret;              // Error: 不允许访问私有属性: _secret
+Object.keys(api);         // ['name']
 ```
+
+`ownKeys` 不能隐藏不可配置的属性，否则会抛 `TypeError: 'ownKeys' on proxy: trap result did not include 'a'`。
 
 #### 场景 5：日志 / 埋点 / 调试
 
@@ -734,7 +707,6 @@ function logged(target, label = 'obj') {
   });
 }
 
-// 也可以做成"方法耗时统计"
 function timed(fn) {
   return new Proxy(fn, {
     apply(t, thisArg, args) {
@@ -760,28 +732,14 @@ function immutable(target) {
 }
 
 const state = immutable({ count: 0 });
-state.count = 1;   // ❌ Error: 不可修改
+state.count = 1;   // Error: 不可修改
 ```
 
-> 对比 `Object.freeze` 的优势：`freeze` 是**静默失败**（非严格模式）且**递归**要手动做，`Proxy` 可以抛错 + 只读一层。
+对比 `Object.freeze`：`freeze` 是**浅冻结**（嵌套对象仍可改），非严格模式赋值静默失败，严格模式才抛 `TypeError`；`Proxy` 可以显式抛错，也可以只拦一层。
 
 #### 场景 7：懒加载 / 虚拟模块
 
 ```js
-// 按需加载模块，第一次访问才 import
-function lazyModule(loader) {
-  let mod = null;
-  return new Proxy({}, {
-    get(_, key) {
-      if (!mod) {
-        throw new Error('请先 await 初始化');   // 或者改成同步加载
-      }
-      return mod[key];
-    },
-  });
-}
-
-// 更实用的：按需计算
 function lazy(target, compute) {
   const cache = new Map();
   return new Proxy(target, {
@@ -796,15 +754,16 @@ function lazy(target, compute) {
 }
 ```
 
+首次访问触发 `compute`，之后命中 `cache`。模块懒加载也能用 `get` 拦截，但首个访问前拿不到同步值，通常还是用 `import()`。
+
 #### 场景 8：Mock 数据 / 链式 API
 
 ```js
-// 万能 Mock：任意属性名都返回一个函数，无限链式
 function mock() {
   const fn = () => mock();
   return new Proxy(fn, {
     get(t, k) {
-      if (k === 'then') return undefined;   // 避免被当成 thenable
+      if (k === 'then') return undefined;   // 避免被 await 当成 thenable
       return mock();
     },
     apply() {
@@ -814,13 +773,12 @@ function mock() {
 }
 
 const api = mock();
-api.user.get(1).name;   // 不会报错，返回另一个 mock
+typeof api.user.get(1).name;   // 'function'
 ```
 
 ### 3.3.4 `apply` 与 `construct`：代理函数
 
 ```js
-// 代理函数调用（AOP 切面）
 function withLogging(fn) {
   return new Proxy(fn, {
     apply(target, thisArg, args) {
@@ -840,26 +798,28 @@ proxyAdd(1, 2);      // 打印日志 + 返回 3
 
 class Person { constructor(name) { this.name = name; } }
 const ProxyPerson = withLogging(Person);
-new ProxyPerson('Tom');   // 打印日志 + 返回实例
-console.log(new ProxyPerson('A') instanceof Person);   // true（newTarget 保留）
+new ProxyPerson('A') instanceof Person;   // true
+
+class Sub extends ProxyPerson {}
+new Sub() instanceof Sub;                 // true（construct 里转发了 newTarget）
 ```
 
-> **`construct` 的第三个参数 `newTarget` 很关键**：不传它，`instanceof` 会失效（实例的原型变成 `target.prototype` 但因为用的是 proxy，某些场景会错）。
+`newTarget` 是 `new` 表达式里实际被 new 的构造器。省略它时 `Reflect.construct` 会回退到 `target`：
+
+```js
+const P = new Proxy(Person, {
+  construct(t, args) { return Reflect.construct(t, args); },  // 不转发 newTarget
+});
+class Sub2 extends P {}
+new Sub2() instanceof Sub2;   // false：实例原型回退到 Person.prototype
+```
 
 ### 3.3.5 答题模板
 
-**30 秒版：**
-
-> "`Proxy` 能拦截对象的 **13 种基本操作**，包括读（`get`）、写（`set`）、判断存在（`has`）、删除（`deleteProperty`）、枚举（`ownKeys`）、原型操作，以及函数调用（`apply`）和 `new`（`construct`）。
-> 典型用途是**响应式**（Vue3 就是用它重写响应式的）、**数据校验**（`set` 里做规则检查）、**默认值/负索引**、**私有属性保护**、**日志埋点**、**不可变数据**。
-> 配套的 `Reflect` 提供每种 trap 的默认行为，而且能正确传递 `receiver`，写 trap 时基本都用 `Reflect.xxx(...)` 兜底。"
-
-**2 分钟版补充：**
-
-> "举两个我觉得实用的：
-> 一个是**数据校验**，在 `set` trap 里跑 schema，非法值直接抛错，比在每个赋值处写 `if` 干净得多。
-> 另一个是**不可变数据**，`set`/`deleteProperty` 直接抛错，比 `Object.freeze` 好在能抛错提醒、也能只冻结一层。
-> 要注意 `Proxy` 有三个局限：不能拦截 `===`、不能拦私有字段 `#x`、`Map`/`Set` 这类内置对象的方法依赖内部槽，`this` 是 proxy 会报错，得把 `this` 绑回 target。"
+- `Proxy` 能拦截 **13 种**基本操作：`get`、`set`、`has`、`deleteProperty`、`ownKeys`、`getOwnPropertyDescriptor`、`defineProperty`、原型操作、`apply`、`construct` 等。
+- 典型用途：响应式、数据校验、默认值 / 负索引、私有属性、日志埋点、不可变数据、懒加载、Mock。
+- 配套 `Reflect` 提供每个 trap 的默认行为，并能正确传递 `receiver`。
+- 实现注意：`Map`/`Set` 要把 `this` 绑回 target，trap 不能违反不变量。
 
 ### 3.3.6 追问表
 
@@ -867,19 +827,17 @@ console.log(new ProxyPerson('A') instanceof Person);   // true（newTarget 保�
 |---|---|
 | `Proxy` 有几个 trap？ | 13 个 |
 | `in` 走哪个 trap？ | `has` |
-| `for...in` 走哪些 trap？ | `ownKeys` + `getOwnPropertyDescriptor` |
-| `instanceof` 走哪个 trap？ | `getPrototypeOf` |
-| `JSON.stringify` 走哪些？ | `ownKeys` + `get` + `getOwnPropertyDescriptor` |
+| `for...in` 走哪些 trap？ | `ownKeys` + `getPrototypeOf` + `getOwnPropertyDescriptor` |
+| `instanceof` 走哪个 trap？ | 代理在左侧走 `getPrototypeOf`；构造器是代理时走 `get('prototype')` |
+| `JSON.stringify` 走哪些？ | `get('toJSON')` + `ownKeys` + `getOwnPropertyDescriptor` + `get` |
 | `Reflect` 存在的意义？ | 提供 trap 的默认行为；统一 API；支持 `receiver` |
 | 为什么 trap 里要用 `Reflect` 而不是直接操作 target？ | 能正确处理 `receiver` 和返回值语义 |
-| `Proxy` 能代理函数吗？ | 能，用 `apply` 和 `construct` trap |
-| `Proxy` 能代理 class 吗？ | 能（class 也是函数），但要处理 `construct` 的 `newTarget` |
-| `Proxy` 能拦截 `===` 吗？ | 不能 |
-| `Proxy` 能拦截私有字段吗？ | 不能，`#x` 完全绕过 |
-| `Proxy.revocable` 是什么？ | 创建一个可撤销的代理，`revoke()` 后所有操作报错（可用于临时授权） |
-| 代理套代理有问题吗？ | 有，多层代理性能下降且容易出 bug（Vue3 用 `WeakMap` 缓存避免重复代理） |
+| `Proxy` 能代理函数 / class 吗？ | 能，用 `apply` 和 `construct`；class 要注意转发 `newTarget` |
+| `Proxy` 能拦截 `===` 吗？ | 不能，`proxy !== target` |
+| `Proxy` 能拦截私有字段吗？ | 不能，`#x` 不经过 trap；以代理为 this 访问会抛 TypeError |
+| `Proxy.revocable` 是什么？ | 创建可撤销代理，`revoke()` 后所有操作抛错（可用于临时授权） |
+| 代理套代理有问题吗？ | 有，trap 逐层叠加，性能下降；同一对象应复用代理 |
 | trap 必须遵守什么？ | 不变量（如不可配置属性不能报告为不存在） |
-| 为什么 Vue3 用 `WeakMap` 缓存代理？ | 避免同一对象被重复代理，导致 `proxy1 !== proxy2` |
 
 ---
 
@@ -895,12 +853,9 @@ console.log(new ProxyPerson('A') instanceof Person);   // true（newTarget 保�
 
 ### 3.4.2 把三题串起来（面试收尾用）
 
-> "这三题其实是一个递进关系：
-> **第 13 题问"有几种办法"**——答案是四条路，各有取舍；
-> **第 15 题问"最好的两条路差在哪"**——本质是"改属性"还是"换对象"，一个粒度差异推导出所有行为差异；
-> **第 4 题问"Proxy 还能干什么"**——因为它拦的是**语言层面的操作**，所以凡是需要"在对象操作前后插一脚"的场景都能用。
->
-> 一句话总结：**`defineProperty` 是给属性加钩子，`Proxy` 是给对象换身份。** 前者精确但静态，后者通用但重。"
+- **第 13 题问"有几种办法"**：四条路，各有取舍。
+- **第 15 题问"最好的两条路差在哪"**：本质是"改属性"还是"换对象"，粒度差异推导出所有行为差异。
+- **第 4 题问"Proxy 还能干什么"**：它拦的是语言层面的操作，凡是要在对象操作前后插一脚的场景都能用。
 
 ---
 
@@ -911,7 +866,7 @@ console.log(new ProxyPerson('A') instanceof Person);   // true（newTarget 保�
 ```
 【四种监听方案】
   defineProperty  Vue2   递归装 get/set   新增/删除/数组索引 ❌
-  Proxy           Vue3   代理整个对象      全部 ✅，惰性
+  Proxy           Vue3   代理整个对象      全部 ✅，嵌套按需代理
   脏检查          AngularJS  $digest 遍历 watcher 对比    慢但无入侵
   手动通知        React      setState + 不可变引用比较
 
@@ -922,54 +877,30 @@ console.log(new ProxyPerson('A') instanceof Person);   // true（newTarget 保�
 
 【defineProperty vs Proxy】
   粒度      属性  vs  对象
-  拦截数    2（get/set）  vs  13
+  拦截数    get/set  vs  13
   新增/删除  ❌  vs  ✅
   数组      ❌  vs  ✅
-  初始化    全量递归（慢）  vs  惰性（快）
+  初始化    全量递归  vs  按需代理
   返回值    原对象  vs  新代理
   兼容      ES5 / IE9+  vs  ES6 / 无法 polyfill
 
-【Proxy 三个实现要点】
-  ① get 里用 Reflect.get(target, key, receiver) —— receiver 不能省
-  ② Map/Set/Date 要把 this 绑回 target
-  ③ 必须遵守不变量（不可配置属性不能谎报）
+【Proxy 实现要点】
+  ① get 里用 Reflect.get(target, key, receiver)
+  ② set 转发时注意 receiver 会再触发 defineProperty
+  ③ Map/Set 方法把 this 绑回 target
+  ④ trap 必须遵守不变量
 
-【Proxy 局限】不能拦 ===、不能拦 #私有字段、无法 polyfill、有 trap 开销
+【Proxy 局限】不能拦 ===、#私有字段、无法 polyfill、有 trap 开销
 
-【13 trap 高频】get / set / has / deleteProperty / ownKeys / apply / construct
+【13 trap 高频】get / set / has / deleteProperty / ownKeys / getOwnPropertyDescriptor / apply / construct
 ```
 
 ### 3.5.2 连环追问
 
 | # | 追问 | 关键答点 |
 |---|---|---|
-| 1 | JS 监听对象变化有几种方式？ | 4 种：`defineProperty`、`Proxy`、脏检查、手动通知 |
-| 2 | Vue2 为什么不用 `Proxy`？ | 当年 `Proxy` 支持不全 + 无法 polyfill + 要兼容 IE |
-| 3 | Vue3 为什么不用 `defineProperty`？ | 新增/删除/数组三大硬伤 + 全量递归慢 |
-| 4 | `Vue.set` 做了什么？ | 补 `defineReactive` + `notify` |
-| 5 | Vue2 重写了哪 7 个数组方法？ | `push/pop/shift/unshift/splice/sort/reverse` |
-| 6 | Vue2 改的是谁的 `prototype`？ | 数组**实例**的原型，不是全局 `Array.prototype` |
-| 7 | 脏检查为什么慢？ | 每轮遍历所有 watcher，O(n) |
-| 8 | `defineProperty` 和 `Proxy` 最本质区别？ | 属性级 vs 对象级 |
-| 9 | `defineProperty` 为什么检测不到新增？ | 陷阱装在已存在的属性上 |
-| 10 | `Proxy` 为什么能监听数组？ | 拦截 `set`，索引赋值也走它 |
-| 11 | `Proxy` 性能好在哪？ | 惰性代理，初始不递归 |
-| 12 | `Reflect` 有什么用？ | trap 的默认行为 + 正确传 `receiver` |
-| 13 | `get` trap 为什么必须传 `receiver`？ | 让 getter 里 `this` 指向 proxy，否则绕过代理 |
-| 14 | `Proxy` 能代理 `Map` 吗？ | 需特殊处理，`this` 绑回 `target` |
-| 15 | `Proxy` 不能拦截什么？ | `===`、私有字段、内置对象的内部槽 |
-| 16 | 为什么 Vue3 不支持 IE11？ | `Proxy` 无法 polyfill |
-| 17 | `Proxy` 有几个 trap？ | 13 个 |
-| 18 | `in` 走哪个 trap？ | `has` |
-| 19 | `instanceof` 走哪个 trap？ | `getPrototypeOf` |
-| 20 | `for...in` 走哪些 trap？ | `ownKeys` + `getOwnPropertyDescriptor` |
-| 21 | `Proxy` 能代理函数吗？ | 能，`apply` / `construct` |
-| 22 | `Proxy.revocable` 有什么用？ | 可撤销代理，用于临时授权 |
-| 23 | Vue3 为什么用 `WeakMap` 缓存代理？ | 避免重复代理导致 `p1 !== p2` |
-| 24 | `shallowRef` 和 `Proxy` 什么关系？ | 只响应 `.value` 整体替换，不深度代理 |
-| 25 | `markRaw` 解决什么问题？ | 标记对象永不被代理（如第三方实例、大组件对象） |
-| 26 | 不可变数据用 `Proxy` 还是 `freeze`？ | `Proxy` 能抛错、能只冻结一层；`freeze` 是静默失败 |
-| 27 | trap 的"不变量"是什么？ | 代理不能违背目标对象的不可配置属性状态 |
-| 28 | `Proxy` 会影响 `JSON.stringify` 吗？ | 会，走 `ownKeys` + `get` |
-| 29 | `Proxy` 能做 AOP 吗？ | 能，`apply` trap 加前后置逻辑 |
-| 30 | 除了 Vue3，还有什么库用 `Proxy`？ | MobX（部分）、Immer（`produce` 用 Proxy 记录变更）、`vueuse` 的工具函数 |
+| 1 | `Proxy.revocable` 怎么用？ | `const { proxy, revoke } = Proxy.revocable(t, h)`；`revoke()` 后任何操作抛 `TypeError: Cannot perform 'get' on a proxy that has been revoked` |
+| 2 | 代理套代理有问题吗？ | trap 逐层叠加，性能下降；同一对象要用 `WeakMap` 缓存复用代理 |
+| 3 | `shallowRef` / `markRaw` 和 Proxy 什么关系？ | `shallowRef` 只追踪 `.value` 整体替换；`markRaw` 标记对象跳过代理 |
+| 4 | 不可变数据用 Proxy 还是 freeze？ | Proxy 能显式抛错、只拦一层；`freeze` 是浅冻结，非严格模式静默失败 |
+| 5 | `Proxy` 能做 AOP 吗？ | 能，`apply` trap 加前后置逻辑 |

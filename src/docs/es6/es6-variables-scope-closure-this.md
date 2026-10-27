@@ -2,7 +2,6 @@
 
 > 覆盖题号：**1、19**（let/const/var）、**24**（作用域与作用域链）、**25**（执行上下文与调用栈）、**29**（this）、**31**（闭包）、**23、27、28**（箭头函数）
 > 共 **9 题**，去重后 **6 个独立考点**
-> 这一册是整份题单的地基：后面的原型、Promise、Proxy 全都建立在这里。
 
 ---
 
@@ -24,9 +23,9 @@
 
 ### 1.1.0 一句话结论
 
-> 三者的根本差异只有一条：**作用域规则不同**。`var` 是函数作用域、会被提升并初始化为 `undefined`、可以重复声明、在顶层会挂到全局对象上；`let`/`const` 是**块级作用域**、虽然也提升但**不初始化**（落进暂时性死区）、不能重复声明、不挂全局对象。`const` 额外要求**声明时必须初始化**，且**绑定不可重新赋值**。
+> 核心差异是**作用域规则**，其余差异都是它的推论：`var` 是函数作用域，提升后初始化为 `undefined`，可重复声明，在浏览器 classic script 顶层会挂到全局对象上；`let`/`const` 是**块级作用域**，提升但不初始化（TDZ），不可重复声明，不挂全局对象。`const` 额外要求**声明时必须初始化**，且**绑定不可重新赋值**。
 
-### 1.1.1 六维对照表（背这张就够）
+### 1.1.1 六维对照表
 
 | 维度 | `var` | `let` | `const` |
 |---|---|---|---|
@@ -34,10 +33,10 @@
 | **变量提升** | ✅ 提升，初始化为 `undefined` | ✅ 提升，但**未初始化**（TDZ） | ✅ 同 `let` |
 | **声明前访问** | `undefined` | ❌ `ReferenceError` | ❌ `ReferenceError` |
 | **重复声明** | ✅ 允许（后者覆盖前者） | ❌ `SyntaxError` | ❌ `SyntaxError` |
-| **顶层是否挂 `window`** | ✅ `window.x` 能取到 | ❌ 取不到 | ❌ 取不到 |
+| **顶层是否挂 `window`**（classic script） | ✅ `window.x` 能取到 | ❌ 取不到 | ❌ 取不到 |
 | **初始化要求** | 可省略（默认 `undefined`） | 可省略 | ❌ **必须赋值** |
 | **能否重新赋值** | ✅ | ✅ | ❌（对象内部属性可改） |
-| **循环中的绑定** | 全程**共用一个** | 每轮迭代**新建一个** | 同 `let` |
+| **循环中的绑定** | 全程**共用一个** | 每轮迭代**新建一个** | 同 `let`（C 式 `for` 自增会 `TypeError`） |
 
 ### 1.1.2 作用域：块级到底"块"在哪
 
@@ -68,24 +67,25 @@ function f() {
 
 ### 1.1.3 提升：三者都提升，但"初始化的时机"不同
 
-这是最容易被答错的地方。很多人的说法是"`let` 没有变量提升"，**这是错的**。
+常见误解是"`let` 没有变量提升"。实际是三者都提升，`var` 在创建阶段就初始化为 `undefined`，`let`/`const` 只创建绑定、不初始化。
 
 ```js
 console.log(typeof a);  // 'undefined'  ← var 提升且已初始化为 undefined
-console.log(typeof b);  // ❌ ReferenceError ← let 提升了，但未初始化
+var a = 1;
+console.log(typeof b);  // ReferenceError: Cannot access 'b' before initialization
 let b = 1;
 
 // 对比：完全没声明的变量
 console.log(typeof c);  // 'undefined'  ← 不报错，返回字符串 'undefined'
 ```
 
-**为什么 `typeof tdzVar` 会抛错？** 因为 `typeof` 对"未声明的标识符"有特殊豁免（返回 `'undefined'`），但对"已声明但未初始化"的绑定不做豁免——它已经在作用域里了，只是处于 TDZ 状态。
+**为什么 `typeof tdzVar` 会抛错？** `typeof` 对"未声明的标识符"有特殊豁免（返回 `'undefined'`），但对"已声明但未初始化"的绑定不做豁免——它已经在作用域里了，只是处于 TDZ 状态。
 
-正规的说法是：
-
-> **`let`/`const` 有声明提升（hoisting），但没有初始化（initialization）。从块开始到声明语句执行之间，这个绑定处于「暂时性死区」（Temporal Dead Zone, TDZ），任何访问（包括 `typeof`）都会抛 `ReferenceError`。**
+> **`let`/`const` 有声明提升（hoisting），但没有初始化（initialization）。从进入块到声明语句执行之间，这个绑定处于「暂时性死区」（Temporal Dead Zone, TDZ），任何访问（包括 `typeof`）都会抛 `ReferenceError`。**
 
 ### 1.1.4 重复声明与"同一作用域"的判定
+
+下面 ❌ 行会让整个脚本在解析阶段失败，仅作语法示意：
 
 ```js
 var a = 1;
@@ -106,7 +106,7 @@ let d = 1;
 console.log(d);   // 1
 ```
 
-**注意一个坑**：`SyntaxError` 是在**编译阶段**报的，不是运行时。所以下面这段代码整个脚本都不会执行：
+**注意**：`SyntaxError` 是在**编译阶段**报的，不是运行时。所以下面这段代码整个脚本都不会执行：
 
 ```js
 console.log('hello');   // 不会打印
@@ -118,7 +118,7 @@ let a = 2;              // 解析阶段就抛 SyntaxError
 // 经典陷阱：块内 let 遮蔽导致 TDZ
 var x = 1;
 {
-  console.log(x);   // ❌ ReferenceError！不是 1
+  console.log(x);   // ReferenceError: Cannot access 'x' before initialization
   let x = 2;
 }
 ```
@@ -129,32 +129,30 @@ var x = 1;
 
 ```js
 const a = 1;
-// a = 2;              // ❌ TypeError: Assignment to constant variable.
+// a = 2;              // TypeError: Assignment to constant variable.
 
 const obj = { n: 1 };
 obj.n = 2;             // ✅ 允许
 obj.m = 3;             // ✅ 允许
-// obj = {};           // ❌ TypeError
+// obj = {};           // TypeError: Assignment to constant variable.
 
 const arr = [1, 2];
 arr.push(3);           // ✅ 允许
-// arr = [];           // ❌ TypeError
+// arr = [];           // TypeError: Assignment to constant variable.
 ```
 
-**准确表述**：`const` 保证的是**绑定（binding）不可变**，不是**值不可变**。它阻止的是"重新赋值 / 重新绑定"这个动作，不阻止"修改对象内部状态"。
+**准确表述**：`const` 保证的是**绑定（binding）不可变**，不是**值不可变**。它阻止"重新赋值 / 重新绑定"，不阻止"修改对象内部状态"。
 
-**面试加分说法**：
-
-> "`const` 限制的是**变量与值之间的引用关系**，不是值本身。要真正冻结对象，得用 `Object.freeze()`，而且它是**浅冻结**——嵌套对象还要递归处理。另外要注意 `Object.freeze` 在非严格模式下静默失败，严格模式下抛 `TypeError`。"
+要真正冻结对象得用 `Object.freeze()`，而且它是**浅冻结**——嵌套对象还要递归处理。`Object.freeze` 在非严格模式下静默失败，严格模式下抛 `TypeError`。
 
 ```js
-'use strict';
 const o = Object.freeze({ a: 1, nested: { b: 2 } });
-o.a = 10;              // 静默失败（非严格模式）/ TypeError（严格模式）
-o.nested.b = 20;       // ✅ 仍然能改！浅冻结
+o.a = 10;              // 非严格：静默失败，o.a 仍为 1
+o.nested.b = 20;       // 浅冻结：嵌套属性仍可改
+// 严格模式下 o.a = 10 抛 TypeError: Cannot assign to read only property 'a'
 ```
 
-### 1.1.6 循环：本题最高频的追问
+### 1.1.6 循环中的绑定
 
 ```js
 // ❌ var 版本：输出 3, 3, 3
@@ -168,10 +166,10 @@ for (let j = 0; j < 3; j++) {
 }
 ```
 
-**根因（讲清这个才算过关）**：
+**根因**：
 
 - `var` 只有一个绑定，整个循环共享它。`setTimeout` 的回调是**异步**执行的，等它们跑的时候循环早结束了，`i` 已经是 `3`。
-- `let` 在 `for` 语句里有一个特殊行为：**每次迭代开始前，规范会执行 `CreatePerIterationEnvironment`，创建一个新的词法环境并把上一轮的值复制进来**（ES 规范 14.7.4.9）。所以三轮循环产生了三个独立的 `j`，每个 `setTimeout` 的回调通过闭包各自捕获一个。
+- `let` 在 `for` 语句里有一个特殊行为：**每轮进入循环体前，规范会执行 `CreatePerIterationEnvironment`，创建一个新的词法环境并把上一轮的值复制进来**。所以三轮循环产生了三个独立的 `j`，每个 `setTimeout` 的回调通过闭包各自捕获一个。
 
 ```
 let 循环的展开等价于：
@@ -190,7 +188,7 @@ let 循环的展开等价于：
 }
 ```
 
-**⚠️ 容易答错的细节**：`for (let i...)` 的这个"每轮新绑定"是 **`for` 语句专属**的规范行为，不是"`let` 在所有循环里都这样"：
+**边界**：这个"每轮新绑定"是 **`for` 语句专属**的规范行为，不是"`let` 在所有循环里都这样"：
 
 ```js
 // while 里用 let 没有这个效果，因为 let 在 while 外面
@@ -202,6 +200,8 @@ while (k < 3) {
 ```
 
 ### 1.1.7 全局挂载：一个常被忽略的差异
+
+以下结论只适用于浏览器 classic script（`<script>`，非 `type="module"`）：
 
 ```js
 var g1 = 1;
@@ -217,11 +217,11 @@ console.log(Object.keys(window).includes('g1'));  // true
 console.log(Object.keys(window).includes('g2'));  // false
 ```
 
-**为什么这很重要？**
+**三条结论：**
 
-1. `var g1` 创建的属性和 `window.g1` 是**同一个绑定**，`delete window.g1` 会失败（不可配置）。
+1. `var g1` 创建的属性和 `window.g1` 是**同一个绑定**，`delete window.g1` 返回 `false`（不可配置）。
 2. `let/const` 在全局是"**全局词法环境**的绑定"，和全局对象是**两个不同的东西**，这解决了老代码里 `var` 污染 `window` 的问题。
-3. 这也是为什么 `var top = 1` 在某些浏览器会踩坑——`window.top` 是只读的窗口引用。
+3. Node 不同：CJS 顶层 `var` 属于模块包装函数，ESM 顶层 `var` 属于模块作用域，都不挂 `globalThis`（Node 22 实测 `globalThis.g1 === undefined`）。
 
 ### 1.1.8 该怎么选：一条实用规则
 
@@ -235,53 +235,38 @@ console.log(Object.keys(window).includes('g2'));  // false
 团队规范：ESLint 开 prefer-const + no-var
 ```
 
-**为什么"默认 const"？** 因为 `const` 把"这个变量不会被重新赋值"变成了**编译期可验证的约束**，读代码时不用追踪它被改过几次。这是降低认知负担，不是教条。
+**为什么"默认 const"？** 因为 `const` 把"这个变量不会被重新赋值"变成了**编译期可验证的约束**，读代码时不用追踪它被改过几次，降低认知负担。
 
 ### 1.1.9 答题模板
 
-**30 秒版：**
-
-> "核心是作用域不同。`var` 是函数作用域，会提升并初始化为 `undefined`，能重复声明，顶层会挂到 `window` 上；`let` 和 `const` 是块级作用域，虽然也提升但不初始化，在声明前访问会因暂时性死区抛 `ReferenceError`，不能重复声明。`const` 额外要求声明时必须赋值，而且限制的是**绑定不可变**，对象内部属性还是能改的。实际开发我默认用 `const`，需要重新赋值时用 `let`，基本不用 `var`。"
-
-**2 分钟版（加上循环和 TDZ 两个深水区）：**
-
-> 在 30 秒版基础上补两段：
->
-> "最典型的差异体现在 `for` 循环里。`for (var i...)` 加 `setTimeout` 会全部输出最终值，因为 `var` 全程只有一个绑定；`for (let i...)` 能输出 0/1/2，是因为规范规定 `for` 语句在**每轮迭代前创建一个新的词法环境**并复制上一轮的值，所以每个回调闭包捕获的是各自那个 `i`。
->
-> 另外要纠正一个常见误解：**`let` 是有变量提升的**，只是没有初始化。所以 '`let` 没有提升' 这个说法不准确。TDZ 的边界很细——如果块内声明了 `let x`，那么从块开头到声明语句之间访问 `x` 都会报错，哪怕外层有同名 `var`，因为遮蔽在进入块时就发生了。"
+- **作用域**：`var` 函数级；`let`/`const` 块级。
+- **提升**：三者都提升；`var` 初始化为 `undefined`，`let`/`const` 未初始化（TDZ），声明前访问（含 `typeof`）抛 `ReferenceError`。
+- **声明与赋值**：`var` 可重复声明；`let`/`const` 不可；`const` 必须初始化且绑定不可重新赋值（对象内容可改）。
+- **顶层与循环**：浏览器 classic script 顶层 `var` 挂 `window`，`let`/`const` 不挂；C 式 `for` 中 `var` 共用一个绑定，`let` 每轮新绑定。
+- **选型**：默认 `const`，需要重新赋值改 `let`，不用 `var`。
 
 ### 1.1.10 追问表
 
 | 追问 | 答题要点 |
 |---|---|
-| `let` 有变量提升吗？ | **有**，但未初始化 → TDZ。说"没有提升"是错的 |
-| TDZ 的范围？ | 从**进入块**开始，到**声明语句执行完**结束 |
-| `typeof` 在 TDZ 会怎样？ | **抛 `ReferenceError`**（不像未声明变量那样返回 `'undefined'`） |
-| `const` 声明对象能改吗？ | 能改属性，不能重新赋值。要冻结用 `Object.freeze`（浅冻结） |
-| 为什么推荐 `const`？ | 把"不可重新赋值"变成编译期约束，降低阅读成本 |
-| 顶层 `let` 和 `var` 有什么区别？ | `var` 成为全局对象属性，`let` 只存在于全局词法环境 |
-| `for (let i...)` 每轮新绑定是哪来的？ | 规范 `CreatePerIterationEnvironment`，`for` 语句专属 |
-| 能不能用 `var` + IIFE 模拟 `let` 的循环效果？ | 能，ES5 时代就是这么做的：`(function(i){ setTimeout(...) })(i)` |
 | `switch` 的 `case` 里能写 `let` 吗？ | 能，但**整个 switch 是一个块**，不同 case 里不能同名声明（会 SyntaxError），要用 `{}` 包起来 |
-| 为什么不建议 `var`？ | 函数作用域太宽 + 提升易误用 + 重复声明掩盖错误 + 污染 `window` |
+| 能不能用 `var` + IIFE 模拟 `let` 的循环效果？ | 能，ES5 时代就是这么做的：`(function(i){ setTimeout(...) })(i)` |
+| 为什么顶层 `let` 和 `var` 行为不同？ | `var` 成为全局对象属性，`let` 只存在于全局词法环境 |
 
 ---
 
 ## 1.2 深入：变量提升与暂时性死区
 
-> 这一节是 1.1 的补充，面试官如果继续挖，就挖到这里。
-
 ### 1.2.1 提升的到底是什么
 
-"提升"不是一个物理移动动作，而是**编译阶段的行为**：JS 引擎在执行代码前会先做一次**声明扫描**，把当前作用域内的所有声明登记到词法环境里。
+"提升"不是物理移动，而是**编译阶段的行为**：JS 引擎在执行代码前会先做一次**声明扫描**，把当前作用域内的所有声明登记到词法环境里。
 
 ```
 进入一个作用域时（创建阶段）：
   ① 扫描 function 声明  → 在词法环境里创建绑定，并【立即初始化】为函数对象
   ② 扫描 var 声明        → 在变量环境里创建绑定，初始化为 undefined
   ③ 扫描 let/const 声明  → 在词法环境里创建绑定，但【不初始化】→ TDZ
-  ④ 扫描 class 声明      → 同 let/const，TDZ（且 class 的提升"更彻底"：连 typeof 都报错）
+  ④ 扫描 class 声明      → 同 let/const，TDZ
   ⑤ 记录 this 绑定、arguments、形参
 ```
 
@@ -301,25 +286,26 @@ var baz = function inner() {
 console.log(typeof inner);     // 'undefined'
 ```
 
-### 1.2.2 形参和 `var` 的微妙关系（非严格模式）
+### 1.2.2 形参和 `var` 的微妙关系
 
 ```js
-// 非严格模式：形参和同名 var 是【同一个绑定】
+// 非严格模式：形参和同名 var 是同一个绑定，arguments[0] 与形参联动
 function f(a) {
   var a = 2;
-  console.log(a);   // 2
+  console.log(a, arguments[0]);   // 2 2
 }
 f(1);
 
-// 严格模式：形参和 var 是两个独立绑定（但初始化时值相同）
-'use strict';
+// 严格模式：形参和 var 是两个独立绑定
 function g(a) {
+  'use strict';
   var a = 2;
-  console.log(a);   // 2（这里还是 2，因为 var 声明不重新赋值）
+  console.log(a, arguments[0]);   // 2 1
 }
+g(1);
 ```
 
-> 这块是冷知识，**面试基本不问**，但能说明你知道"严格模式改变了参数和变量环境的关系"（ES6 之后规范用 `varEnv` 和 `lexEnv` 分离来表达，非严格模式下两者可能是同一个环境记录）。
+ES6 之后规范用 `varEnv` 和 `lexEnv` 分离来表达这件事；非严格模式下两者可能指向同一个环境记录。
 
 ### 1.2.3 提升的实际危害：三个真实 bug
 
@@ -365,16 +351,13 @@ function h(flag) {
 | **模块作用域** | ESM 文件顶层 | 模块内的声明不会污染全局，顶层 `this` 是 `undefined` |
 
 ```js
-// 模块作用域的特殊性
 // a.mjs
 var x = 1;
-console.log(this);          // undefined（不是 window/global）
-console.log(window.x);      // undefined（模块顶层 var 不挂 window）
+console.log(this);          // undefined（不是 globalThis）
+console.log(globalThis.x);  // undefined（模块顶层 var 不挂全局对象）
 ```
 
 ### 1.3.2 词法作用域 vs 动态作用域
-
-这是本题的**核心区分点**，也是很多人的盲区：
 
 ```js
 var scope = 'global';
@@ -385,7 +368,7 @@ function check() {
 
 function demo() {
   var scope = 'local';
-  check();          // 输出什么？
+  check();
 }
 
 demo();             // 'global'  ← 词法作用域：check 定义在全局，所以查全局
@@ -393,7 +376,7 @@ demo();             // 'global'  ← 词法作用域：check 定义在全局，�
 
 如果是**动态作用域**（像 Bash、早期 Lisp），`check()` 会沿着**调用栈**找，输出 `'local'`。JS 是词法作用域，所以输出 `'global'`。
 
-> **一句话记忆**：**作用域看"定义在哪"，`this` 看"怎么调用"。** 这是 JS 里两套完全独立的查找机制，千万别混。
+> **一句话记忆**：**作用域看"定义在哪"，`this` 看"怎么调用"。** 这是 JS 里两套完全独立的查找机制，不能混。
 
 ### 1.3.3 作用域链的实现：`[[Environment]]` 与 `[[OuterEnv]]`
 
@@ -429,8 +412,6 @@ outer()();   // 6
 
 ### 1.3.4 作用域链 vs 原型链：一张表分清
 
-这两个"链"是初学者最容易混的：
-
 | | 作用域链 | 原型链 |
 |---|---|---|
 | **查什么** | **变量 / 标识符** | **对象属性** |
@@ -444,54 +425,43 @@ outer()();   // 6
 // 一个例子同时体现两条链
 const obj = { name: 'obj' };
 function f() {
-  console.log(name);      // 作用域链：找变量 name → 全局没有 → ReferenceError
+  console.log(missingVar);       // 作用域链：找变量 missingVar → 全局没有 → ReferenceError
   console.log(obj.name);  // 原型链：obj 自身有 name → 'obj'
 }
 ```
 
 ### 1.3.5 作用域链能被"延长"吗
 
-能，只有两种情况（都是老特性，不推荐用）：
+主要有两种情况：
 
 ```js
-// ① with：把对象的属性临时插入作用域链前端
+// ① with：把对象的属性临时插入作用域链前端（非严格模式）
 const o = { a: 1 };
 with (o) {
   console.log(a);   // 1
 }
-// 严格模式禁用 with
+// 严格模式禁用 with：SyntaxError: Strict mode code may not include a with statement
 
 // ② catch 的块级绑定
 try { throw new Error('x'); }
 catch (e) { /* e 在 catch 块的作用域里 */ }
 ```
 
-> **为什么 `with` 被禁？** 因为它让作用域链**在运行时才确定**，引擎无法做静态优化，所有变量查找都要走慢路径；同时代码可读性极差。这也是性能优化话题里的经典例子。
+> **为什么 `with` 被禁？** 因为它让作用域链**在运行时才确定**，引擎无法做静态优化，所有变量查找都要走慢路径。
 
 ### 1.3.6 答题模板
 
-**30 秒版：**
-
-> "作用域是变量能被访问的范围，JS 有全局、函数、块级三种，ESM 还有模块作用域。作用域链是查找变量的机制——当前作用域找不到就沿着外层词法环境的引用往上找，直到全局，最后到 `null`。关键是 JS 是**词法作用域**，链在函数**定义时**就确定了，跟调用位置无关。这也是闭包能成立的基础。"
-
-**2 分钟版补充：**
-
-> "要区分两个容易混的概念：**作用域链查的是变量，原型链查的是对象属性**，方向也不一样，作用域链由内向外，原型链由下向上。
->
-> 作用域链是被函数对象内部的 `[[Environment]]` 槽固定住的，每个函数记住自己**出生时**的环境。所以 `var scope='global'; function check(){console.log(scope)}; function demo(){var scope='local'; check()}` 输出的是 `'global'` 而不是 `'local'`——如果 JS 是动态作用域才会输出 `'local'`。
->
-> 唯一能"延长"作用域链的是 `with`，但它会让变量查找变成运行时行为、破坏引擎优化，严格模式下已经禁用了。"
+- **定义**：作用域是变量能被访问的静态范围；作用域链是找不到变量时沿外层词法环境逐级向上查找的链，终点是全局环境，再往上 `[[OuterEnv]]` 为 `null`。
+- **静态性**：JS 是词法作用域，链在函数**定义时**确定，与调用位置无关；`[[Environment]]` 记录函数创建时的外层环境。
+- **区分**：作用域链查变量，原型链查对象属性；前者由内向外静态嵌套，后者由下向上对象继承。
+- **延长**：`with` 把对象属性插入链前端，使查找运行时化、破坏优化，严格模式禁用；`catch` 块也有块级绑定。
 
 ### 1.3.7 追问表
 
 | 追问 | 答题要点 |
 |---|---|
-| JS 是词法作用域还是动态作用域？ | **词法（静态）**，由代码位置决定 |
-| 作用域链什么时候建立？ | 函数**定义**时（通过 `[[Environment]]` 记住外层环境） |
-| 作用域链的终点？ | 全局环境，再往上 `[[OuterEnv]]` 是 `null` |
-| 作用域链和原型链的区别？ | 查变量 vs 查属性；静态嵌套 vs 对象继承 |
-| 什么会延长作用域链？ | `with`（严格模式禁用）、`catch` 块、`eval`（间接影响） |
 | 全局变量为什么性能差？ | 查找路径最长（要走到链尾）；且挂在全局对象上，属性访问还要走原型链 |
+| 什么会延长作用域链？ | `with`（严格模式禁用）、`catch` 块、`eval`（间接影响） |
 | 块级作用域在 ES5 怎么模拟？ | IIFE + 函数作用域 |
 | 模块作用域和函数作用域的区别？ | 模块顶层 `this` 是 `undefined`，`var` 不挂全局对象 |
 
@@ -501,13 +471,13 @@ catch (e) { /* e 在 catch 块的作用域里 */ }
 
 ### 1.4.0 一句话结论
 
-> **执行上下文**是代码执行时的运行环境，分全局、函数、`eval`（还有模块）三类，每个上下文包含**词法环境、变量环境、`this` 绑定、外层引用**四样东西；**调用栈**是管理这些上下文的 LIFO 栈，当前执行的函数上下文永远在栈顶，函数返回就出栈。
+> **执行上下文**是代码执行时的运行环境，分全局、函数、`eval`（还有模块）几类，每个上下文包含**词法环境、变量环境、`this` 绑定、外层引用**；**调用栈**是管理这些上下文的 LIFO 栈，当前执行的函数上下文永远在栈顶，函数返回就出栈。
 
 ### 1.4.1 执行上下文的两个阶段
 
 ```
 ① 创建阶段（进入函数时，代码还没跑）
-   ├─ 确定 this 绑定（this 的指向在这一步就定了）
+   ├─ 确定 this 绑定
    ├─ 创建词法环境（lexicalEnvironment）：let/const/class/函数声明
    ├─ 创建变量环境（variableEnvironment）：var 声明、形参
    └─ 建立 outer 引用（指向定义时的外层环境）
@@ -517,7 +487,7 @@ catch (e) { /* e 在 catch 块的作用域里 */ }
    └─ 遇到函数调用 → 创建新上下文压栈
 ```
 
-> **注意**：`this` 在**创建阶段**就确定了（箭头函数的 `this` 是直接继承外层，不创建自己的），这是"`this` 由调用方式决定"的实现层解释。
+> **注意**：`this` 在函数**被调用**时、创建该次执行上下文的那一刻确定；逐行执行阶段不再改变（箭头函数不创建自己的 `this`）。
 
 ### 1.4.2 执行上下文的组成（ES5 视角 vs ES6 视角）
 
@@ -528,7 +498,7 @@ catch (e) { /* e 在 catch 块的作用域里 */ }
 | this | ThisBinding | `[[ThisValue]]` + `[[ThisBindingStatus]]` |
 | 其他 | arguments、形参 | 同上 |
 
-**ES6 的关键改进**：把"一个变量对象"拆成了**词法环境**和**变量环境**两个，就是为了让 `let/const` 的块级作用域和 `var` 的函数作用域能共存于同一个上下文里。
+**ES6 的关键改进**：把"一个变量对象"拆成了**词法环境**和**变量环境**两个，让 `let/const` 的块级作用域和 `var` 的函数作用域能共存于同一个上下文里。
 
 ```js
 function f() {
@@ -565,12 +535,12 @@ a();
                       └──────────┘
 ```
 
-**几个能立刻验证的现象：**
+**可验证的现象：**
 
 ```js
 // 1) 栈溢出
 function recurse() { recurse(); }
-recurse();   // RangeError: Maximum call stack size exceeded（V8 约 1 万层左右）
+recurse();   // RangeError: Maximum call stack size exceeded（Node 22 实测约 9177 层）
 
 // 2) 看当前调用栈
 function c() { console.log(new Error().stack); }
@@ -578,17 +548,16 @@ function b() { c(); }
 function a() { b(); }
 a();
 // Error
-//     at c (<anonymous>:1:23)
-//     at b (<anonymous>:2:14)
-//     at a (<anonymous>:3:14)
-//     at <anonymous>:4:1     ← 这就是调用栈的快照
+//     at c (demo.cjs:1:28)
+//     at b (demo.cjs:2:16)
+//     at a (demo.cjs:3:16)
+//     at Object.<anonymous> (demo.cjs:4:1)     ← 路径前缀随运行位置变化，此处省略
+// 后续是 Node 内部模块帧
 
 // 3) 浏览器断点面板的 Call Stack 就是它
 ```
 
 ### 1.4.4 调用栈与"阻塞"的关系
-
-这是理解**单线程**的关键：
 
 ```js
 function sync() {
@@ -607,30 +576,21 @@ console.log('after');   // 3 秒后才打印
 - 不能渲染（渲染也要等主线程空闲）
 - 甚至滚动都会卡住
 
-> **这就是"为什么长任务会卡页面"的根因**：事件循环的规则是"**调用栈清空后才从队列里取下一个任务**"。所以一切"不阻塞"的方案（`setTimeout`、`Promise`、`requestIdleCallback`、Web Worker）本质都是"**把大任务拆小，或者挪出主线程**"。详见分册 04。
+> **这就是"为什么长任务会卡页面"的根因**：事件循环的规则是"**调用栈清空后才从队列里取下一个任务**"。所以一切"不阻塞"的方案（`setTimeout`、`Promise`、`requestIdleCallback`、Web Worker）本质都是"**把大任务拆小，或者挪出主线程**"。
 
 ### 1.4.5 答题模板
 
-**30 秒版：**
-
-> "执行上下文是代码运行时的环境，分全局、函数、eval 三类，每个上下文在**创建阶段**会确定 `this`、建立词法环境（`let/const`）和变量环境（`var`）、挂上外层环境引用，然后进入**执行阶段**逐行跑。调用栈是管理这些上下文的栈，函数调用就压栈、返回就出栈，栈顶永远是当前执行的函数。栈的深度有上限，递归太深就 `Maximum call stack size exceeded`。"
-
-**2 分钟版补充（往事件循环上引）：**
-
-> "调用栈是理解 JS 单线程的关键。事件循环的规则是**调用栈清空后才从任务队列取下一个任务**，所以只要有一个长任务占着栈，页面就不响应点击、不渲染。这也是为什么要把大任务切成小块（`requestIdleCallback`、时间切片）或者丢给 Worker——本质上都是在让调用栈尽快空出来。
->
-> 另外 ES6 之后执行上下文有个变化：原来是一个'变量对象'，现在拆成了**词法环境和变量环境**两个，就是为了让块级的 `let/const` 和函数级的 `var` 能在同一个上下文里共存。"
+- **上下文**：代码运行时的环境，分全局、函数、`eval`、模块；创建阶段确定 `this`、建立词法环境（`let/const`）和变量环境（`var`）、挂外层引用，执行阶段逐行运行。
+- **调用栈**：LIFO，函数调用压栈、返回出栈，栈顶是当前执行的函数；栈深有上限，递归过深抛 `RangeError`。
+- **事件循环**：调用栈清空后才从任务队列取下一个任务；长任务占栈会阻塞点击与渲染。
+- **非阻塞**：把大任务切片（`requestIdleCallback`、时间切片）或移出主线程（Worker），本质都是让调用栈尽快清空。
 
 ### 1.4.6 追问表
 
 | 追问 | 答题要点 |
 |---|---|
-| 执行上下文有几个阶段？ | 创建 + 执行（ES3 说法还有"初始化"） |
-| `this` 什么时候确定？ | **创建阶段**（不是运行时逐行确定） |
-| 词法环境和变量环境的区别？ | 词法环境存 `let/const/class`，变量环境存 `var`/形参 |
 | 调用栈溢出怎么解决？ | 改迭代 / 尾递归（V8 未实现 TCO）/ 分片执行 / 加大栈（`--stack-size`，不推荐） |
-| V8 的栈有多大？ | 默认约 984KB，递归大概 1 万层左右（随函数栈帧大小变化） |
-| 调用栈和事件循环的关系？ | 栈空才取任务；微任务在**每个宏任务之后、栈空时**清空 |
+| V8 的栈有多大？ | 默认上限约 1MB，递归大约 1 万层（随函数栈帧大小变化；Node 22 实测约 9177 层） |
 | 为什么 `try/catch` 不能捕获异步错误？ | 异步回调执行时，原来的调用栈已经销毁了 |
 | 执行上下文会一直存在吗？ | 不会，函数返回就出栈并被回收——**除非被闭包引用** |
 
@@ -640,15 +600,14 @@ console.log('after');   // 3 秒后才打印
 
 ### 1.5.0 一句话结论
 
-> `this` 是**函数被调用时**才确定的（除了箭头函数），由**调用方式**决定，与定义位置无关。规则按优先级从高到低：**`new` 绑定 > 显式绑定（`bind` > `call`/`apply`）> 隐式绑定（`obj.fn()`）> 默认绑定（严格模式 `undefined`，非严格模式全局对象）**；箭头函数不参与这套规则，它的 `this` 在**定义时**从外层词法环境继承。
+> `this` 是**函数被调用时**才确定的（箭头函数除外），由**调用方式**决定，与定义位置无关。规则按优先级从高到低：**`new` 绑定 > 显式绑定（`bind` > `call`/`apply`）> 隐式绑定（`obj.fn()`）> 默认绑定（严格模式 `undefined`，非严格模式全局对象）**；箭头函数不参与这套规则，它的 `this` 在**定义时**从外层词法环境继承。
 
 ### 1.5.1 六种情况（含"没有 this"的箭头函数）
 
 ```js
 // ① 默认绑定：独立函数调用
 function f() { console.log(this); }
-f();                    // 非严格模式：window/globalThis
-                        // 严格模式：undefined
+f();                    // 非严格：globalThis（浏览器 window）；严格：undefined
 
 // ② 隐式绑定：作为对象方法调用
 const obj = { name: 'obj', f() { console.log(this.name); } };
@@ -666,7 +625,7 @@ const p = new Person('Tom');   // this = 新创建的 p
 
 // ⑤ 箭头函数：没有自己的 this，取定义时的外层
 const arrow = () => console.log(this);
-arrow();                // 模块/严格模式下是 undefined，脚本里是 window
+arrow();                // ESM 顶层：undefined；CJS 顶层：module.exports；浏览器 classic script：window
 
 // ⑥ 特殊：DOM 事件处理、定时器等宿主环境回调
 btn.addEventListener('click', function () {
@@ -697,22 +656,22 @@ const b = f.bind({ tag: 'bound' });
 b.call({ tag: 'try-override' });        // 'bound'
 ```
 
-> **注意第 ③ 条**：`new` 可以"穿透" `bind` 的 `this` 绑定，但 `bind` 预置的**参数**仍然生效。这是 `bind` 与 `new` 交互的唯一例外。
+> **注意第 ③ 条**：`new` 可以"穿透" `bind` 的 `this` 绑定，但 `bind` 预置的**参数**仍然生效（实测 `new (G.bind(null, 7))().x === 7`）。
 
 ### 1.5.3 隐式丢失：最常见的 bug 来源
 
 ```js
 const user = {
-  name: 'Tom',
-  sayHi() { console.log(this.name); },
+  username: 'Tom',
+  sayHi() { console.log(this.username); },
 };
 
 // ① 赋值给变量 → 变成默认绑定
 const fn = user.sayHi;
-fn();                          // undefined（严格）/ 报错（this 是 undefined）
+fn();                          // 非严格：this = globalThis → undefined；严格：TypeError
 
 // ② 作为回调传递
-setTimeout(user.sayHi, 100);   // 丢失
+setTimeout(user.sayHi, 100);   // 丢失（回调里的 this 不再指向 user）
 
 // ③ 作为数组元素取出
 const arr = [user.sayHi];
@@ -720,12 +679,12 @@ arr[0]();                      // 丢失
 
 // ④ 嵌套函数
 const obj2 = {
-  name: 'outer',
+  label: 'outer',
   inner: {
-    name: 'inner',
+    label: 'inner',
     f() {
-      function g() { console.log(this.name); }
-      g();                     // 丢失！this 是 undefined/window
+      function g() { console.log(this.label); }
+      g();                     // 丢失！this 不再指向 inner
     },
   },
 };
@@ -743,8 +702,8 @@ setTimeout(() => user.sayHi(), 100);
 
 // 方案 3：在定义处用箭头函数（class 场景常用）
 class A {
-  name = 'A';
-  sayHi = () => console.log(this.name);   // 箭头函数作为实例属性，天然绑定
+  username = 'A';
+  sayHi = () => console.log(this.username);   // 箭头函数作为实例属性，天然绑定
 }
 
 // 方案 4：call/apply 立即调用（用于一次性调用）
@@ -756,14 +715,14 @@ user.sayHi.call(user);
 ```js
 'use strict';
 function f() { return this; }
-console.log(f());   // undefined（非严格模式是 window）
-
-// 但显式传入的 undefined 也会保持 undefined
+console.log(f());                 // undefined（非严格：globalThis）
 console.log(f.call(undefined));   // undefined
-console.log(f.call(null));        // null（非严格模式会被替换成 window）
-```
+console.log(f.call(null));        // null
+console.log(f.call(1));           // 1
 
-> **细节**：非严格模式下 `call(null)` / `call(undefined)` 会把 `this` **替换成全局对象**（这叫 `this` 的"装箱/替换"行为）；严格模式不会。`call(1)` 在非严格模式下会被装箱成 `Number` 对象，严格模式保持原始值。
+// 非严格模式：call(null/undefined) → 全局对象；call(1) → Number 包装对象
+// 严格模式：null/undefined/原始值都保持原样
+```
 
 ### 1.5.5 class 里的 this：为什么更容易出问题
 
@@ -783,7 +742,7 @@ fn();   // ❌ TypeError: Cannot read properties of undefined (reading 'count')
 1. `class` 内部的代码**默认是严格模式**，所以 `this` 是 `undefined` 而不是 `window`。
 2. 方法定义在 `Counter.prototype` 上，不是实例自身属性，取出来调用就丢了接收者。
 
-**三种解法（React 时代讨论最多的话题）：**
+**三种解法：**
 
 ```js
 // ① 构造函数里 bind
@@ -798,39 +757,24 @@ class B {
 }
 
 // ③ 调用时 bind / 用箭头包（使用方负责）
-<button onClick={() => c.inc()} />
+button.addEventListener('click', () => c.inc());
 ```
 
 ### 1.5.6 答题模板
 
-**30 秒版：**
-
-> "`this` 是函数**调用时**才确定的，由**调用方式**决定，不看定义位置。规则有五种，优先级从高到低是：`new` 绑定、显式绑定（`bind` 优先于 `call/apply`）、隐式绑定（`obj.fn()`）、默认绑定（严格模式 `undefined`，非严格模式全局对象）。箭头函数是例外，它没有自己的 `this`，直接继承定义时外层的 `this`。
->
-> 实际开发中最大的坑是**隐式丢失**——把方法赋值给变量或当回调传进去，`this` 就丢了，要用 `bind` 或箭头函数包一层。"
-
-**2 分钟版补充：**
-
-> 补三个细节：
-> "一是 `new` 能穿透 `bind`：`new (f.bind(obj))()` 里 `this` 是新对象而不是 `obj`，但 `bind` 预置的参数还在。
-> 二是 `class` 里更容易踩，因为 class 内部**默认严格模式**，方法丢了接收者就是 `undefined`，不是 `window`，所以会直接 `TypeError`。
-> 三是严格模式还会影响 `call(null)`——非严格模式会把 `null`/`undefined` 替换成全局对象，`1` 这类原始值会被装箱成对象，严格模式都保持原样。"
+- **时机与规则**：`this` 在函数调用时确定，由调用方式决定；优先级 `new` > `bind` > `call/apply` > 隐式 `obj.fn()` > 默认绑定。
+- **默认绑定**：严格模式 `undefined`；非严格模式全局对象（浏览器 `window`，Node `globalThis`）。
+- **显式绑定**：`bind` 的 `this` 永久生效，但 `new` 能覆盖它；预置参数仍然保留。
+- **常见坑**：把方法赋值给变量、当回调、从数组取出、嵌套函数调用都会丢失 `this`；用 `bind` 或箭头函数包一层。
+- **class**：内部默认严格模式，方法丢了接收者就是 `undefined`，直接 `TypeError`。
 
 ### 1.5.7 追问表
 
 | 追问 | 答题要点 |
 |---|---|
-| `this` 什么时候确定？ | **调用时**（箭头函数是定义时） |
-| 五种绑定的优先级？ | `new` > `bind` > `call/apply` > 隐式 > 默认 |
 | `bind` 能改两次吗？ | 不能，第一次 `bind` 的 `this` 永久生效 |
 | `new` 能覆盖 `bind` 的 this 吗？ | 能，`new` 优先级更高（但参数保留） |
-| 严格模式下 `f()` 的 `this`？ | `undefined` |
-| 非严格模式 `f.call(null)` 的 `this`？ | 全局对象（会被替换） |
 | `f.call(1)` 的 `this`？ | 非严格：`Number` 包装对象；严格：`1` |
-| 箭头函数的 `this` 能改吗？ | **不能**，`call`/`apply`/`bind` 都无效 |
-| 对象方法里嵌套函数，`this` 是谁？ | 默认绑定（`undefined`/全局），不是外层对象 |
-| `setTimeout(obj.fn, 0)` 的 `this`？ | 全局/`undefined`（隐式丢失） |
-| 事件处理函数的 `this`？ | 普通函数是 `currentTarget`；箭头函数是外层 |
 | `this` 能在运行时用 `Object.defineProperty` 改吗？ | 不能，`this` 不是对象属性，是执行上下文的内部槽 |
 
 ---
@@ -841,13 +785,13 @@ class B {
 
 > 箭头函数不是"更短的 `function`"，它是**另一类函数**：没有自己的 `this`、`arguments`、`super`、`new.target`，没有 `prototype`，**不能被 `new`**，不能用 `yield`。它的 `this` 在**定义时**从外层词法环境继承，且**永久不可变**（`call`/`apply`/`bind` 都改不了）。
 
-### 1.6.1 五个"没有"（背这个）
+### 1.6.1 五个"没有"
 
 | 没有 | 后果 |
 |---|---|
 | **没有自己的 `this`** | 取定义时外层的 `this`；`call/apply/bind` 全部无效 |
 | **没有 `arguments`** | 要用 rest 参数 `(...args)` 代替 |
-| **没有 `prototype`** | `arrow.prototype === undefined` → 不能 `new`（`TypeError: not a constructor`） |
+| **没有 `prototype`** | `arrow.prototype === undefined` → 不能 `new`（`TypeError: ... is not a constructor`） |
 | **没有 `super` / `new.target`** | 不能用于 `class` 的 `extends` 里的 `super()` 调用 |
 | **不能作为 `Generator`** | `function*` 和 `()=>` 不能组合 |
 
@@ -860,24 +804,24 @@ console.log(arrow.hasOwnProperty('prototype'));  // false
 console.log(typeof arrow);            // 'function' ← 注意：typeof 仍然是 function
 ```
 
-> **加分点**：`typeof arrow === 'function'`，但 `new arrow()` 报错。因为判断能否 `new` 看的是内部槽 `[[Construct]]`，不是 `typeof`。同样，`class` 也是 `typeof === 'function'` 但不能直接调用。
+> 判断能否 `new` 看的是内部槽 `[[Construct]]`，不是 `typeof`。`class` 同理：`typeof` 是 `'function'`，但直接调用会抛 `TypeError`。
 
 ### 1.6.2 `this` 指向：定义时决定，且改不了
 
 ```js
 const obj = {
-  name: 'obj',
+  username: 'obj',
   // ① 普通函数：this 由调用方式决定
-  normal() { return this.name; },
+  normal() { return this.username; },
   // ② 箭头函数：this 是定义时的外层（这里是模块/全局）
-  arrow: () => this.name,
+  arrow: () => this.username,
 };
 
 console.log(obj.normal());          // 'obj'
-console.log(obj.arrow());           // undefined（this 是外层，不是 obj）
+console.log(obj.arrow());           // CJS/浏览器脚本：undefined；ESM：TypeError（外层 this 为 undefined）
 
 // ③ 尝试修改 → 无效
-console.log(obj.arrow.call({ name: 'x' }));   // undefined
+console.log(obj.arrow.call({ username: 'x' }));   // 同上，call 改不了
 ```
 
 ```js
@@ -906,24 +850,23 @@ const counter5 = {
 
 ### 1.6.3 什么场景**不该**用箭头函数
 
-这是本题最能体现经验的部分：
-
 ```js
 // ❌ 1. 对象方法（想用 this 访问自身属性）
 const bad1 = {
-  name: 'x',
-  getName: () => this.name,     // this 是外层，取不到
+  username: 'x',
+  getUsername: () => this.username,     // this 是外层，取不到
 };
 
 // ❌ 2. 原型方法
+function Foo() {}
 Foo.prototype.bar = () => { this.xxx };   // this 不是实例
 
 // ❌ 3. 构造函数
 const Person = (name) => { this.name = name; };
-new Person('x');                // TypeError
+new Person('x');                // TypeError: Person is not a constructor
 
 // ❌ 4. 需要动态 this 的回调（如 Vue2 的 methods 里需要 this 指向组件）
-//    实际上 Vue2 的 methods 可以用箭头函数但会拿不到组件实例，所以不推荐
+//    箭头函数拿不到组件实例，所以不推荐
 
 // ❌ 5. 需要 arguments 的函数
 const sum = () => arguments;    // arguments 来自外层，通常不是你想要的
@@ -943,21 +886,22 @@ btn.addEventListener('click', () => {
 ### 1.6.4 箭头函数的其他特性
 
 ```js
-// ① 不能换行（返回对象字面量要加括号）
-const f1 = () => { name: 'x' };   // 这是代码块，返回 undefined！
+// ① 返回对象字面量要加括号
+const f1 = () => { name: 'x' };   // 代码块 + 标签，返回 undefined
 const f2 = () => ({ name: 'x' }); // ✅ 返回对象
 
 // ② 单表达式自动 return
 const double = (n) => n * 2;
 
-// ③ 单参数可省括号（但不推荐，Prettier 默认 always）
+// ③ 单参数可省括号（Prettier 默认 always）
 const inc = n => n + 1;
 
 // ④ 没有 arguments，用 rest
 const sum = (...nums) => nums.reduce((a, b) => a + b, 0);
 
-// ⑤ 不能用作 tag 的简写？其实可以
+// ⑤ 可作 tag 函数：s.raw 是原始字符串数组
 const tag = (s, ...v) => s.raw.join('|');
+tag`a${1}b`;                      // 'a|b'
 
 // ⑥ 箭头函数也可以有 name（推断）
 const named = () => {};
@@ -966,30 +910,19 @@ console.log(named.name);   // 'named'
 
 ### 1.6.5 答题模板
 
-**30 秒版：**
-
-> "箭头函数和普通函数有五个本质区别：没有自己的 `this`，取定义时外层的；没有 `arguments`，要用 rest 代替；没有 `prototype`，所以不能用 `new`；没有 `super` 和 `new.target`；不能用 `yield` 做生成器。
->
-> 最关键的是 `this` —— 它在**定义时**就确定了，而且 `call`/`apply`/`bind` 都改不了。所以适合用在回调和需要外层 `this` 的场景，不适合当对象方法、原型方法或构造函数。"
-
-**2 分钟版补充：**
-
-> "两个容易忽略的点：
-> 一是 `typeof arrow === 'function'` 是 `true`，但 `new arrow()` 会抛 `TypeError`，因为能否 `new` 取决于内部槽 `[[Construct]]`，不是 `typeof`。
-> 二是箭头函数适合做**回调**的典型场景是 `setInterval` / `Promise.then` / 数组方法——这些地方本来就需要外层 `this`，用箭头函数省掉了 `var that = this`。但如果是 `addEventListener`，要注意普通函数的 `this` 是 `currentTarget`，箭头函数会丢掉这个能力。"
+- **五个没有**：没有自己的 `this`、`arguments`、`prototype`、`super`/`new.target`，不能作 `Generator`。
+- **this**：定义时从外层词法环境继承，`call`/`apply`/`bind` 都改不了。
+- **不能 new**：没有 `prototype` 和 `[[Construct]]`，`typeof` 仍是 `'function'`。
+- **适用**：纯计算、回调、需要外层 `this`；不适用对象方法、原型方法、构造函数、需要动态 `this` 或 `arguments` 的场景。
 
 ### 1.6.6 追问表
 
 | 追问 | 答题要点 |
 |---|---|
-| 箭头函数能用 `new` 吗？ | 不能，没有 `prototype` 和 `[[Construct]]` |
-| 箭头函数有 `arguments` 吗？ | 没有，但能访问到**外层**的 `arguments`（容易出 bug） |
-| 箭头函数的 `this` 能改吗？ | 不能，`call/apply/bind` 全无效 |
-| 箭头函数能当 Generator 吗？ | 不能 |
+| 箭头函数有 `arguments` 吗？ | 没有自己的，但能访问**外层**的 `arguments`（CJS 顶层是模块包装函数的 arguments；ESM 顶层没有） |
 | 箭头函数能用于 `class` 的方法吗？ | 能作为**实例字段**（`inc = () => {}`），这才是它绑 `this` 的用法 |
-| 什么时候必须用普通函数？ | 需要动态 `this`、需要 `arguments`、需要 `new`、需要 `yield` |
 | 箭头函数和 `bind` 的区别？ | 箭头函数是**定义时**绑定且不可改；`bind` 是**调用时**显式绑定，也是永久的，但 `new` 能覆盖 `bind` |
-| 为什么 React 里推荐箭头函数？ | 组件方法需要绑定 `this`（class 组件时代）；函数组件里则是避免每次渲染重建函数（配合 `useCallback`） |
+| 为什么 React 里推荐箭头函数？ | class 组件时代方法需要绑定 `this`；函数组件里是配合 `useCallback` 避免每次渲染重建函数 |
 
 ---
 
@@ -1029,7 +962,7 @@ inc();   // 3
 outer 出栈后：
   正常情况下，执行上下文会被销毁，count 应该被回收
   但 inner 的 [[Environment]] 还引用着那个词法环境
-  → 引用计数 / 可达性分析认为它仍然"可达" → 不回收
+  → 可达性分析认为它仍然"可达" → 不回收
   → 所以 inc() 每次还能读写 count
 ```
 
@@ -1068,7 +1001,7 @@ function makeAdders3() {
 console.log(makeAdders3().map((f) => f()));   // [0, 1, 2]
 ```
 
-### 1.7.3 六大实用场景（面试举例用）
+### 1.7.3 六大实用场景
 
 ```js
 // ① 数据私有化（模块模式 / 计数器）
@@ -1124,28 +1057,27 @@ function memoize(fn, { cache = new Map() } = {}) {
 }
 ```
 
-> **面试技巧**：被问"闭包有什么用"，**不要只答"私有变量"**，答 2-3 个具体场景（防抖/节流/柯里化/单例），面试官会认为你真的写过。
-
 ### 1.7.4 闭包与内存：到底会不会泄漏
-
-这是本题的**加分题**，90% 的人答不清楚。
 
 **准确的说法**：
 
 > 闭包**本身不是内存泄漏**，它是**延长了变量的生命周期**——这是设计意图。只有当"**你不再需要的引用被闭包持续持有，且无法释放**"时，才叫泄漏。
 
 ```js
-// ❌ 真泄漏：DOM 被闭包持住，移除后也无法回收
+// ❌ 长生命周期对象持有闭包：监听器挂在 window 上且不解绑
 function attach() {
   const hugeData = new Array(1e6).fill('x');
-  const el = document.getElementById('btn');
-  el.addEventListener('click', () => {
-    console.log(hugeData.length);   // 闭包持有 hugeData
+  window.addEventListener('resize', () => {
+    console.log(hugeData.length);   // window 一直可达 → 闭包 → hugeData 一直可达
   });
-  document.body.removeChild(el);    // 移除 DOM 但监听器没解绑
-  // → el 被监听器引用，hugeData 被闭包引用，全部泄漏
 }
-// ✅ 修复：removeEventListener，或把监听器存到变量里
+// ✅ 保存同一个函数引用，在不需要时解绑
+function attachFixed() {
+  const hugeData = new Array(1e6).fill('x');
+  const onResize = () => console.log(hugeData.length);
+  window.addEventListener('resize', onResize);
+  return () => window.removeEventListener('resize', onResize);
+}
 
 // ❌ 真泄漏：定时器没清
 function start() {
@@ -1162,6 +1094,8 @@ function normal() {
 }
 ```
 
+监听器挂在会被移除、且之后不再被引用的元素上时，现代标记清除可以回收这个环；真正泄漏的是**长生命周期目标持有闭包**，或**已移除节点仍被 JS 引用**。
+
 **现代引擎的优化（V8）**：V8 会做**上下文分配优化**——只有被闭包引用的变量才会被放进 `Context` 对象；同一作用域内未被引用的变量仍然可以回收。
 
 ```js
@@ -1172,7 +1106,9 @@ function f() {
 }
 ```
 
-> ⚠️ 但**不要依赖这个优化**：在 `eval`、`with`、或者引擎无法静态分析的情况下，整个作用域都会被保留。写代码时该清的还是要清。
+Node 22 + `--expose-gc` 实测：被闭包引用的 `big` 仍可达；未被引用的 `big` 在下一轮任务后已被回收。
+
+> 注意：**不要依赖这个优化**：在 `eval`、`with`、或者引擎无法静态分析的情况下，整个作用域都会被保留。写代码时该清的还是要清。
 
 ### 1.7.5 闭包的经典考察：循环 + 定时器 + 事件
 
@@ -1194,7 +1130,7 @@ for (var i = 0; i < lis.length; i++) {
   lis[i].onclick = function () { console.log(this.index); };
 }
 
-// ④ 事件委托（性能最好，推荐）
+// ④ 事件委托（只在父节点挂一个监听器）
 ul.addEventListener('click', (e) => {
   const li = e.target.closest('li');
   console.log([...ul.children].indexOf(li));
@@ -1208,37 +1144,25 @@ for (var i = 0; i < lis.length; i++) {
 
 ### 1.7.6 答题模板
 
-**30 秒版：**
-
-> "闭包是**函数和它被创建时所在词法环境的组合**。因为函数对象内部有 `[[Environment]]` 记住外层环境，所以即使外层函数已经返回，内层函数仍然能访问那些变量。
->
-> 它的价值在于**数据私有化**和**状态保持**，典型用法是防抖、节流、柯里化、单例、模块模式。副作用是会延长变量生命周期，用不好会占内存——但闭包本身不是泄漏，泄漏是"该释放的引用被闭包一直持着"，比如没解绑的事件监听、没清的定时器。"
-
-**2 分钟版补充：**
-
-> "补两个细节：
-> 一是**多个闭包共享同一个环境**，这是 `for (var i)` 输出全是 3 的根因——三个回调捕获的是同一个 `i`。改成 `let` 或者用 IIFE 造新作用域才能各捕获一份。
-> 二是**现代引擎会做优化**，V8 只把被闭包引用的变量放进 `Context`，没被引用的仍然能回收。但这不能当护身符，`eval` 之类会让整个作用域被保留。"
+- **定义**：闭包是函数和它创建时所处词法环境的组合；`[[Environment]]` 让外层变量在函数返回后仍然可达。
+- **共享**：多个闭包共享同一环境，所以 `for (var i)` 的回调都读到最终值；`let`、IIFE、`bind` 可以各捕获一份。
+- **用途**：数据私有化、函数工厂、防抖、节流、柯里化、单例/记忆化。
+- **内存**：闭包延长生命周期但不是泄漏；泄漏是长生命周期引用（未解绑监听、未清定时器）持有不再需要的数据。
 
 ### 1.7.7 追问表
 
 | 追问 | 答题要点 |
 |---|---|
-| 闭包的定义？ | 函数 + 词法环境的组合（MDN/规范口径） |
 | 闭包存在哪？ | 函数对象的内部槽 `[[Environment]]` 指向环境记录 |
-| 闭包会导致内存泄漏吗？ | 本身不会，是延长生命周期；真泄漏是"该释放的没释放" |
 | 怎么释放闭包占的内存？ | 解除引用（置 `null`）、清定时器、解绑监听、避免长期持有 DOM |
-| 循环里闭包都指向同一个变量怎么办？ | 用 `let`（每轮新绑定）/ IIFE / `bind` 预置参数 |
 | 闭包和立即执行函数（IIFE）的关系？ | IIFE 用来**创建**一个私有作用域，配合闭包导出接口（模块模式） |
-| 闭包能访问 `this` 吗？ | 能，`this` 是环境的一部分；箭头函数正是靠闭包继承外层 `this` |
-| 模块模式是什么？ | 用 IIFE + 闭包返回公共接口，内部变量私有（ESM 之前的方案） |
 | 闭包在 React/Vue 里的体现？ | React Hooks 的"闭包陷阱"（`useEffect` 依赖缺失拿到旧值）、Vue 的 `computed` 缓存 |
 
 ---
 
 ## 1.8 本册答题模板汇总
 
-### 1.8.1 一句话版（适合快速过题）
+### 1.8.1 一句话版
 
 ```
 ① let/const/var  → 作用域不同：函数级 vs 块级；提升后是否初始化不同；const 绑不可变
@@ -1249,11 +1173,12 @@ for (var i = 0; i < lis.length; i++) {
 ⑥ 闭包            → 函数 + 词法环境；状态私有化 + 延长生命周期
 ```
 
-### 1.8.2 三句话把六题串起来（面试收尾用）
+### 1.8.2 三句话把六题串起来
 
-> "这六个点其实是一条线：**作用域**决定了变量在哪；**执行上下文**决定了代码在哪跑；**this** 决定了函数里的"我"是谁；**箭头函数**把 `this` 从"调用时"改成了"定义时"；**闭包**让作用域在函数返回后还能活着；而 `let/const` 则把作用域的边界从"函数"细化到了"块"。
->
-> 理解了这条线，Vue3 的 `composable`、React 的 Hooks 闭包陷阱，本质都是同一套机制。"
+- **作用域**决定变量在哪，**执行上下文**决定代码在哪跑。
+- **this** 决定函数里的"我"是谁；**箭头函数**把它从"调用时"改成了"定义时"。
+- **闭包**让作用域在函数返回后还能活着；**let/const** 把作用域的边界从"函数"细化到了"块"。
+- Vue3 的 `composable`、React Hooks 的闭包陷阱，都建立在这套词法环境与闭包机制上。
 
 ---
 
@@ -1266,7 +1191,7 @@ for (var i = 0; i < lis.length; i++) {
   作用域: 函数 / 块 / 块
   提升:   全提升；var 初始化为 undefined，let/const 落 TDZ
   重复声明: 可 / 不可 / 不可
-  挂 window: 是 / 否 / 否
+  挂 window（classic script）: 是 / 否 / 否
   初始化: 可省 / 可省 / 必须
   循环绑定: 共用 / 每轮新建 / 每轮新建
 
@@ -1280,8 +1205,8 @@ for (var i = 0; i < lis.length; i++) {
               调用栈 LIFO；栈空才取任务 → 长任务卡页面的根因
 
 【this 优先级】new > bind > call/apply > 隐式 obj.fn() > 默认
-              严格模式默认 undefined；非严格模式 window
-              call(null) 非严格 → window；call(1) 非严格 → Number 对象
+              严格模式默认 undefined；非严格模式全局对象（浏览器 window，Node globalThis）
+              call(null) 非严格 → 全局对象；call(1) 非严格 → Number 对象
 
 【箭头函数】五没有：this / arguments / prototype / super / new.target
             不能 new、不能 yield、this 不可改
@@ -1290,39 +1215,16 @@ for (var i = 0; i < lis.length; i++) {
 【闭包】函数 + 词法环境；状态私有 + 延长生命周期
         for(var) 共享同一绑定 → 全输出末值；let / IIFE / bind 解决
         本身不是泄漏；泄漏 = 该释放的引用被持住
+
+【顶层 var】浏览器 classic script 挂 window；CJS 是模块包装函数作用域，ESM 是模块作用域，均不挂 globalThis
 ```
 
-### 1.9.2 连环追问（面试官顺着问的那种）
+### 1.9.2 连环追问
 
-| # | 追问 | 关键答点 |
-|---|---|---|
-| 1 | `let` 到底有没有提升？ | 有，但未初始化 → TDZ；说"没有"是错的 |
-| 2 | TDZ 从哪到哪？ | 从进入块到声明语句执行完毕 |
-| 3 | `for (let i)` 为什么能各捕获一份？ | 规范 `CreatePerIterationEnvironment`，`for` 专属 |
-| 4 | 用 `var` 怎么实现同样效果？ | IIFE 传参 / `bind` 预置参数 |
-| 5 | `const` 声明的数组能 `push` 吗？ | 能，`const` 限制的是绑定不是值 |
-| 6 | `Object.freeze` 是深冻结吗？ | 不是，浅冻结，嵌套要递归 |
-| 7 | 为什么 `typeof tdzVar` 报错但 `typeof undeclared` 不报？ | 前者已在作用域里但未初始化；后者压根不存在 |
-| 8 | 作用域链和原型链的区别？ | 查变量 vs 查属性；静态嵌套 vs 对象继承 |
-| 9 | 什么是词法作用域？ | 由代码书写位置决定，与调用位置无关 |
-| 10 | `with` 为什么被禁？ | 运行时改变作用域链，破坏引擎静态优化 |
-| 11 | 执行上下文有几个阶段？ | 创建 + 执行 |
-| 12 | 词法环境和变量环境的区别？ | `let/const/class` vs `var`/形参 |
-| 13 | `this` 在哪个阶段确定？ | 创建阶段（调用时进入函数的那一刻） |
-| 14 | 栈溢出怎么解决？ | 改迭代 / 分片 / Worker / 加大栈（不推荐） |
-| 15 | 为什么长任务会卡页面？ | 调用栈不清空，事件循环拿不到控制权 |
-| 16 | `new` 和 `bind` 谁的 `this` 生效？ | `new`（但 `bind` 的参数保留） |
-| 17 | `bind` 能改两次吗？ | 不能，只认第一次 |
-| 18 | 非严格模式 `call(null)` 的 `this`？ | 全局对象（会被替换） |
-| 19 | `class` 里方法丢了 `this` 为什么直接报错？ | class 内部默认严格模式，`this` 是 `undefined` |
-| 20 | 箭头函数的 `this` 能被 `call` 改吗？ | 不能，完全无效 |
-| 21 | 箭头函数有 `arguments` 吗？ | 没有自己的，但能访问外层的（易出 bug） |
-| 22 | 为什么箭头函数不能 `new`？ | 没有 `prototype` 和 `[[Construct]]` |
-| 23 | 闭包是什么？ | 函数 + 词法环境 |
-| 24 | 闭包为什么会占内存？ | 环境被引用，变量无法回收 |
-| 25 | 闭包一定泄漏吗？ | 不一定，泄漏是"该释放的没释放" |
-| 26 | V8 对闭包有什么优化？ | 只把被引用的变量放进 Context |
-| 27 | 防抖和节流用到了什么？ | 闭包保存 `timer` / `last` |
-| 28 | React Hooks 的闭包陷阱是什么？ | `useEffect` 捕获了旧渲染的变量，依赖数组没写全 |
-| 29 | Vue3 的 composable 和闭包什么关系？ | 每个 `setup` 调用产生独立闭包 → 状态天然隔离 |
-| 30 | `var` 在模块顶层会挂 `window` 吗？ | 不会，模块有自己的作用域 |
+按 1.1 → 1.7 的追问表顺序过。五条主线：
+
+1. `let` 有提升，但未初始化 → TDZ；`typeof` 也抛 `ReferenceError`。
+2. `for (let i)` 每轮新绑定来自 `CreatePerIterationEnvironment`，是 `for` 语句专属。
+3. `this` 在调用时创建执行上下文的那一刻确定；箭头函数不创建自己的 `ThisBinding`。
+4. 闭包通过 `[[Environment]]` 持有环境，变量因此可达；可达不等于泄漏。
+5. 顶层 `var` 只在浏览器 classic script 挂 `window`；CJS 是模块包装函数作用域，ESM 是模块作用域。

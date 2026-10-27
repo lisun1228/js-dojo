@@ -1,7 +1,7 @@
 # 分册 04 · 异步：Promise、async/await 与事件循环
 
-> 覆盖题号：**10**（Promise 状态与回调地狱）、**8**（`all` 与 `race`）、**26**（并发 vs 串行）、**11**（async/await 做什么）、**12**（await 做了什么）、**21**（事件循环）
-> 共 **6 题**，是前端面试**出题密度最高**的一册。不仅要会答，还要能手写、能算输出顺序。
+> 覆盖题号：**10**（Promise 状态与回调地狱）、**8**（`all` 与 `race`）、**26**（并发 vs 串行）、**11**（async/await 做什么）、**12**（await 做了什么）、**21**（事件循环），共 **6 题**。
+> 异步输出类示例按 Node 22.12 实跑核对；浏览器渲染相关只能定性描述。
 
 ---
 
@@ -58,9 +58,9 @@ p.then((v) => console.log(v));   // 1
 1. **状态不可逆**：`pending → fulfilled` 或 `pending → rejected`，之后不能再变。
 2. **只认第一次**：后续的 `resolve`/`reject` 调用被静默忽略（不报错）。
 
-> **注意**：`executor`（`new Promise(fn)` 里的 `fn`）是**同步立即执行**的，只有 `then` 里的回调才是异步的（微任务）。这是最常见的误解。
+> **注意**：`executor`（`new Promise(fn)` 里的 `fn`）是**同步立即执行**的，只有 `then` 里的回调才是异步的（微任务）。
 
-### 4.1.2 回调地狱到底"痛"在哪
+### 4.1.2 回调地狱的四个工程问题
 
 ```js
 // 回调地狱：三层就已经很难读了
@@ -76,7 +76,7 @@ getUser(userId, (err, user) => {
 });
 ```
 
-**四个具体问题**（不说"难看"，要说"工程问题"）：
+**四个具体问题**：
 
 | 问题 | 说明 |
 |---|---|
@@ -131,19 +131,14 @@ async function main() {
 }
 ```
 
-> **面试话术**："`async/await` 是 Promise 的**语法糖**，它没有取代 Promise，而是让**等待**这件事从回调变成了表达式。底层还是 Promise + 微任务。"
+`async/await` 没有取代 Promise：底层仍是 Promise + 微任务，它只是把「等待」从回调变成了表达式。
 
 ### 4.1.5 答题模板
 
-**30 秒版：**
-
-> "Promise 有三种状态：`pending`、`fulfilled`、`rejected`，只能从 `pending` 单向转变，而且**只能变一次**，之后的 `resolve`/`reject` 都被忽略。
-> 它解决回调地狱靠两点：一是 `then` 返回新 Promise，把**嵌套变成链式**；二是错误会**沿链冒泡**，一个 `catch` 就能兜住整条链。再往后 `async/await` 让它写起来像同步代码。"
-
-**2 分钟版补充：**
-
-> "有个容易误解的点：`new Promise(fn)` 里的 `fn` 是**同步立即执行**的，只有 `then` 里的回调是异步的。所以 `new Promise(() => console.log(1)); console.log(2)` 输出是 `1, 2`。
-> 另外 `then` 的两个回调只走一个，`catch` 等价于 `then(null, fn)`，`finally` 不接收值也不改变结果，适合做清理。"
+- Promise 三种状态 `pending` / `fulfilled` / `rejected`，只能从 `pending` 单向转变一次，之后的 `resolve`/`reject` 被忽略。
+- 解决回调地狱靠两点：`then` 返回新 Promise，把嵌套变成链式；错误沿链冒泡，一个 `catch` 兜住整条链。
+- `new Promise(fn)` 的 `fn` 同步执行，只有 `then` 回调是异步微任务：`new Promise(() => console.log(1)); console.log(2)` 输出 `1, 2`。
+- `then` 的两个回调只走一个；`catch` 等价于 `then(null, fn)`；`finally` 不接收值、不改变结果（自己 `throw` 除外）。
 
 ### 4.1.6 追问表
 
@@ -227,7 +222,7 @@ p.then((v) => console.log(v));
 console.log('after');   // 先打印 'after'
 ```
 
-### 4.2.5 顺带：手写一个简化版 Promise（面试常考）
+### 4.2.5 手写一个简化版 Promise
 
 ```js
 const PENDING = 'pending';
@@ -242,7 +237,7 @@ class MyPromise {
   constructor(executor) {
     const resolve = (value) => {
       if (this.#state !== PENDING) return;
-      // 处理 resolve 一个 Promise/thenable 的情况
+      // 处理 resolve 一个 MyPromise 的情况（简化版不展开通用 thenable）
       if (value instanceof MyPromise) return value.then(resolve, reject);
       this.#state = FULFILLED;
       this.#value = value;
@@ -312,11 +307,11 @@ class MyPromise {
 }
 ```
 
-**手写要点（面试官只看这几个）**：
+**手写要点**：
 
 1. 状态机 + **只变一次**
 2. `then` 返回**新 Promise**
-3. 回调**异步执行**（`queueMicrotask` 或 `setTimeout`）
+3. 回调**微任务**执行（`queueMicrotask`，不能用 `setTimeout` 替代）
 4. **值穿透**（非函数回调直接透传）
 5. 返回值 / 抛错决定新 Promise 状态
 6. `executor` 抛错要 `reject`
@@ -399,11 +394,16 @@ Promise.allSettled([]);  // 立即 resolve([])
 Promise.any([]);         // 立即 reject(AggregateError)
 ```
 
-### 4.3.3 手写 `Promise.all`（必考）
+### 4.3.3 手写 `Promise.all`
 
 ```js
 function myAll(iterable) {
   return new Promise((resolve, reject) => {
+    // Array.from(1) 会返回 []，所以非 iterable 必须显式检查
+    if (iterable == null || typeof iterable[Symbol.iterator] !== 'function') {
+      return reject(new TypeError('not iterable'));
+    }
+
     const items = Array.from(iterable);      // 支持 Set / 生成器
     const results = new Array(items.length);
     let count = 0;
@@ -429,8 +429,8 @@ function myAll(iterable) {
 1. **不能用 `push`** —— 完成顺序不是传入顺序，必须用下标
 2. **空数组**要立即 `resolve([])`，否则永远 pending
 3. **非 Promise 值**要 `Promise.resolve` 包一层
-4. **计数器**用 `++count === length`，不能用 `results.length`
-5. **迭代器**要 `Array.from`，`forEach` 对 `Set` 不适用（`Set` 有 `forEach` 但参数不同）
+4. **计数器**和输入长度 `items.length` 比较；不要依赖 `results.length`（用 `push` 时它只是已完成数量）
+5. **任意 iterable** 要先 `Array.from`（`Set` 没有 `length`/下标）；非 iterable 原生抛 `TypeError`，而 `Array.from(1)` 返回 `[]`，所以要先检查 `Symbol.iterator`
 
 ### 4.3.4 顺带：手写 `Promise.allSettled` 和 `race`
 
@@ -457,17 +457,11 @@ function myRace(iterable) {
 
 ### 4.3.5 答题模板
 
-**30 秒版：**
-
-> "`all` 是**全部成功才成功，一个失败立刻失败**，结果按传入顺序返回；`race` 是**谁先 `settled` 就用谁**，成功失败都算；`allSettled` 是**等全部结束**，永远成功，返回每个的状态和值；`any` 是**第一个成功就成功**，全失败才抛 `AggregateError`。
-> 实际用 `all` 处理并发请求，用 `race` 做超时控制，用 `allSettled` 处理"部分失败也要展示"的场景，用 `any` 做多源竞速。"
-
-**2 分钟版补充：**
-
-> "三个细节：
-> 一是 `all` 有一个失败就 reject，但**其他请求不会被取消**，还在继续跑。真要取消得配合 `AbortController`。
-> 二是 `race` 在空数组上会**永远 pending**，`all` 空数组会立即 `resolve([])`。
-> 三是手写 `all` 的关键点是**用下标存结果**而不是 `push`，因为完成顺序和传入顺序不一样。"
+- `all`：全部成功才成功，一个失败立刻失败，结果按传入顺序；`race`：第一个 settled 就用谁（成功失败都算）。
+- `allSettled`：等全部结束，永远成功，返回每个的状态和值；`any`：第一个成功就成功，全失败抛 `AggregateError`。
+- 用途：`all` 处理缺一不可的并发请求，`race` 做超时，`allSettled` 处理部分失败也要展示，`any` 做多源竞速。
+- `all` 失败不会取消其他请求，要取消得配合 `AbortController`；`race([])` 永远 pending，`all([])` 立即 `resolve([])`。
+- 手写 `all` 的关键是用下标存结果（不是 `push`）、计数器、空数组边界。
 
 ### 4.3.6 追问表
 
@@ -499,10 +493,10 @@ function myRace(iterable) {
 ### 4.4.1 先看清一个关键细节
 
 ```js
-// 串行：b 要等 a 完成才开始
+// 串行：b 要等 a 完成才开始（假设 a 3s、b 2s）
 const t1 = Date.now();
-const ra = await a();   // 3s
-const rb = await b();   // 2s
+const ra = await a();
+const rb = await b();
 console.log(Date.now() - t1);   // ≈ 5000ms
 
 // 并发：两个请求"同时"发出
@@ -513,20 +507,15 @@ const [ra2, rb2] = await Promise.all([a(), b()]);
 console.log(Date.now() - t2);   // ≈ 3000ms
 ```
 
-**这里有个常见误解**：
+**`await` 只表示「在这里等」，不会「启动」或「阻止」之前已经调用的异步操作。** 所以下面这种看起来像串行的写法，实际也是并发：
 
 ```js
-// ❌ 这样写还是串行！
-const pa = a();          // 已经开始跑
-const pb = await b();    // 但这里 await 会"挂起"，pa 的结果要等到下面才拿
+const pa = a();          // 已经启动
+const pb = await b();    // 只暂停当前函数，pa 仍在跑
 const ra = await pa;
 ```
 
-实际上上面这段**是并发**的，因为 `a()` 在 `await b()` 之前已经启动了。真正的串行是 `await a(); await b();`。
-
-**准确的理解**：
-
-> **`await` 只是"在这里等"，不会"启动"或"阻止"之前已经调用的异步操作。** 所以"先启动所有，再逐个 `await`"也是并发：
+真正串行的是 `await a(); await b();`；先启动所有、再逐个 `await` 也是并发：
 
 ```js
 // ✅ 也是并发（常用写法）
@@ -549,7 +538,7 @@ for (const id of ids) {
 const results = await Promise.all(ids.map((id) => fetchDetail(id)));
 ```
 
-**还有一个更隐蔽的错误**：
+**`forEach` 里的 `await` 无效**：
 
 ```js
 // ❌ forEach 里的 await 完全无效！
@@ -562,7 +551,7 @@ console.log(results);   // [] ← 循环已经结束，但请求都没回来
 
 **为什么无效？** `forEach` 不关心回调的返回值（哪怕返回 Promise 也直接丢弃），所以它不会等。而且 `forEach` 本身是同步的，`await` 只暂停了**回调函数**，没暂停 `forEach`。
 
-**要用 `for...of`**（因为它会 `await` 迭代器的下一个值）：
+**要用 `for...of`**（循环体的 `await` 会阻塞本轮迭代，下一次迭代自然等它完成）：
 
 ```js
 for (const id of ids) {
@@ -571,7 +560,7 @@ for (const id of ids) {
 }
 ```
 
-**一张表记住**：
+**五种写法的等待与并发行为**：
 
 | 写法 | 是否等待 | 是否并发 |
 |---|---|---|
@@ -595,7 +584,7 @@ await Promise.all(urls.map((u) => fetch(u)));
 - 内存暴涨（1000 个请求的响应都堆在内存）
 - 用户体验：首屏等待时间不可控
 
-**手写并发池**（面试高频）：
+**手写并发池**：
 
 ```js
 /**
@@ -635,7 +624,7 @@ const data = await pool(tasks, 6);
 
 ### 4.4.4 什么时候该串行
 
-并发不是无脑用：
+并发不是越多越好，需要按场景选择：
 
 | 场景 | 选择 | 原因 |
 |---|---|---|
@@ -648,17 +637,11 @@ const data = await pool(tasks, 6);
 
 ### 4.4.5 答题模板
 
-**30 秒版：**
-
-> "`await a(); await b()` 是串行，总耗时是两者之和；`Promise.all([a(), b()])` 是并发，总耗时约等于最大值。
-> 有个关键细节：**`a()` 和 `b()` 写进数组时就已经开始执行了**，`Promise.all` 只是收集结果，不是启动。所以'先启动再逐个 await'也是并发。
-> 但并发不能无脑用，请求多了要限流。比如 1000 个请求同时发，浏览器同域名有 6 个的限制，服务端也可能限流，这时候要用并发池控制数量。"
-
-**2 分钟版补充：**
-
-> "两个高频坑：
-> 一是 **`forEach` 里的 `await` 是无效的**。`forEach` 会丢弃回调的返回值，本身也是同步的，所以它不会等。要真的串行等待得用 `for...of`。
-> 二是**手写并发池**的关键是 worker 模式：启动 `limit` 个 worker 抢任务，取下标 `const index = cursor++` 必须在 `await` 之前，否则多个 worker 会拿到同一个下标。`p-limit` 就是这个思路。"
+- `await a(); await b()` 串行，总耗时是两者之和；`Promise.all([a(), b()])` 并发，总耗时约等于最大值。
+- `a()`、`b()` 写进数组时已启动，`Promise.all` 只收集结果；先启动再逐个 `await` 也是并发。
+- `forEach` 里的 `await` 无效：`forEach` 丢弃回调返回值且本身同步；真串行等待要用 `for...of`。
+- 请求多了要限流：浏览器同域名约 6 个并发、服务端限流、内存占用都会出问题。
+- 并发池用 worker + 共享游标；`const index = cursor++` 必须在 `await` 之前，否则多个 worker 抢到同一下标。
 
 ### 4.4.6 追问表
 
@@ -684,7 +667,7 @@ const data = await pool(tasks, 6);
 ### 4.5.0 一句话结论
 
 > **`async`** 做了两件事：把函数**返回值包装成 Promise**（`return 1` → `Promise.resolve(1)`，`throw` → rejected），并且**允许函数体内使用 `await`**。
-> **`await`** 做了三件事：把后面的值**用 `Promise.resolve` 包装**、**暂停当前 async 函数的执行**（把后续代码注册为该 Promise 的回调）、**让出线程**（后续代码进入微任务队列）。它**不阻塞主线程**，只是暂停了这一个函数。
+> **`await`** 做了三件事：把后面的值**用 `Promise.resolve` 包装**、**暂停当前 async 函数**（把后续代码注册为该 Promise 的回调，之后作为微任务恢复）、**不阻塞主线程**——只暂停这一个函数。
 
 ### 4.5.1 `async` 的三个行为
 
@@ -756,11 +739,11 @@ console.log(3);
 
 **为什么？** 因为规范里 `await` 走 `PromiseResolve(value)`，哪怕值是 `123` 也会包成 `Promise.resolve(123)`，然后注册回调 → 至少延迟一个微任务。
 
-> ⚠️ 细节：V8 曾对 `await` 做过优化（`await` 已 resolve 的 Promise 从 3 个 tick 减到 1 个 tick），但"异步"这一点没变。所以 `await 123` 一定不会同步往下走。
+> ⚠️ 细节：`await` 普通值或已 fulfilled 的原生 Promise 只让出 **1 次**微任务；`await` 一个简单 thenable 要先展开，实测让出 **2 次**（嵌套 thenable 3 次）。Chrome 73 起，V8 已把已 fulfilled Promise 的恢复从 3 个 tick 降到 1 个，但「必然异步」这一点没变。
 
-### 4.5.3 `await` 是 Generator + 自动执行器的语法糖
+### 4.5.3 `async/await` 与 Generator + 自动执行器
 
-这是"加分项"，能说清说明你真懂：
+`async/await` 的语义可以用 Generator + 自动执行器模拟：
 
 ```js
 // Generator 版
@@ -794,7 +777,7 @@ function run(generatorFn) {
 run(gen).then(console.log);
 ```
 
-**`async/await` ≈ `run` + `function*`**。区别是：
+**语义上 `async/await` ≈ `run` + `function*`；现代 V8（7.x 起）改用 CPS 状态机实现，不再依赖 Generator。** 区别是：
 
 | | Generator + co | async/await |
 |---|---|---|
@@ -803,7 +786,7 @@ run(gen).then(console.log);
 | 错误处理 | `try/catch` 需要 co 支持 | ✅ 原生 `try/catch` |
 | 调试 | 断点跳跃，体验差 | ✅ 像同步代码一样单步 |
 
-### 4.5.4 五个高频坑
+### 4.5.4 五个常见坑
 
 ```js
 // 坑 1：forEach 里 await 无效（见 4.4.2）
@@ -813,8 +796,7 @@ async function bad() {
 }
 bad();   // 没人 catch → UnhandledPromiseRejection
 
-// 坑 3：在循环里串行 await，性能差
-for (const u of urls) await fetch(u);   // 应该用 Promise.all
+// 坑 3：循环里串行 await（见 4.4.2），应改 Promise.all
 
 // 坑 4：await 在类字段初始化里不合法
 class A {
@@ -823,11 +805,9 @@ class A {
 
 // 坑 5：async 函数作为回调，错误没人管
 [1, 2, 3].forEach(async (n) => {
-  throw new Error('x');    // ❌ 没人 catch，静默变成 unhandled rejection
+  throw new Error('x');    // ❌ 没人 catch → 未处理 rejection（Node 15+ 默认退出进程）
 });
 ```
-
-**关于坑 5 的补充**：这是"`forEach` + `async`"的另一个隐患——不仅不等待，抛错还没人接。
 
 ### 4.5.5 顶层 `await`（ES2022）
 
@@ -846,16 +826,11 @@ export const data = await res.json();
 
 ### 4.5.6 答题模板
 
-**30 秒版：**
-
-> "`async` 做了两件事：把返回值自动包装成 Promise，并且允许函数体里用 `await`。`await` 做了三件事：把后面的值用 `Promise.resolve` 包装、暂停当前 async 函数的执行、把后续代码注册成这个 Promise 的回调（也就是微任务）。
-> 关键是要说清：**它暂停的是"这一个函数"，不是主线程**。所以 `await` 不会阻塞页面。"
-
-**2 分钟版补充：**
-
-> "两个细节：
-> 一是 **`await` 一个非 Promise 值也会让出一次**。`await 123` 之后的代码也是异步的，所以 `async function f(){ console.log(1); await 123; console.log(2) } f(); console.log(3)` 输出是 `1, 3, 2`。
-> 二是 `async/await` 的本质是 **Generator + 自动执行器**。用 `function*` + `yield` 加上一个 `run` 函数（co 库那 10 行）就能模拟出来，区别只是 async/await 是语言内置的、调试体验更好。"
+- `async` 做两件事：返回值自动包装成 Promise，允许函数体里用 `await`。
+- `await` 做三件事：用 `Promise.resolve` 包装后面的值、暂停当前 async 函数、把后续代码注册为该 Promise 的微任务回调。
+- 它暂停的是「这一个函数」，不是主线程，所以不会阻塞页面。
+- `await` 非 Promise 值也让出 1 次微任务：`async function f(){ console.log(1); await 123; console.log(2) } f(); console.log(3)` 输出 `1, 3, 2`。
+- 语义上等价于 Generator + 自动执行器；现代 V8 用 CPS 状态机实现，async/await 是语言内置、调试更友好。
 
 ### 4.5.7 追问表
 
@@ -865,10 +840,10 @@ export const data = await res.json();
 | `async` 里 `throw` 会怎样？ | 返回 rejected Promise |
 | `await` 阻塞主线程吗？ | 不阻塞，只暂停当前函数 |
 | `await 123` 会异步吗？ | 会，仍延迟一个微任务 |
-| `await` 后面跟 thenable？ | 会被展开（走 `then`） |
+| `await` 后面跟 thenable？ | 会被展开（走 `then`），比原生 Promise 多让出微任务 |
 | `await` 的错误怎么捕？ | `try/catch` |
 | 不 catch 会怎样？ | unhandled rejection |
-| `async/await` 和 Generator 关系？ | 是它的语法糖，靠自动执行器 |
+| `async/await` 和 Generator 关系？ | 语义可用 Generator + 自动执行器模拟；V8 用 CPS 状态机 |
 | 顶层 `await` 限制？ | 只能 ESM，会让父模块变异步 |
 | `await` 能用在普通函数里吗？ | 不能（除顶层 await） |
 | `async` 函数能用 `new` 吗？ | 不能，返回的是 Promise |
@@ -896,7 +871,7 @@ export const data = await res.json();
 └────────────────────┬────────────────────────────┘
                      ▼
 ┌─────────────────────────────────────────────────┐
-│  ③ 判断是否需要渲染（浏览器决定，约 60fps 一次）     │
+│  ③ 判断是否需要渲染（浏览器决定，通常每帧一次）         │
 │     ├─ requestAnimationFrame 回调                 │
 │     ├─ 样式计算 → 布局 → 绘制 → 合成               │
 │     └─ （这之后才轮到下一轮宏任务）                 │
@@ -912,24 +887,15 @@ export const data = await res.json();
 | `<script>` 整体代码 | `Promise.then` / `catch` / `finally` |
 | `setTimeout` / `setInterval` | `queueMicrotask(fn)` |
 | `setImmediate`（Node / IE） | `MutationObserver` 回调 |
-| `MessageChannel` / `postMessage` | `process.nextTick`（Node，**优先级更高**） |
-| I/O 回调（文件、网络） | `await` 之后的代码 |
-| UI 事件（click、scroll 等） | `IntersectionObserver` / `ResizeObserver` 回调 |
+| `MessageChannel` / `postMessage` | `await` 之后的代码 |
+| I/O 回调（文件、网络） | |
+| UI 事件（click、scroll 等） | |
 | `requestAnimationFrame`（**特殊**，在渲染前） | |
 
-> **`requestAnimationFrame` 不是宏任务也不是微任务**，它属于"渲染步骤"里的回调，在**微任务清空之后、样式计算之前**执行。
+> **`requestAnimationFrame` 不是宏任务也不是微任务**：它属于渲染步骤，在微任务清空之后、样式计算之前执行；`ResizeObserver` / `IntersectionObserver` 回调也在渲染步骤中，不在微任务队列。
+> **`process.nextTick` 也不在微任务队列**：它是 Node 的独立队列，先于 Promise 微任务清空（CommonJS / 入口脚本；ESM 顶层例外）。
 
-### 4.6.3 为什么微任务优先？一句话解释
-
-因为**微任务队列是在"当前宏任务结束后"立刻清空的**，而下一个宏任务要等渲染（如果需要）之后才取。所以：
-
-```
-宏任务 A 执行完 → 清空微任务 → 渲染 → 宏任务 B
-                ↑
-        微任务插在这里，永远比 B 早
-```
-
-### 4.6.4 Node.js 的事件循环（6 个阶段）
+### 4.6.3 Node.js 的事件循环（6 个阶段）
 
 ```
    ┌───────────────────────────┐
@@ -955,8 +921,8 @@ export const data = await res.json();
 
 **三个关键规则**：
 
-1. **每个阶段结束后都会清空微任务队列**（Node 11+ 是每个宏任务后都清，Node 10 之前是阶段之间清）
-2. **`process.nextTick` 优先于 Promise 微任务**（nextTick 队列先清空）
+1. **每个宏任务回调结束后都会清空微任务队列**（Node 11+；Node 10 之前只在阶段之间清空）
+2. **`process.nextTick` 是独立队列，优先于 Promise 微任务**（CommonJS / 入口脚本实测 `nextTick` 先）
 3. **`setImmediate` 在 `check` 阶段，`setTimeout` 在 `timers` 阶段**，顺序取决于进入循环的时机
 
 ```js
@@ -964,37 +930,39 @@ export const data = await res.json();
 setTimeout(() => console.log('timeout'), 0);
 setImmediate(() => console.log('immediate'));
 
-// 在主模块中：顺序不确定（取决于进程启动耗时是否超过 1ms）
-// 在 I/O 回调中：immediate 一定先（因为 poll → check）
+// 主模块：顺序不确定（Node 官方文档明确说明，取决于进程启动与定时器到期时机）
+// I/O 回调里：immediate 一定先（poll → check）
 ```
 
 ```js
-// nextTick vs Promise
+// nextTick vs Promise（CommonJS / node -e 实测）
 Promise.resolve().then(() => console.log('promise'));
 process.nextTick(() => console.log('nextTick'));
 // 输出：nextTick, promise
+
+// 注意：ESM 顶层模块的调度与 CJS 入口不同，Node 22 实测先输出 promise
 ```
 
-### 4.6.5 一个反直觉的点：`setTimeout(fn, 0)` 不是 0ms
+### 4.6.4 一个反直觉的点：`setTimeout(fn, 0)` 不是 0ms
 
 ```js
 const start = Date.now();
 setTimeout(() => console.log(Date.now() - start), 0);
-// 通常输出 1~4ms，不是 0
+// Node 22 实测 1ms；浏览器里不会是精确的 0ms
 ```
 
 **原因**：
 
-1. HTML 规范规定嵌套超过 5 层的 `setTimeout` 最小间隔是 **4ms**（`setTimeout(fn, 0)` 会被钳制到 1ms，实际执行还要等调度）
+1. HTML 规范规定嵌套超过 5 层的 `setTimeout` 最小间隔是 **4ms**；Node 还会把小于 1ms 的延迟钳到 1ms
 2. 要等当前宏任务 + 所有微任务 + 可能的渲染
 3. 浏览器会对后台标签页做节流（最低 1 秒一次）
 
-### 4.6.6 事件循环与渲染：为什么改 DOM 后要等一等
+### 4.6.5 事件循环与渲染：为什么改 DOM 后要等一等
 
 ```js
-// ❌ 这样读到的还是旧布局（但会触发强制同步布局，性能差）
+// 强制同步布局：读取布局属性会迫使浏览器立刻重排，拿到的是新值，但性能差
 el.style.width = '100px';
-console.log(el.offsetWidth);   // 100（浏览器被迫立即重排）
+console.log(el.offsetWidth);   // 新值（浏览器被迫立即重排，性能差）
 
 // ✅ 批量改，一次重排
 el.style.width = '100px';
@@ -1013,22 +981,15 @@ requestAnimationFrame(() => {
 
 Vue 的 `nextTick` 本质是 `Promise.resolve().then(fn)`，也就是微任务。而 Vue 的 DOM 更新也是放在微任务队列里的（`queueFlush`），所以 `await nextTick()` 时 DOM 已经更新了。
 
-### 4.6.7 答题模板
+### 4.6.6 答题模板
 
-**30 秒版：**
+- 一轮循环：执行一个宏任务 → 清空整个微任务队列（含新产生的）→ 可能渲染 → 取下一个宏任务。
+- 宏任务：`setTimeout`、`setInterval`、I/O、UI 事件、`MessageChannel` 和整个 `<script>`；微任务：`Promise.then`、`queueMicrotask`、`MutationObserver`、`await` 之后的代码。
+- 微任务永远优先于下一个宏任务，同一轮会清空到队空；`requestAnimationFrame` 和 `ResizeObserver` / `IntersectionObserver` 回调在渲染步骤，不是宏/微任务。
+- Node 六阶段：`timers`、`pending callbacks`、`idle/prepare`、`poll`、`check`、`close callbacks`；`setImmediate` 在 `check`，`process.nextTick` 是独立队列。
+- `setTimeout(fn, 0)` 不保证准时：要等当前宏任务、微任务和渲染；浏览器嵌套 5 层后最小 4ms，Node 最小 1ms。
 
-> "事件循环的规则是：**执行一个宏任务，然后清空整个微任务队列，再取下一个宏任务**，如此循环。
-> 宏任务包括 `setTimeout`、`setInterval`、I/O、UI 事件和整个 `<script>`；微任务包括 `Promise.then`、`queueMicrotask`、`MutationObserver` 和 `await` 之后的代码。
-> 所以微任务永远比下一个宏任务先执行，而且同一轮里微任务会被**全部清空**，包括微任务里新产生的。"
-
-**2 分钟版补充：**
-
-> "补三个点：
-> 一是 **`requestAnimationFrame` 既不是宏任务也不是微任务**，它在渲染步骤里，位置是"微任务清空之后、样式计算之前"。
-> 二是 **Node 的事件循环有 6 个阶段**：`timers`、`pending callbacks`、`idle/prepare`、`poll`、`check`、`close callbacks`，`setImmediate` 在 `check` 阶段，`process.nextTick` 的优先级比 Promise 微任务还高。
-> 三是 **`setTimeout(fn, 0)` 不是 0ms**，规范里嵌套超过 5 层会钳制到 4ms，而且还要等当前宏任务、微任务和渲染，实际通常 1-4ms。"
-
-### 4.6.8 追问表
+### 4.6.7 追问表
 
 | 追问 | 答题要点 |
 |---|---|
@@ -1038,11 +999,11 @@ Vue 的 `nextTick` 本质是 `Promise.resolve().then(fn)`，也就是微任务�
 | 微任务里产生微任务会怎样？ | 同一轮继续清空，直到队列为空 |
 | 微任务会饿死宏任务吗？ | 会，无限 `Promise.then` 递归会卡死页面 |
 | `requestAnimationFrame` 属于什么？ | 渲染步骤，不是宏/微任务 |
-| `nextTick` 和微任务关系？ | `nextTick` 就是微任务（Vue 用 `Promise.then`） |
+| `nextTick` 和微任务关系？ | `process.nextTick` 是独立队列，先于 Promise；Vue 的 `nextTick` 才是 Promise 微任务 |
 | Node 有 6 个阶段，分别是什么？ | `timers`/`pending`/`idle-prepare`/`poll`/`check`/`close` |
 | `setImmediate` 和 `setTimeout(0)` 谁先？ | 主模块不确定；I/O 回调里 `setImmediate` 先 |
-| `process.nextTick` 和 Promise 谁先？ | `nextTick` 先 |
-| `setTimeout(fn, 0)` 真的 0ms 吗？ | 不是，最小 1ms（嵌套 5 层后 4ms） |
+| `process.nextTick` 和 Promise 谁先？ | CommonJS / 入口脚本里 `nextTick` 先；ESM 顶层模块实测 Promise 先 |
+| `setTimeout(fn, 0)` 真的 0ms 吗？ | 不是：浏览器嵌套 5 层后 4ms，Node 最小 1ms，还会被长任务阻塞 |
 | 为什么长任务卡页面？ | 调用栈不清空，事件循环拿不到控制权 |
 | `setTimeout` 能精确计时吗？ | 不能，只保证"至少这么久"，且会被节流 |
 | 为什么 Vue 的 `nextTick` 能拿到新 DOM？ | 都是微任务，`nextTick` 排在 DOM 更新之后 |
@@ -1072,7 +1033,7 @@ console.log(4);
 
 ---
 
-### 题 2：async/await 与 Promise 混排（**最高频**）
+### 题 2：async/await 与 Promise 混排
 
 ```js
 async function async1() {
@@ -1126,7 +1087,7 @@ setTimeout
    'setTimeout'
 ```
 
-> ⚠️ **版本差异说明**：老版本 V8（Chrome 73 之前）里 `await` 要 3 个 tick，输出会是 `promise2` 在前。**现代浏览器（Chrome 73+）都是 `async1 end` 在前**，面试按现代行为答即可，但可以补一句"老版本 V8 有差异，现在已优化"。
+> ⚠️ **版本差异**：Chrome 73 之前的 V8 里 `await` 要 3 个 tick，输出会是 `promise2` 在前；现代 V8 只让出 1 个 tick，`async1 end` 在前。
 
 ---
 
@@ -1170,29 +1131,30 @@ setTimeout(() => console.log(4), 0);
 console.log(5);
 ```
 
-**答案**：`5 → 1 → 3 → 2 → 4`
+**答案**（实测）：`5 → 1 → 2 → 3 → 4`
 
 **解析**：
 
 ```
 同步：5
 
-微任务队列初始：[A, B]
+微任务队列初始：[A]（B 还没入队，它挂在 A 返回的新 Promise 上）
    A = () => { log(1); push(C) }
    B = () => log(3)
+   C = () => log(2)
 
-执行 A → 打印 1，把 C 加入队尾 → 队列 [B, C]
-执行 B → 打印 3
+执行 A → 打印 1，C 入队；A 返回后新 Promise 才 resolve，B 入队 → 队列 [C, B]
 执行 C → 打印 2
+执行 B → 打印 3
 
 宏任务：4
 ```
 
-> **关键点**：**同一轮微任务队列是 FIFO，新加入的排在队尾**。所以 3 在 2 前面，不是 2 在 3 前面。
+> **关键点**：同一轮微任务队列 FIFO，新加入的排在队尾；`.then` 链的下一个回调要等上一个回调返回并 resolve 后才入队，所以它排在回调内部新产生的微任务之后。
 
 ---
 
-### 题 5：`async` 函数里的 `return await`
+### 题 5：`await` 一个同步执行的 async 函数
 
 ```js
 async function a() {
@@ -1216,23 +1178,9 @@ a();
 
 ## 4.8 本册答题模板汇总
 
-### 4.8.1 一句话版
-
-```
-⑩ Promise 状态  → pending/fulfilled/rejected，单向不可逆，只认第一次
-⑧ all/race      → all 全成功/一败即败；race 第一个 settled；allSettled 全等；
-                  any 第一个成功
-㉖ 并发 vs 串行  → await 串行 = 和；Promise.all = 最大值；forEach 里 await 无效
-⑪ async/await   → async 包返回值；await 暂停当前函数 + 后续进微任务
-⑫ await 做了什么 → Promise.resolve 包装 → 注册回调 → 让出线程（不阻塞）
-㉑ 事件循环      → 一个宏任务 → 清空微任务 → 渲染 → 下一个宏任务
-```
-
-### 4.8.2 把六题串起来（面试收尾用）
-
-> "这六题其实是一条链：
-> **Promise 定状态** → **then 定规则**（链式 + 冒泡）→ **all/race 做组合** → **async/await 做语法糖** → **事件循环定时机**。
-> 所有输出顺序题的答案，本质都回到同一句话：**同步先跑完，然后清空微任务，最后才轮到宏任务；微任务内部的顺序就是注册顺序，FIFO。**"
+- Promise 定状态 → `then` 定规则（返回新 Promise、错误冒泡）→ `all`/`race` 做组合 → `async/await` 提供同步化写法 → 事件循环定时机。
+- 所有输出顺序题回到同一条规则：同步先跑完 → 清空微任务（FIFO，含新产生的）→ 再取下一个宏任务。
+- `await` 之后、`then` 回调、`queueMicrotask` 在同一个微任务队列；`process.nextTick` 是 Node 的独立队列。
 
 ---
 
@@ -1259,13 +1207,14 @@ a();
 【并发 vs 串行】
   await a(); await b()            → 和
   Promise.all([a(), b()])         → 最大值（a() b() 传入时已启动）
-  forEach(async ...)              → 不等待！用 for...of 或 Promise.all(map)
+  forEach(async ...)              → 不等待，用 for...of 或 Promise.all(map)
 
 【async/await】
   async = 返回值包 Promise + 允许 await
   await = Promise.resolve 包装 + 暂停当前函数 + 后续进微任务
-  await 123 也会异步；不阻塞主线程
-  本质 = Generator + 自动执行器
+  await 普通值/原生 Promise 让出 1 次微任务；简单 thenable 2 次
+  不阻塞主线程
+  语义 ≈ Generator + 自动执行器（V8 7.x 起用 CPS 状态机）
 
 【事件循环】
   一个宏任务 → 清空微任务（含新产生的）→ 渲染 → 下一个宏任务
@@ -1273,7 +1222,7 @@ a();
   微：Promise.then / queueMicrotask / MutationObserver / await 之后
   rAF 在渲染步骤，不是宏/微任务
   Node 6 阶段：timers → pending → idle/prepare → poll → check → close
-  Node 优先级：nextTick > Promise
+  Node 优先级：nextTick > Promise（ESM 顶层模块例外）
 ```
 
 ### 4.9.2 连环追问
@@ -1281,38 +1230,14 @@ a();
 | # | 追问 | 关键答点 |
 |---|---|---|
 | 1 | Promise 几种状态？ | 3 种，单向不可逆 |
-| 2 | 能 resolve 两次吗？ | 不能，第二次被忽略 |
-| 3 | executor 同步还是异步？ | 同步 |
-| 4 | then 回调同步还是异步？ | 异步（微任务） |
-| 5 | then 返回什么？ | 新 Promise |
-| 6 | 值穿透是什么？ | 回调非函数时值直接透传 |
-| 7 | 错误怎么冒泡？ | 没有 `onRejected` 就沿链往下传 |
-| 8 | `catch` 和 `then(null, fn)` 区别？ | 等价 |
-| 9 | `finally` 会改变结果吗？ | 不会（除非 `throw`） |
-| 10 | `all` 一个失败其他会取消吗？ | 不会，需 `AbortController` |
-| 11 | `all` 结果顺序？ | 传入顺序 |
-| 12 | `race([])` 会怎样？ | 永远 pending |
-| 13 | `any` 全失败抛什么？ | `AggregateError` |
-| 14 | 怎么手写 `all`？ | 下标存 + 计数器 + 空数组边界 |
-| 15 | 怎么实现超时？ | `race` + `setTimeout` |
-| 16 | `await a(); await b()` 耗时？ | 和 |
-| 17 | `Promise.all` 会启动任务吗？ | 不会，传入时已启动 |
-| 18 | `forEach` 里 `await` 有效吗？ | 无效 |
-| 19 | `map` 里 `async` 会等待吗？ | 不会，要 `Promise.all` |
-| 20 | 怎么实现并发池？ | worker 模式 + 共享游标 |
-| 21 | `cursor++` 为什么在 `await` 前？ | 避免竞态 |
-| 22 | `async` 函数返回什么？ | Promise |
-| 23 | `async` 里 `throw`？ | 返回 rejected |
-| 24 | `await` 阻塞主线程吗？ | 不阻塞 |
-| 25 | `await 123` 异步吗？ | 异步，仍延迟一个微任务 |
-| 26 | `async/await` 和 Generator？ | 语法糖，靠自动执行器 |
-| 27 | 顶层 `await` 限制？ | 只能 ESM |
-| 28 | 宏任务有哪些？ | `script`、`setTimeout`、I/O、UI 事件 |
-| 29 | 微任务有哪些？ | `then`、`queueMicrotask`、`MutationObserver` |
-| 30 | 微任务会饿死宏任务吗？ | 会，无限递归会卡死 |
-| 31 | `rAF` 属于什么？ | 渲染步骤，不是宏/微任务 |
-| 32 | Node 6 阶段？ | `timers/pending/idle/poll/check/close` |
-| 33 | `nextTick` 和 Promise 谁先？ | `nextTick` |
-| 34 | `setImmediate` 和 `setTimeout(0)`？ | 主模块不确定，I/O 里 `immediate` 先 |
-| 35 | 为什么长任务卡页面？ | 调用栈不清空，事件循环拿不到控制权 |
-| 36 | Vue 的 `nextTick` 为什么能拿到新 DOM？ | 都是微任务，且排在 DOM 更新后 |
+| 2 | executor 同步还是异步？ | 同步 |
+| 3 | then 回调同步还是异步？ | 异步（微任务） |
+| 4 | then 返回什么？ | 新 Promise |
+| 5 | `all` 一个失败其他会取消吗？ | 不会，需 `AbortController` |
+| 6 | `race([])` 会怎样？ | 永远 pending |
+| 7 | `forEach` 里 `await` 有效吗？ | 无效 |
+| 8 | `await 123` 异步吗？ | 异步，让出 1 次微任务 |
+| 9 | `process.nextTick` 和 Promise 谁先？ | CommonJS 下 `nextTick`；ESM 顶层实测 Promise 先 |
+| 10 | `setImmediate` 和 `setTimeout(0)`？ | 主模块不确定，I/O 里 `immediate` 先 |
+| 11 | `rAF` 属于什么？ | 渲染步骤，不是宏/微任务 |
+| 12 | Vue 的 `nextTick` 为什么能拿到新 DOM？ | 都是微任务，且排在 DOM 更新后 |

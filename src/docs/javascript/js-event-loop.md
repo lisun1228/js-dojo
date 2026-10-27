@@ -72,7 +72,7 @@ JS 单线程（一个调用栈），但浏览器要同时处理点击、请求�
 | **`queueMicrotask(fn)`** | 显式入队（ES2020） |
 | **`MutationObserver`** | DOM 变化监听 |
 | **`await` 后面的代码** | 本质是 Promise 的 then |
-| **`process.nextTick`** | ⚠️ **只有 Node 有**；不在 microtask 队列，而是独立队列，每轮先清它再清 Promise |
+| **`process.nextTick`** | ⚠️ **只有 Node 有**；不在 microtask 队列，而是独立队列，每轮先清它再清 Promise（ESM 入口顶层例外，见 4.6.2） |
 
 ### 4.3.3 一个关键差异
 
@@ -199,6 +199,8 @@ setTimeout(() => console.log('4 setTimeout 0'), 0);
 // 4 setTimeout 0
 // 3 setImmediate
 ```
+
+上面是 **CommonJS / 普通脚本**的结果。**ESM 入口顶层是例外**：同样两行代码实测为 `Promise → nextTick`（模块求值本身在微任务里完成），所以别把「nextTick 一定先」当成跨环境定论。
 
 **但注意**：`setImmediate` 和 `setTimeout(0)` 的先后**在主模块里是不确定的**（Node 官方文档明确说了），取决于进程启动耗时与定时器到期时机；本机多次实测是 `setTimeout(0)` 先，但不能当定论。**只有在 I/O 回调里，`setImmediate` 才一定先于 `setTimeout`**：
 
@@ -501,7 +503,7 @@ while (Date.now() - s < 50) {}       // 同步阻塞 50ms
 ### 2 分钟版
 
 - **浏览器**：循环同上；规范里只有 task / microtask，`requestAnimationFrame` 不在 task 队列，在渲染前执行；微任务无限产生会饿死渲染。
-- **Node**：六阶段 timers → pending callbacks → idle/prepare → poll → check → close；阶段之间先清 `nextTick` 队列再清 microtask，`nextTick` 优先于 Promise。
+- **Node**：六阶段 timers → pending callbacks → idle/prepare → poll → check → close；阶段之间先清 `nextTick` 队列再清 microtask，`nextTick` 优先于 Promise（ESM 入口顶层例外）。
 - **输出题四步**：标出全部同步代码（`new Promise` 的 executor 同步）→ `await` 后面的代码当成 `then` 回调 → 按入队顺序排微任务 → 记住 `then` 返回 Promise 会多出 2 个微任务。
 - **易错**：`reject()` 不中断 executor；主模块里 `setImmediate` 与 `setTimeout(0)` 顺序不定；`setTimeout(0)` 只保证「不早于」。
 
@@ -520,7 +522,7 @@ task 来源
 
 microtask 来源
   Promise.then/catch/finally / queueMicrotask / MutationObserver / await 后面
-  ★ process.nextTick 只有 Node，是独立队列，先于 Promise 清空
+  ★ process.nextTick 只有 Node，是独立队列，先于 Promise 清空（ESM 入口顶层例外，Promise 先）
 
 ★ 微任务清到空（包括新产生的）
   m1 → m3 → m2（不是 m1 → m2 → m3）

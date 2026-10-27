@@ -1,7 +1,6 @@
 # TS · 06 类与面向对象
 
-> 本册覆盖：访问修饰符、类的特性、继承、方法重写、getter/setter
-> 题单把 `readonly` 列为「访问修饰符」——**这是错的**，它不是修饰符。更重要的是题单没说：**TS 的 `private` 是假的，编译后运行时能访问**。这一条是这类题的必问点。
+> 覆盖：访问修饰符、类的特性、继承、方法重写、getter/setter
 
 ---
 
@@ -23,13 +22,11 @@
 
 TS 的类在 JS 类的基础上加了**四类**东西：
 **① 访问控制**（`public` / `private` / `protected` / `#`）、**② 只读与静态**（`readonly` / `static`）、**③ 类型层能力**（`implements`、`abstract`、`override`）、**④ 参数属性**（`constructor(private x)`）。
-**但要记住：所有访问控制在编译后都会消失，运行时只有 `#` 是真私有。**
+`public` / `private` / `protected` 编译后都会消失，运行时只有 `#` 是真私有。
 
 ---
 
 ## 6.2 类的完整语法清单（答法）
-
-**题 38 是「罗列题」，按四组说最清晰。**
 
 ### 6.2.1 成员类型
 
@@ -54,8 +51,8 @@ TS 的类在 JS 类的基础上加了**四类**东西：
 | `readonly` | 只能在声明处或构造函数中赋值 |
 | `static` | 属于类本身，不属于实例 |
 | `abstract` | 抽象成员，子类必须实现 |
-| `override` | 显式标记「我在重写父类方法」（TS 4.3） |
-| `declare` | 只声明类型，不生成代码（用于 `useDefineForClassFields` 场景） |
+| `override` | 显式标记重写父类成员（TS 4.3） |
+| `declare` | 只声明类型，不生成字段 |
 
 ### 6.2.3 类型层能力
 
@@ -69,7 +66,7 @@ TS 的类在 JS 类的基础上加了**四类**东西：
 ### 6.2.4 参数属性（语法糖）
 
 ```ts
-// 写法 A：传统方式（啰嗦）
+// 写法 A：显式声明 + 赋值
 class User {
   private name: string;
   public readonly id: string;
@@ -79,7 +76,7 @@ class User {
   }
 }
 
-// 写法 B：参数属性（一行搞定）
+// 写法 B：参数属性
 class User {
   constructor(
     private name: string,
@@ -88,7 +85,7 @@ class User {
 }
 ```
 
-**参数属性是 TS 独有的语法糖**，编译后会生成 `this.name = name` 等赋值语句：
+**参数属性是 TS 独有的语法糖**，编译后生成 `this.name = name` 等赋值语句（target 为 ES2022 时还会额外生成 `name;` 字段声明）：
 
 ```js
 // 编译产物
@@ -145,9 +142,7 @@ class A {
 }
 ```
 
-### 6.3.2 【核心】TS 的 `private` 是假的（必问）
-
-**这是本册最重要的一条。**
+### 6.3.2 TS 的 `private` 是假的
 
 ```ts
 // 源码
@@ -160,7 +155,7 @@ console.log(u.password);    // ❌ 编译期报错：属性 'password' 为私有
 ```
 
 ```js
-// 编译后
+// 编译后（target ES2021 及以下）
 class User {
   constructor() {
     this.password = 'secret';    // ← private 完全消失了！
@@ -169,8 +164,8 @@ class User {
 ```
 
 ```js
-// 运行时（或者用 any 绕过）
-(u as any).password;    // 'secret'  ← 能读到，也能写
+// 编译后运行时：就是普通属性
+u.password;    // 'secret'  ← 能读也能写
 ```
 
 **结论**：
@@ -192,9 +187,10 @@ class User {
 }
 
 const u = new User();
-u.#password;           // ❌ 编译期报错（语法层面就不允许）
-(u as any).#password;  // ❌ 运行时抛 SyntaxError：Private field must be declared in an enclosing class
+u.#password;           // ❌ 编译期报错（TS18016：私有标识符不能在类体外使用）
 ```
+
+`(u as any)` 也绕不过：TS 在解析阶段就拒绝；纯 JS 里在类外部写 `obj.#p` 直接抛 `SyntaxError: Private field '#p' must be declared in an enclosing class`，模块根本无法加载。
 
 **`#x` 的特点**：
 
@@ -217,8 +213,6 @@ u.#password;           // ❌ 编译期报错（语法层面就不允许）
 | 兼容性 | 所有 JS | 需要 ES2022 或降级 |
 | 能否用于参数属性 | ✅ | ❌（`constructor(#x)` 语法不允许） |
 
-> **面试话术**：「TS 的 `private` **只在编译期检查**，编译后这个修饰符完全消失，运行时 `(obj as any).x` 照样能读写。真正要运行时隔离得用 ES2022 的 `#x` 私有字段——它连 `as any` 都绕不过，会抛 SyntaxError。所以如果密封敏感数据（比如用户密码、密钥），应该用 `#`；如果只是表达『内部实现，别用』的约定，`private` 就够了。」
-
 ### 6.3.4 `protected` 的一个细节
 
 ```ts
@@ -228,7 +222,7 @@ class Base {
 
 class Derived extends Base {
   compare(other: Base) {
-    return this.value === other.value;    // ❌ 报错！
+    return this.value === other.value;    // ❌ 报错
     // protected 只能通过「this 或子类实例」访问
     // 不能通过「父类类型的实例」访问
   }
@@ -239,7 +233,7 @@ class Derived extends Base {
 }
 ```
 
-**规则**：`protected` 成员只能通过**当前类或其子类的实例**访问，**不能通过父类型的引用访问**。这个限制很多人不知道。
+**规则**：`protected` 成员只能通过**当前类或其子类的实例**访问，**不能通过父类型的引用访问**。
 
 ### 6.3.5 `static` 与静态侧
 
@@ -273,7 +267,6 @@ new Counter().count;             // ❌ 报错
 | **构造器签名** | `new () => Counter` | 用于工厂函数参数 |
 
 ```ts
-// 这个区别非常重要
 function createInstance(Ctor: new () => Counter): Counter {
   return new Ctor();
 }
@@ -340,12 +333,11 @@ class Dog extends Animal {
 
 ### 6.4.2 一个经典坑：字段初始化顺序
 
-**这是 Vue/React 类组件时代最常见的 bug。**
-
 ```ts
 class Base {
+  declare value: number;                  // 只声明类型，不生成字段
   constructor() {
-    console.log('Base ctor:', this.value);   // 输出 undefined！
+    console.log('Base ctor:', this.value);   // 输出 undefined
   }
 }
 
@@ -354,7 +346,6 @@ class Derived extends Base {
 }
 
 new Derived();
-// 输出：Base ctor: undefined
 ```
 
 **为什么**：执行顺序是
@@ -391,6 +382,10 @@ d.init();
 ### 6.4.3 `super` 的两种用法
 
 ```ts
+class Base {
+  method() {}
+}
+
 class Derived extends Base {
   constructor() {
     super();              // ① 调用父类构造函数（只能在构造器里）
@@ -425,16 +420,20 @@ class Derived extends Base {
   greet(name: string): string {
     return `Hi, ${name}`;
   }
+}
 
-  // ❌ 报错：参数类型不兼容（子类参数必须更宽松，不能更严格）
+class BadParam extends Base {
+  // ❌ 报错：参数类型与父类不兼容
   greet(name: number): string { return ''; }
+}
 
+class BadReturn extends Base {
   // ❌ 报错：返回类型不兼容
   greet(name: string): number { return 1; }
 }
 ```
 
-### 6.5.2 型变规则（这是「为什么」层面的答案）
+### 6.5.2 型变规则
 
 | 位置 | 规则 | 记忆 |
 |---|---|---|
@@ -466,9 +465,7 @@ class B extends A { fn(x: 'a' | 'b') {} }   // ✅ 参数更窄，TS 也允许
 // 但【方法】仍然双变（这是 TS 的特例）
 ```
 
-**这个细节答出来非常加分**，说明你读过 `strictFunctionTypes` 的文档。
-
-### 6.5.3 `override` 关键字（TS 4.3，加分项）
+### 6.5.3 `override` 关键字（TS 4.3）
 
 ```ts
 class Base {
@@ -489,7 +486,7 @@ class Derived extends Base {
 | 父类方法改名了 | 子类方法变成「新方法」，**悄悄失效** | **编译报错** |
 | 拼写错误 | 变成新方法，没重写成功 | **编译报错** |
 
-**配合 `noImplicitOverride: true`，可以强制所有重写都写 `override`**——这是大型项目的好实践。
+**`noImplicitOverride: true` 会强制所有重写都写 `override`。**
 
 ---
 
@@ -539,7 +536,7 @@ c.area;         // ✅
 c.area = 10;    // ❌ 报错：Cannot assign to 'area' because it is a read-only property
 ```
 
-**这比 `readonly` 更强**：`readonly` 只在声明处和构造函数里能赋值，而「只有 getter」是**永远不能赋值**。
+**赋值限制比 `readonly` 更严**：`readonly` 只在声明处和构造函数里能赋值，而「只有 getter」是**永远不能赋值**。
 
 ### 6.6.3 TS 4.3 后的新能力：getter 和 setter 可以有不同类型
 
@@ -577,9 +574,7 @@ c.port = '8080';       // ✅ setter 接受 string
 const p: number = c.port;   // ✅ getter 返回 number
 ```
 
-**这个特性在「接受多种输入、统一成一种输出」的场景很有用。**
-
-### 6.6.4 ⚠️ 一个非常隐蔽的坑：`useDefineForClassFields`
+### 6.6.4 一个隐蔽的坑：`useDefineForClassFields`
 
 **它会改变「子类字段初始化时是否触发父类 setter」——这是语义级的变化。**
 
@@ -591,25 +586,16 @@ class Base {
 }
 
 class Derived extends Base {
-  value = 'default';       // ← 注意这里
+  value = 'default';       // 子类字段覆盖父类 accessor
 }
 ```
 
-**实测两个 target 下的运行结果（Node 22 / TS 7.0）**：
+**实测两个 target 下的运行结果（Node 22 / TS 6.0.3）**：
 
-| target | `useDefineForClassFields` | 编译产物 | 运行结果 |
+| `useDefineForClassFields` | 语义 | 编译产物 | 运行结果（父类 setter 内写 `_v`） |
 |---|---|---|---|
-| **ES2019** | `false`（默认） | `this.value = 'default'` | **setter 被调用**，`_v = "default"` ✅ |
-| **ES2022** | `true`（默认） | `value = 'default';`（字段声明） | **setter 被绕过**，`_v = ""`（空！） |
-
-**`_v` 是空字符串还是 `"default"`——这是实打实的行为差异。**
-
-**原因：两种字段初始化的语义不同**
-
-| 设置 | 语义 | 编译产物 | 结果 |
-|---|---|---|---|
-| **`false`** | **赋值**（`[[Set]]`） | `this.value = 'default'` | **触发父类 setter** |
-| **`true`**（ES2022） | **定义**（`[[Define]]`） | `class { value = 'default' }`（实例字段） | **直接定义自己的属性，绕过 setter** |
+| `false`（target ≤ ES2021 默认） | 赋值 `[[Set]]` | `this.value = 'default'` | setter 被调用，`_v = "default"` |
+| `true`（target ≥ ES2022 默认） | 定义 `[[Define]]` | `value = 'default'`（实例字段） | 绕过 setter，`_v = ""` |
 
 **默认值**：
 
@@ -618,27 +604,24 @@ target: ES2022 或更高 → useDefineForClassFields 默认 true
 target: ES2021 或更低 → 默认 false
 ```
 
-**所以「只改 tsconfig 的 target」就可能悄悄改变类的运行时行为**——这是升级 TS/改构建配置时最容易踩的坑之一。
+改 `target` 就会改变类的运行时行为。
 
-#### 好消息：TS 4.0+ 会在编译期拦住它
+#### TS 会在编译期拦住它
 
-**上面那段代码在 TS 里其实编译不过**：
+**上面那段代码在 TS 里编译不过**：
 
 ```
 error TS2610: 'value' is defined as an accessor in class 'Base',
               but is overridden here in 'Derived' as an instance property.
 ```
 
-**TS 特意加了这个检查**，正因为两种语义有歧义——**它不让你写出「既可能走 setter 又可能不走」的代码**。
-
-**所以这个坑真正会咬人的场景是**：
+**TS 用这个检查阻止「既可能走 setter 又可能不走」的代码。** 剩下会咬人的场景：
 
 | 场景 | 说明 |
 |---|---|
-| **从 JS 迁移过来的代码** | 原 JS 里这么写没问题，加类型后突然报错 |
-| **`// @ts-ignore` 绕过了** | 错误被压掉，运行时行为取决于 target |
-| **用的库内部这么写** | 你看到的现象和文档不一致 |
-| **升级 target 后行为变了** | 之前对，现在错，而且没有编译错误（如果代码用了 `declare` 或类型断言） |
+| **从 JS 迁移的代码** | 原 JS 合法，加类型后报 TS2610 |
+| **`// @ts-ignore` 绕过** | 错误被压掉，运行时行为取决于 target |
+| **库内部这么写** | 现象与文档不一致 |
 
 #### 正确写法
 
@@ -646,7 +629,6 @@ error TS2610: 'value' is defined as an accessor in class 'Base',
 
 ```ts
 class Derived extends Base {
-  declare value: string;       // 只声明类型，不生成字段
   constructor() {
     super();
     this.value = 'default';    // 显式赋值 → 走 setter
@@ -659,8 +641,6 @@ class Derived extends Base {
 ```json
 { "compilerOptions": { "useDefineForClassFields": false } }
 ```
-
-> **面试话术**：「`useDefineForClassFields` 是 TS 4.0 引入的，target 是 ES2022 时默认开启。它把类字段初始化从『赋值语义』改成『定义语义』——`false` 时编译成 `this.x = v`，会触发父类的 setter；`true` 时是实例字段声明，**直接定义自己的属性、绕过 setter**。我实测过，父类 setter 里写 `_v`，子类 `value = 'default'`，ES2019 编译下 `_v` 是 `'default'`，ES2022 下 `_v` 是空字符串——这是真实的行为差异。不过好消息是 **TS 4.0+ 会对『用属性覆盖父类 accessor』直接报 TS2610 错误**，所以正常写 TS 代码碰不到；真正会咬人的是从 JS 迁移的代码、或者用 `@ts-ignore` 压掉错误的情况。」
 
 ### 6.6.5 getter/setter 与 `Object.keys`
 
@@ -683,13 +663,12 @@ Object.keys(new A());     // ['normal']  ← getter 是原型上的，不在实�
 |---|---|
 | **把 `readonly` 当访问修饰符** | 它不是，它控制「能否赋值」，可以和 `public/private` 组合 |
 | **以为 `private` 运行时也隔离** | ❌ 只在编译期检查，编译后完全消失；要真私有用 `#x` |
-| **`private` 和 `#` 当一回事** | `#` 是真私有（运行时抛错），`private` 只是约定 |
+| **`private` 和 `#` 当一回事** | `#` 是真私有（类外部写不出合法访问），`private` 只是约定 |
 | **子类构造器里先用 `this` 再 `super()`** | ❌ 报错，`this` 由 `super()` 创建 |
 | **在父类构造函数里访问子类字段** | 永远是 `undefined`（子类字段在 `super()` 之后才初始化） |
-| **以为子类方法参数可以更严格** | ❌ 参数必须更宽或相同（逆变）；返回值必须更窄（协变） |
 | **不知道 `strictFunctionTypes`** | 函数类型参数逆变，但**方法参数仍然双变**（TS 的故意不健全） |
 | **`protected` 能通过父类引用访问** | ❌ 只能通过 `this` 或子类实例访问 |
-| **字段初始化覆盖了父类 setter** | `useDefineForClassFields: true` 用 `[[Define]]` 语义绕过 setter；TS 4.0+ 会报 TS2610 拦住 |
+| **字段初始化覆盖了父类 setter** | `useDefineForClassFields: true` 用 `[[Define]]` 语义绕过 setter；TS 会报 TS2610 拦住 |
 | **修饰符顺序乱写** | 顺序是 `accessibility → static → override → readonly` |
 | **想用 `#x` 做参数属性** | ❌ `constructor(#x)` 语法不允许 |
 | **以为 `static` 成员能通过实例访问** | ❌ 只能通过类名 |
@@ -700,32 +679,23 @@ Object.keys(new A());     // ['normal']  ← getter 是原型上的，不在实�
 
 ### 30 秒版（访问修饰符）
 
-> TS 有四个：`public` 默认、`private` 只有本类、`protected` 本类和子类、还有 `readonly`——**但 `readonly` 严格说不是访问修饰符**，它控制的是「能否赋值」，可以和前三个组合使用。
-> **最关键的一点：`private` 和 `protected` 只在编译期检查，编译后修饰符完全消失，运行时 `(obj as any).x` 照样能访问。** 要真正的运行时隔离要用 ES2022 的 `#x` 私有字段，它连 `as any` 都绕不过，会抛 SyntaxError。
-> 另外还有 `static`（属于类不属于实例）和参数属性 `constructor(private x: string)` 这个语法糖。
+- 访问控制三个：`public` 默认、`private` 只有本类、`protected` 本类和子类。
+- `readonly` 不是访问修饰符，它控制「能否赋值」，可以和前三个组合。
+- `private` / `protected` 只在编译期检查，编译后修饰符消失，运行时 `(obj as any).x` 照常读写；真私有要用 ES2022 的 `#x`。
 
 ### 30 秒版（方法重写）
 
-> 子类重新定义父类的同名方法。TS 会对类型做检查：**参数必须更宽松或相同（逆变），返回值必须更窄或相同（协变）**——这是里氏替换原则的要求，因为父类能接受的东西子类必须也能接受。
-> 补充两点：TS 4.3 加了 `override` 关键字，显式标记重写，配合 `noImplicitOverride` 能防止「父类方法改名后子类方法悄悄失效」；另外 TS 里**方法参数是双变的**（不是严格的逆变），这是为了兼容 JS 的数组方法，属于故意的不健全。
+- 子类重新定义父类同名方法：按 LSP，参数要更宽或相同（逆变），返回值要更窄或相同（协变）。
+- TS 的方法参数实际是双变的，更窄也放行；`strictFunctionTypes` 只约束函数类型的属性。
+- `override`（TS 4.3）显式标记重写，配合 `noImplicitOverride` 可在父类改名时报错。
 
 ### 2 分钟版（把类这块串起来）
 
-> 我按「成员 → 访问控制 → 继承 → 一个隐蔽坑」讲。
->
-> **成员**：属性、方法、静态成员、getter/setter、`#` 私有字段、索引签名。还有参数属性这个语法糖——`constructor(private name: string)` 会自动生成 `this.name = name`，编译产物里能看到。
->
-> **访问控制**：`public`/`private`/`protected` 三个，加 `readonly`。这里要纠正一个常见说法：**`readonly` 不是访问修饰符**，它控制「能否赋值」，所以可以和前三个组合，比如 `private readonly x`。修饰符顺序也是固定的：`accessibility → static → override → readonly`。
->
-> **最关键的一点是 `private` 是假的**。它只在编译期报错，编译后的 JS 里修饰符完全消失，`(obj as any).password` 照样能读到。真正要运行时隔离得用 ES2022 的 `#x`——它连 `as any` 都不行，访问会直接抛 SyntaxError，因为它是在语法层面就不允许。所以如果是密封敏感数据（密码、密钥）应该用 `#`，如果只是表达「内部实现别用」的约定，`private` 就够。
->
-> **继承**：单继承 + `super()`。三个规则：子类构造器必须先 `super()` 才能用 `this`；只支持单继承，多继承用 mixin 或接口；`extends` 后面可以是表达式，这是 mixin 的基础。重写时参数逆变、返回值协变——因为里氏替换原则。不过 TS 的方法参数其实是双变的，`strictFunctionTypes` 只对函数类型生效，方法仍然双变，是为了兼容数组方法，这是故意的不健全。
->
-> **一个特别隐蔽的坑**：字段初始化顺序。父类构造函数执行时，子类字段还没初始化，所以在父类构造函数里访问子类字段永远是 `undefined`。Vue/React 类组件时代经常踩这个。
->
-> 还有一个更隐蔽的：`useDefineForClassFields`。TS 4.0 引入，target 是 ES2022 时默认 true。它把字段初始化从「赋值语义」改成「定义语义」——`false` 时是 `this.x = v`，会触发父类的 setter；`true` 时是 `Object.defineProperty`，**直接覆盖属性、绕过 setter**。所以升级 target 可能悄悄改变类的行为，要保留旧行为就显式设成 `false`，或者用 `declare` 只声明类型然后在构造函数里显式赋值。
->
-> 最后 getter/setter：TS 4.3 起 getter 和 setter 可以有不同类型，典型场景是 setter 接受 string 或 number、getter 统一返回 number，做输入归一化很方便。
+- **成员**：属性 / 可选属性 / `readonly` / 方法 / `static` / getter-setter / `#` 私有字段 / 索引签名；参数属性 `constructor(private name: string)` 自动生成 `this.name = name`，ES2022 下还会生成字段声明。
+- **访问控制**：`public` / `private` / `protected` + `readonly`（不是访问修饰符，可组合），修饰符顺序 `accessibility → static → override → readonly`。
+- **`private` 是假的**：只做编译期检查，运行时 `(obj as any)` 可读写；`#x` 在语法层面就禁止外部访问，纯 JS 里直接 SyntaxError。
+- **继承与重写**：单继承 + `super()`，子类构造器必须先 `super()` 才能用 `this`；父类构造函数执行时子类字段尚未初始化，读到 `undefined`；`extends` 后可以是表达式（mixin 基础）；方法参数双变、返回值协变。
+- **字段初始化坑**：`useDefineForClassFields: true`（target ≥ ES2022）用 `[[Define]]`，字段声明绕过父类 setter；`false` 用 `[[Set]]`，会触发 setter。用属性覆盖父类 accessor 时 TS 报 TS2610。getter/setter 在 TS 4.3+ 可以类型不同（setter 宽、getter 窄）。
 
 ### 追问表
 
@@ -760,7 +730,7 @@ Object.keys(new A());     // ['normal']  ← getter 是原型上的，不在实�
   public（默认）/ private（本类）/ protected（本类+子类）
   ★ readonly 不是访问修饰符（控制能否赋值，可组合）
   ★ private 只在编译期！运行时完全可访问
-  ★ #x 才是真私有（运行时抛 SyntaxError，as any 也不管用）
+  ★ #x 才是真私有（类外部写不出合法访问，as any 也不管用）
   protected 只能通过 this 或子类实例访问（父类引用不行）
   顺序：accessibility → static → override → readonly
 
@@ -779,11 +749,11 @@ Object.keys(new A());     // ['normal']  ← getter 是原型上的，不在实�
   override 关键字 + noImplicitOverride 防「父类改名后静默失效」
 
 getter/setter
-  只有 getter = 永远只读（比 readonly 更强）
+  只有 getter = 永远只读（赋值限制比 readonly 更严）
   TS 4.3+ getter 和 setter 可以有不同类型（setter 宽、getter 窄）
   ★ useDefineForClassFields: true → [[Define]] 语义，绕过父类 setter
     target ≥ ES2022 时默认为 true ← 升级 target 会悄悄改变行为
     实测：ES2019 下 _v='default'（走了 setter）/ ES2022 下 _v=''（绕过了）
-    TS 4.0+ 会用 TS2610 拦住「属性覆盖父类 accessor」，正常写 TS 碰不到
-    规避：设成 false，或 declare + 构造函数里显式赋值
+    TS 会用 TS2610 拦住「属性覆盖父类 accessor」，正常写 TS 碰不到
+    规避：设成 false，或在构造函数里显式赋值
 ```

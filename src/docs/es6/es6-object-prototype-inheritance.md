@@ -1,7 +1,7 @@
 # 分册 02 · 对象、原型与继承
 
 > 覆盖题号：**9**（`new` 发生了什么）、**32**（原型与原型链）、**5**（`class` 与普通函数的区别）、**14**（`Object.assign` 是深拷贝还是浅拷贝）
-> 共 **4 题**，但每题都能往深处挖，是「区分初级和中级」的关键一册
+> 共 **4 题**
 
 ---
 
@@ -20,7 +20,7 @@
 
 ### 2.1.0 一句话结论
 
-> `new` 做了**四件事**：① 创建一个新的空对象；② 把这个对象的原型指向构造函数的 `prototype`；③ 把构造函数里的 `this` 绑定到这个新对象并执行；④ **如果构造函数返回的是对象，就返回它；否则返回这个新对象**。第 ④ 步是最容易被漏掉的。
+> `new` 做了**四件事**：① 创建一个新的空对象；② 把这个对象的原型指向构造函数的 `prototype`；③ 把构造函数里的 `this` 绑定到这个新对象并执行；④ **如果构造函数返回的是对象，就返回它；否则返回这个新对象**。
 
 ### 2.1.1 四步拆解
 
@@ -75,7 +75,7 @@ function B() {
   this.x = 1;
   return { y: 2 };
 }
-console.log(new B());        // { y: 2 }  ← this 白绑了
+console.log(new B());        // { y: 2 }  ← this 上的属性被丢弃
 
 // ③ 返回 null → null 是原始值（Type(null) 是 Null，不是 Object）→ 被忽略
 function C() {
@@ -85,11 +85,9 @@ function C() {
 console.log(new C());        // C { x: 1 }
 ```
 
-**面试话术**：
+> 只有返回**对象**（数组、函数、`new` 出来的实例）才会覆盖 `this`；`null`、`undefined`、数字、字符串、布尔、`Symbol`、`BigInt` 都是原始值，会被忽略。
 
-> "只有返回**对象**（包括数组、函数、`new` 出来的实例）才会覆盖 `this`；返回 `null`、`undefined`、数字、字符串、布尔、`Symbol`、`BigInt` 都算原始值，会被忽略。"
-
-### 2.1.3 手写 `myNew`（必须能默写）
+### 2.1.3 手写 `myNew`
 
 ```js
 function myNew(Ctor, ...args) {
@@ -134,10 +132,11 @@ function Weird() { return { hijack: true }; }
 console.log(myNew(Weird));                    // { hijack: true }
 ```
 
-**这个实现的两个不完美之处（能说出来是加分项）**：
+**三个局限**：
 
 1. **不能处理 `class`**：`class` 的构造函数不能直接 `apply` 调用（会抛 `TypeError: Class constructor cannot be invoked without 'new'`）。要支持得用 `Reflect.construct(Ctor, args, Ctor)`。
 2. **不能正确处理 `extends` 的派生类**：派生类的 `this` 是由 `super()` 创建的，不能先 `Object.create` 再 `apply`。
+3. **不校验能否构造**：箭头函数、方法简写没有 `prototype`，`myNew` 会返回一个普通对象而不报错；`bind` 结果也没有 `prototype`，但原生 `new` 仍可构造目标函数。
 
 ```js
 // 完整版（支持 class）
@@ -155,7 +154,7 @@ function myNewFull(Ctor, ...args) {
 const a = new Foo();                 // 执行了构造函数
 const b = Object.create(Foo.prototype);  // 只链接原型，不执行构造
 
-// new 等价于：
+// new 的基本流程等价于（未含返回值分支）：
 const c = Object.create(Foo.prototype);
 Foo.call(c);
 ```
@@ -166,7 +165,7 @@ Foo.call(c);
 | `Object.create(Foo.prototype)` | ✅ | ✅ | ❌ |
 | `{}` | ✅ | ✅（指向 `Object.prototype`） | ❌ |
 
-**经典应用**：`Object.create(null)` 创建**没有原型**的"纯字典对象"，可以避免 `obj.toString`、`obj.constructor` 这类原型污染，做缓存/字典时很实用。
+`Object.create(null)` 创建**没有原型**的字典对象，避免 `obj.toString`、`obj.constructor` 这类原型污染：
 
 ```js
 const dict = Object.create(null);
@@ -188,11 +187,11 @@ console.log(new g());   // g {}  ← 不是 1
 
 // 误区 3：忘记 new 导致的 this 污染
 function H() { this.x = 1; }
-const h = H();          // 忘了 new → this 是 window（非严格模式）
-console.log(window.x);  // 1  ← 全局污染
+const h = H();              // 忘了 new → this 是全局对象（非严格模式）
+console.log(globalThis.x);  // 1  ← 全局污染
 ```
 
-**防呆写法（ES5 时代常用）**：
+**防呆写法**：
 
 ```js
 function Safe(name) {
@@ -204,17 +203,12 @@ function Safe(name) {
 Safe('Tom');   // 也能正常工作
 ```
 
-### 2.1.6 答题模板
+### 2.1.6 答题要点
 
-**30 秒版：**
-
-> "`new` 做四件事：创建一个空对象、把它的原型指向构造函数的 `prototype`、把 `this` 绑到它并执行构造函数、最后判断返回值——**如果构造函数返回的是对象就用它，否则返回新对象**。
-> 第四步是最容易漏的，返回 `null` 或数字这类原始值会被忽略。"
-
-**2 分钟版补充：**
-
-> "可以手写一个 `myNew` 来证明理解：`Object.create(Ctor.prototype)` 创建对象，`Ctor.apply(obj, args)` 绑定执行，最后判断返回值是不是对象。
-> 但要注意手写版有个局限：**不能处理 `class`**，因为 class 的构造函数不允许 `apply` 调用。要完整支持得用 `Reflect.construct(Ctor, args)`，它就是 `new` 的函数式表达，而且有第三个参数 `newTarget` 可以控制用谁的 prototype。"
+- `new` 四步：创建空对象 → 链到 `Ctor.prototype` → 绑定 `this` 执行 → 返回值判定。
+- 返回值只有对象（含函数、数组）会覆盖新对象；原始值（含 `null`）被忽略。
+- `Ctor.prototype` 不是对象时回退到 `Object.prototype`，不报错。
+- `Object.create(Ctor.prototype)` + `Ctor.apply(obj, args)` 只能模拟普通函数；class 与派生类要用 `Reflect.construct(Ctor, args[, newTarget])`。
 
 ### 2.1.7 追问表
 
@@ -229,7 +223,7 @@ Safe('Tom');   // 也能正常工作
 | `Object.create` 和 `new` 的区别？ | 前者不执行构造函数 |
 | `Object.create(null)` 有什么用？ | 创建无原型字典，避免原型污染 |
 | `Ctor.prototype` 不是对象会怎样？ | 回退到 `Object.prototype`，不报错 |
-| 怎么判断一个函数能否 `new`？ | 用 `Reflect.construct` 试 / 检查是否有 `prototype`（不严谨）/ 看是否箭头函数 |
+| 怎么判断一个函数能否 `new`？ | 用 `Reflect.construct` 试最可靠；看 `prototype` 不严谨：generator 有 `prototype` 但不能 `new`，`bind` 结果没有 `prototype` 却能 `new` |
 | `new.target` 是什么？ | 在构造函数内可访问，指向被 `new` 的那个构造函数；普通调用时是 `undefined` |
 
 ---
@@ -238,7 +232,7 @@ Safe('Tom');   // 也能正常工作
 
 ### 2.2.0 一句话结论
 
-> 每个对象都有一个内部槽 `[[Prototype]]`（可通过 `Object.getPrototypeOf` 读取，`__proto__` 是它的访问器），指向**另一个对象**。访问属性时先查自身，找不到就沿 `[[Prototype]]` 逐级向上，直到 `null`——这条链就是**原型链**。它的作用是**实现属性/方法共享**，也是 `instanceof`、`for...in` 的底层依据。
+> 每个对象都有一个内部槽 `[[Prototype]]`（可通过 `Object.getPrototypeOf` 读取，`__proto__` 是 `Object.prototype` 上暴露它的访问器），指向**另一个对象**。访问属性时先查自身，找不到就沿 `[[Prototype]]` 逐级向上，直到 `null`——这条链就是**原型链**。它的作用是**实现属性/方法共享**，也是 `instanceof`、`for...in` 的底层依据。
 
 ### 2.2.1 三个容易混的东西
 
@@ -246,7 +240,7 @@ Safe('Tom');   // 也能正常工作
 |---|---|---|---|
 | `[[Prototype]]` | **内部槽**（规范概念） | 所有对象 | 只能用 `Object.getPrototypeOf` |
 | `__proto__` | `Object.prototype` 上的**访问器属性**（getter/setter，Annex B） | 继承自 `Object.prototype` 的对象 | `obj.__proto__` |
-| `prototype` | **函数独有的普通属性**，值是个对象 | 只有函数（箭头函数除外） | `Fn.prototype` |
+| `prototype` | **函数的普通属性**，值是个对象 | 普通函数、class、generator（generator 不可 `new`）；箭头函数、方法简写、async 函数、`bind` 结果没有 | `Fn.prototype` |
 
 ```js
 function Foo() {}
@@ -268,12 +262,12 @@ console.log(Object.getPrototypeOf(f) === Foo.prototype); // true
 
 ```js
 function Foo() {}
-console.log(Foo.prototype);              // Foo {} （一个普通对象，带 constructor）
-console.log(Foo.__proto__);              // [Function: Function.prototype]
-console.log(Foo.prototype.__proto__);    // {} （Object.prototype）
+console.log(Foo.prototype.constructor === Foo);              // true
+console.log(Foo.__proto__ === Function.prototype);           // true
+console.log(Foo.prototype.__proto__ === Object.prototype);   // true
 ```
 
-### 2.2.2 完整原型链图（必须能画出来）
+### 2.2.2 完整原型链图
 
 ```
                         null
@@ -304,7 +298,7 @@ console.log(Foo.prototype.__proto__);    // {} （Object.prototype）
         Object.__proto__   === Function.prototype  ← Object 也是函数
 ```
 
-**四条"反直觉"但必须记住的结论**：
+**四条恒成立的关系**：
 
 ```js
 console.log(Function.__proto__ === Function.prototype);   // true  ← 唯一的自环
@@ -313,7 +307,7 @@ console.log(Function.prototype.__proto__ === Object.prototype); // true
 console.log(Object.prototype.__proto__);                  // null  ← 链的终点
 ```
 
-> **为什么 `Function.__proto__ === Function.prototype`？** 因为 `Function` 本身也是函数，所有函数的 `[[Prototype]]` 都指向 `Function.prototype`，`Function` 也不例外——这就是那个著名的"鸡生蛋"自环。
+> **为什么 `Function.__proto__ === Function.prototype`？** `Function` 本身也是函数，所有函数的 `[[Prototype]]` 都指向 `Function.prototype`，所以它指向自己。
 
 ### 2.2.3 属性查找与几个相关 API
 
@@ -345,7 +339,7 @@ console.log(Foo.prototype.isPrototypeOf(f));  // true
 Object.setPrototypeOf(f, null);   // 断链
 ```
 
-**`instanceof` 的实现原理**（面试常让手写）：
+**`instanceof` 的实现原理**：
 
 ```js
 function myInstanceof(obj, Ctor) {
@@ -361,9 +355,9 @@ function myInstanceof(obj, Ctor) {
 
 > ⚠️ 注意：`typeof` 判断里必须包含 `'function'`，因为函数也能被 `instanceof` 判断（`fn instanceof Function`）。
 
-### 2.2.4 继承的五种演进（本题最高价值的延伸）
+### 2.2.4 继承的五种演进
 
-面试官问"原型链"，十有八九会接着问"怎么实现继承"。这五种方案的演进史，正好对应"每个方案解决了上一个的什么问题"：
+五种方案逐层解决上一个方案的问题：
 
 #### ① 原型链继承
 
@@ -392,10 +386,10 @@ function Child(name) {
 }
 ```
 
-**解决**：引用共享 ✅、可传参 ✅
-**新问题**：**方法没继承**（父类原型上的方法拿不到），且每次创建实例都复制一遍方法，浪费内存。
+**解决**：引用共享问题解决 ✅、可传参 ✅
+**新问题**：**方法没继承**（父类原型上的方法拿不到）；若父类把函数写在构造函数里，每个实例都会复制一份。
 
-#### ③ 组合继承（最常用的 ES5 方案）
+#### ③ 组合继承
 
 ```js
 function Child(name) {
@@ -409,7 +403,7 @@ Child.prototype.constructor = Child;
 **解决**：属性独立 ✅、方法共享 ✅、可传参 ✅
 **新问题**：**父类构造函数被调用了两次**，`Child.prototype` 上多了一份无用的父类实例属性。
 
-#### ④ 寄生组合继承（ES5 的最优解）
+#### ④ 寄生组合继承
 
 ```js
 function Child(name) {
@@ -464,20 +458,20 @@ console.log(b.list);            // [1]  ← b 也被污染了
 function Good() { this.list = []; }   // 每个实例独立
 ```
 
-> 这正是「`data` 为什么必须是函数」的同一个道理（可对照 Vue3 面经里的第 11 题）：**原型上的东西是所有实例共享的，实例上的东西才是私有的。**
+> 这与 Vue 的 `data` 必须是函数同理：**原型上的东西是所有实例共享的，实例上的东西才是私有的。**
 
-### 2.2.6 性能相关（加分项）
+### 2.2.6 性能相关
 
 | 操作 | 性能影响 |
 |---|---|
 | 访问**原型链深处**的属性 | 慢（要走多层） |
-| 访问**不存在的**属性 | **最慢**（要走完整条链到 `null`） |
+| 访问**不存在的**属性 | 慢（要走完整条链到 `null`） |
 | `for...in` | 慢（要枚举整条原型链） |
 | `Object.setPrototypeOf` / `__proto__ =` | **非常慢**（会破坏引擎的内联缓存，推荐用 `Object.create` 在创建时指定） |
 | 在原型上加方法 | 快（只加一次，所有实例共享） |
 | 每个实例上挂方法 | 慢 + 费内存 |
 
-**经典优化案例**：
+**写法对比**：
 
 ```js
 // ❌ 每个实例都有一个新的 say 函数
@@ -496,27 +490,19 @@ class C {
 }
 ```
 
-### 2.2.7 答题模板
+### 2.2.7 答题要点
 
-**30 秒版：**
-
-> "每个对象都有内部槽 `[[Prototype]]` 指向另一个对象，也就是它的原型。访问属性时先查自身，找不到就沿着原型往上找，直到 `null`，这条链就是原型链。
-> 它的作用是**方法共享**——把公共方法放在 `prototype` 上，所有实例共用一份，省内存。
-> 注意区分三个概念：`prototype` 是函数才有的属性，`__proto__` 是 `Object.prototype` 上的访问器，`[[Prototype]]` 是规范里的内部槽。"
-
-**2 分钟版补充：**
-
-> "几个必须说清的点：
-> 一是 `Foo.prototype` 是**给实例用的**，`Foo` 自己的原型是 `Function.prototype`。
-> 二是链的终点是 `Object.prototype.__proto__ === null`，但有个特殊自环：`Function.__proto__ === Function.prototype`，因为 `Function` 本身也是函数。
-> 三是 `instanceof` 就是沿着这条链找 `Ctor.prototype`，可以手写出来。
-> 四是继承的演进：原型链继承有引用共享问题，构造函数继承解决了共享但丢了方法，组合继承两次调用父类，**寄生组合继承**是最优的 ES5 方案，而 `class extends` 编译后就是寄生组合继承，只是多了 `B.__proto__ === A` 这条静态链。"
+- `[[Prototype]]` 是内部槽，用 `Object.getPrototypeOf` 读；`__proto__` 是 `Object.prototype` 上的访问器；`prototype` 是函数属性，给实例用。
+- 属性查找沿原型链到 `null`；`Foo.prototype` 是实例的原型，`Foo` 自己的原型是 `Function.prototype`。
+- `Function.__proto__ === Function.prototype` 是唯一自环；链的终点是 `Object.prototype.__proto__ === null`。
+- `instanceof` 沿链查找 `Ctor.prototype`；`in` 含原型链，`Object.hasOwn` 只查自身。
+- 继承演进：原型链继承共享引用 → 借用构造函数丢原型方法 → 组合继承调两次父类 → 寄生组合 `Object.create(Parent.prototype)`；`class extends` 再加 `B.__proto__ === A` 静态链。
 
 ### 2.2.8 追问表
 
 | 追问 | 答题要点 |
 |---|---|
-| `prototype` 和 `__proto__` 区别？ | 前者是**函数属性**（给实例用），后者是**对象访问器**（读自己的原型） |
+| `prototype` 和 `__proto__` 区别？ | 前者是**函数属性**（给实例用），后者是 `Object.prototype` 上的**访问器**（读自己的原型） |
 | `__proto__` 是标准吗？ | 不是核心标准，是 Annex B 的兼容特性；标准写法是 `Object.getPrototypeOf` |
 | 原型链的终点？ | `Object.prototype.__proto__ === null` |
 | `Function.__proto__` 是什么？ | `Function.prototype`（自环） |
@@ -567,19 +553,19 @@ class G {
 }
 const g = new G();
 const m = g.m;
-console.log(m());   // undefined（严格模式）而不是 window
+console.log(m());   // undefined（严格模式）而不是全局对象
 
 // ⑤ class 的 name 属性不可写
 class H {}
-H.name = 'X';           // 静默失败（严格模式抛错）
+H.name = 'X';           // 严格模式抛 TypeError；非严格模式静默失败
 console.log(H.name);    // 'H'
 
 // ⑥ 内部可以访问 super / new.target
 ```
 
-### 2.3.2 更深一层：`[[ConstructorKind]]`
+### 2.3.2 `[[ConstructorKind]]` 与 `super()`
 
-这是区分"会用"和"懂原理"的地方：
+派生类与基类的差别来自 `[[ConstructorKind]]`：
 
 | 类型 | `[[ConstructorKind]]` | `this` 何时创建 |
 |---|---|---|
@@ -611,20 +597,21 @@ console.log(new Derived() instanceof Derived);   // true  ← 靠 newTarget 传�
 ### 2.3.3 class 的常见坑
 
 ```js
-// 坑 1：方法里的 this 丢失（ES5 也一样，但 class 严格模式会直接报错）
+// 坑 1：方法被单独调用时 this 为 undefined（class body 是严格模式）
 class Counter {
   count = 0;
   inc() { this.count++; }
 }
 const c = new Counter();
 const fn = c.inc;
-fn();   // ❌ TypeError: Cannot read properties of undefined
+fn();   // ❌ TypeError: Cannot read properties of undefined (reading 'count')
 
 // 坑 2：class 字段 vs 原型方法
 class A {
   method() {}          // → A.prototype.method（所有实例共享）
   handler = () => {};  // → 每个实例一个箭头函数（不能共享，但 this 自动绑定）
 }
+// 字段用 [[Define]] 语义（TS 的 useDefineForClassFields: true）：原型上有同名 setter 也不触发
 
 // 坑 3：静态方法里的 this 是类本身
 class B {
@@ -642,7 +629,7 @@ class Y {}
 // var Y = 1;    // ❌ SyntaxError
 ```
 
-### 2.3.4 `class` 的私有字段（ES2022，常被问到）
+### 2.3.4 `class` 的私有字段（ES2022）
 
 ```js
 class Person {
@@ -666,23 +653,20 @@ class Person {
 
 const p = new Person('Tom');
 console.log(p.name);      // 'Tom'
-console.log(p.#name);     // ❌ SyntaxError: Private field '#name' must be declared in an enclosing class
+
+// 类外访问是解析期错误，整段代码不会执行
+// console.log(p.#name);  // ❌ SyntaxError: Private field '#name' must be declared in an enclosing class
 ```
 
 > **注意**：`#` 私有字段是**真正的私有**（语言层面强制），而 `_name` 只是**约定**。私有字段无法被 `Object.keys`、`JSON.stringify`、`for...in` 访问，也不参与代理的 `get`（Proxy 无法拦截私有字段访问）。
 
-### 2.3.5 答题模板
+### 2.3.5 答题要点
 
-**30 秒版：**
-
-> "`class` 本质是原型继承的语法糖，`typeof` 还是 `'function'`，但语义更严格。主要差异有六个：**必须 `new`**，直接调用报错；**有 TDZ**，声明前访问报错；**方法不可枚举**；**内部默认严格模式**，所以方法丢了 `this` 会直接 `TypeError`；**`name` 不可写**；内部可以访问 `super` 和 `new.target`。
-> 更深一层，`class extends` 的派生类有个 `[[ConstructorKind]]` 标记，`this` 是由 `super()` 创建的，所以 `super()` 之前访问 `this` 会报错。"
-
-**2 分钟版补充：**
-
-> "补两点：
-> 一是**方法的位置不同**。`class` 里的方法在 `prototype` 上，所有实例共享；但 class 字段 `handler = () => {}` 是**每个实例一份**，这两者在内存和 `this` 绑定上完全不同——React 里推荐用字段写法就是为了自动绑 `this`。
-> 二是 `class extends` 有**两条原型链**：实例链是 `B.prototype.__proto__ === A.prototype`，静态链是 `B.__proto__ === A`，后者让 `static` 方法也能继承，这是 ES5 的组合继承做不到的。"
+- `class` 是原型继承的语法糖，`typeof` 仍是 `'function'`，但语义更严格。
+- 六个差异：必须 `new`、TDZ、方法不可枚举、class body 默认严格模式、`name` 不可写、可用 `super`/`new.target`。
+- 派生类 `[[ConstructorKind]]` 为 `"derived"`，`this` 由 `super()` 创建；`super()` 前访问 `this` 抛 `ReferenceError`。
+- 实例方法在 `prototype` 上；字段 `handler = () => {}` 是实例自有属性（`[[Define]]` 语义）。
+- `class extends` 有实例链 `B.prototype.__proto__ === A.prototype` 与静态链 `B.__proto__ === A`，后者让 `static` 方法可继承。
 
 ### 2.3.6 追问表
 
@@ -709,7 +693,7 @@ console.log(p.#name);     // ❌ SyntaxError: Private field '#name' must be decl
 
 > `Object.assign` 是**浅拷贝**。它只把源对象**自身可枚举属性**（字符串键 + `Symbol` 键）**赋值**到目标对象上，嵌套对象仍然是同一个引用。而且它**不是"创建新对象"**——它修改并返回第一个参数。
 
-### 2.4.1 五个必须知道的行为细节
+### 2.4.1 五个行为细节
 
 ```js
 // ① 只拷第一层，嵌套对象共享引用
@@ -748,7 +732,7 @@ console.log(Object.assign({}, src5));   // { visible: 3 }
 // 既没有 inherited（原型上的），也没有 hidden（不可枚举）
 ```
 
-**还有一个陷阱**：
+**另外三点**：
 
 ```js
 // 字符串会被拆成索引属性
@@ -765,7 +749,7 @@ Object.assign(null, {});   // ❌ TypeError: Cannot convert undefined or null to
 
 | 方式 | 能拷 `Symbol` | 能拷不可枚举 | 对数组 | 备注 |
 |---|---|---|---|---|
-| `Object.assign({}, obj)` | ✅ | ❌ | ✅（变对象/或用 `[]`） | 触发 getter |
+| `Object.assign({}, obj)` | ✅ | ❌ | ✅（目标为 `[]` 才是数组） | 触发 getter |
 | `{ ...obj }` | ✅ | ❌ | ✅ | 同上，语法更简洁 |
 | `arr.slice()` | — | — | ✅ | 只适合数组 |
 | `arr.concat()` | — | — | ✅ | 同上 |
@@ -773,7 +757,7 @@ Object.assign(null, {});   // ❌ TypeError: Cannot convert undefined or null to
 | `Object.create(Object.getPrototypeOf(o), Object.getOwnPropertyDescriptors(o))` | ✅ | ✅ | — | **保留原型和属性描述符**，最完整的浅拷贝 |
 
 ```js
-// 最完整的浅拷贝（保留原型 + 不可枚举 + 访问器）
+// 保留原型 + 不可枚举 + 访问器
 function shallowClone(obj) {
   return Object.create(
     Object.getPrototypeOf(obj),
@@ -784,7 +768,7 @@ function shallowClone(obj) {
 
 ### 2.4.3 深拷贝的三种方案
 
-#### 方案 1：`structuredClone`（现代首选）
+#### 方案 1：`structuredClone`
 
 ```js
 const deep = structuredClone(obj);
@@ -796,14 +780,13 @@ const deep = structuredClone(obj);
 - ✅ `Date` / `RegExp` / `Map` / `Set` / `ArrayBuffer` / `TypedArray` / `Error`
 - ✅ `Blob` / `File` / `ImageData`（部分环境）
 
-**不支持**（会抛 `DataCloneError`）：
+**不支持**：
 
-- ❌ 函数
-- ❌ DOM 节点
-- ❌ `Symbol` 键
-- ❌ 原型链（类实例会变成普通对象，**丢失原型**）
-- ❌ getter/setter（会求值成数据属性）
-- ❌ 属性描述符（都变成可写可枚举）
+- ❌ 函数、DOM 节点：抛 `DataCloneError`
+- ❌ 原型链：类实例变成普通对象，**丢失原型**
+- ❌ getter/setter：求值成数据属性
+- ❌ 非可枚举属性：直接丢弃；可枚举属性统一变成可写、可枚举、可配置
+- ❌ `Symbol` 键：静默丢弃，不报错
 
 ```js
 class Foo { bar() {} }
@@ -813,7 +796,7 @@ console.log(cloned instanceof Foo);   // false ← 原型丢了
 
 #### 方案 2：`JSON.parse(JSON.stringify(obj))`
 
-**看起来简单，实际上坑最多**：
+**会丢失或变形的值**：
 
 | 原值 | 拷贝后 |
 |---|---|
@@ -834,17 +817,17 @@ const o = {
   u: undefined,
   f: () => {},
   n: NaN,
-  d: new Date(),
+  d: new Date(0),
   a: [undefined],
 };
 console.log(JSON.parse(JSON.stringify(o)));
-// { n: null, d: '2026-10-21T...', a: [null] }
+// { n: null, d: '1970-01-01T00:00:00.000Z', a: [ null ] }
 // u 和 f 消失了
 ```
 
 > **什么时候可以用 JSON 方案？** 只在"**纯数据、无 `Date`、无循环引用**"的场景。生产代码里建议直接用 `structuredClone`。
 
-#### 方案 3：手写递归（面试要能写）
+#### 方案 3：手写递归
 
 ```js
 function deepClone(value, map = new WeakMap()) {
@@ -875,7 +858,11 @@ function deepClone(value, map = new WeakMap()) {
     value.forEach((v) => result.add(deepClone(v, map)));
     return result;
   }
-  // ArrayBuffer / TypedArray
+  // ArrayBuffer / TypedArray / DataView
+  if (value instanceof ArrayBuffer) return value.slice();
+  if (value instanceof DataView) {
+    return new DataView(value.buffer.slice(0), value.byteOffset, value.byteLength);
+  }
   if (ArrayBuffer.isView(value)) return value.slice();
 
   // ④ 普通对象 / 数组：保留原型
@@ -924,7 +911,7 @@ console.log(b.d instanceof Date);  // true
 console.log(b.arr[1] !== a.arr[1]);// true   ← 深层也复制了
 ```
 
-**手写版的五个关键点**（面试官就看这几处）：
+**五个关键点**：
 
 1. **循环引用**：必须用 `WeakMap` 记录"原对象 → 副本"的映射（用 `Map` 也行，但会阻止 GC）
 2. **`Date` / `RegExp`**：不能直接 `{}` 递归，会变成空对象
@@ -939,31 +926,27 @@ console.log(b.arr[1] !== a.arr[1]);// true   ← 深层也复制了
 | 循环引用 | ✅ | ❌ 抛错 | ✅（需 `WeakMap`） |
 | `Date`/`RegExp`/`Map`/`Set` | ✅ | ❌ | ✅（需手动处理） |
 | 函数 | ❌ 抛错 | ❌ 丢弃 | ✅ 可共享 |
-| DOM 节点 | ❌ 抛错 | ❌ 抛错 | 需手动处理 |
+| DOM 节点 | ❌ 抛错 | ❌ 序列化成 `{}` | 需手动处理 |
 | 原型链 | ❌ 丢 | ❌ 丢 | ✅ 保留 |
 | `Symbol` 键 | ❌ 丢 | ❌ 丢 | ✅ |
-| 性能 | 快（原生） | 中（两次序列化） | 慢 |
-| 代码量 | 1 行 | 1 行 | 30+ 行 |
+| 实现 | 原生 | 两次序列化 | 逐属性递归 |
+| 代码量 | 1 行 | 1 行 | 50+ 行 |
 
 **选型建议**：
 
 ```
-纯数据、无特殊类型 → structuredClone（首选）
+纯数据、无特殊类型 → structuredClone
 需要保留原型 / 函数 / Symbol → 手写递归
 临时调试、确定是纯 JSON → JSON 方案
 ```
 
-### 2.4.5 答题模板
+### 2.4.5 答题要点
 
-**30 秒版：**
-
-> "`Object.assign` 是**浅拷贝**，只拷贝源对象自身可枚举的属性，嵌套对象还是同一个引用。而且它是修改并返回第一个参数，不是新建对象。
-> 深拷贝的现代方案是 `structuredClone`，它支持循环引用和 `Map`/`Set`/`Date`，但**不支持函数和 DOM**，而且会丢失原型。`JSON.parse(JSON.stringify())` 坑很多，`undefined`、函数、`Symbol` 会丢，`Date` 变字符串，循环引用会报错。要保留原型就得手写递归，用 `WeakMap` 处理循环引用。"
-
-**2 分钟版补充：**
-
-> "手写深拷贝有几个必答点：用 `WeakMap` 存已拷贝对象解决循环引用；`Date` 和 `RegExp` 要单独 `new`；`Map`/`Set` 要遍历重建；`Symbol` 键要用 `Reflect.ownKeys`；原型要用 `Object.create(Object.getPrototypeOf(value))` 保留。
-> 另外 `Object.assign` 有个容易忽略的副作用：它会**触发源对象的 getter**，并且把**访问器属性变成数据属性**。如果要保留描述符，得用 `Object.getOwnPropertyDescriptors` 配合 `Object.create`。"
+- `Object.assign` 是浅拷贝：只拷自身可枚举属性（含 `Symbol` 键），嵌套引用共享；修改并返回 `target`。
+- 它会触发源 getter 与目标 setter，访问器属性在目标上变成数据属性；不拷原型、不拷不可枚举属性。
+- 深拷贝首选 `structuredClone`：支持循环引用、`Date`/`RegExp`/`Map`/`Set`；函数和 DOM 抛 `DataCloneError`，原型、`Symbol` 键、非可枚举属性会丢。
+- `JSON.parse(JSON.stringify())` 只适合纯 JSON：`undefined`/函数/`Symbol` 丢，`Date` 变字符串，`NaN` 变 `null`，`BigInt` 和循环引用抛错。
+- 手写深拷贝：`WeakMap` 处理循环、`Date`/`RegExp`/`Map`/`Set` 单独处理、`Reflect.ownKeys` 覆盖 `Symbol` 与不可枚举、`Object.create(Object.getPrototypeOf(v))` 保留原型。
 
 ### 2.4.6 追问表
 
@@ -981,7 +964,7 @@ console.log(b.arr[1] !== a.arr[1]);// true   ← 深层也复制了
 | `structuredClone` 保留原型吗？ | 不保留，类实例变普通对象 |
 | JSON 方案会丢什么？ | `undefined`/函数/`Symbol`/原型；`Date`→字符串；`NaN`→`null` |
 | 为什么深拷贝要用 `WeakMap`？ | 解决循环引用，且不阻止 GC |
-| `Object.create(null)` 能做深拷贝目标吗？ | 可以，且能避免原型污染 |
+| `Object.create(null)` 能做深拷贝目标吗？ | 可以；目标无原型，克隆结果也会丢掉原型 |
 | 数组的浅拷贝有哪些？ | `slice`、`concat`、`[...arr]`、`Array.from` |
 
 ---
@@ -999,9 +982,7 @@ console.log(b.arr[1] !== a.arr[1]);// true   ← 深层也复制了
 
 ### 2.5.2 把四题串起来
 
-> "这四个点其实是一件事的四个面：**`new` 是原型的建立过程**，**原型链是属性的查找路径**，**`class` 是对这套机制的语法封装**，而 **`Object.assign`/深拷贝是在处理对象引用**。
->
-> 一句话概括：**原型解决"方法共享"，`new` 解决"实例创建"，`class` 解决"写法可读"，拷贝解决"引用隔离"。**
+`new` 建立实例与 `prototype` 的链接，原型链决定属性查找路径，`class` 在此之上增加静态链和更严格的语义，`Object.assign`/深拷贝处理对象引用的复制边界。
 
 ---
 
@@ -1017,7 +998,7 @@ console.log(b.arr[1] !== a.arr[1]);// true   ← 深层也复制了
 【原型三兄弟】
   [[Prototype]]  内部槽，只能 Object.getPrototypeOf 读
   __proto__      Object.prototype 上的访问器（Annex B）
-  prototype      函数独有，给 new 出来的实例用
+  prototype      普通函数/class/generator 有；箭头/方法简写/async 函数/bind 结果没有
 
 【原型链四条硬结论】
   f.__proto__ === Foo.prototype
@@ -1029,15 +1010,16 @@ console.log(b.arr[1] !== a.arr[1]);// true   ← 深层也复制了
   原型链继承 → 引用共享
   构造函数继承 → 丢原型方法
   组合继承 → 父类调两次
-  寄生组合 → Object.create(Parent.prototype) ✅ ES5 最优
+  寄生组合 → Object.create(Parent.prototype)
   class extends → 寄生组合 + B.__proto__ = A（静态链）
 
 【class 六差异】必须 new / TDZ / 方法不可枚举 / 严格模式 / name 不可写 / super+new.target
               派生类 this 由 super() 创建（[[ConstructorKind]] = derived）
+              字段是实例自有属性（[[Define]]，不触发原型 setter）
 
 【浅拷贝】Object.assign、{...}、slice、concat、Array.from
-          都不拷原型/不可枚举；assign 会触发 getter；访问器变数据属性
-【深拷贝】structuredClone（支持循环/Map/Set/Date，不支持函数/DOM/原型）
+          都不拷原型/不可枚举；assign/{...} 拷 Symbol；assign 触发 getter，访问器变数据属性
+【深拷贝】structuredClone（支持循环/Map/Set/Date；函数/DOM 抛错；原型/Symbol 键/非可枚举丢）
           JSON（丢 undefined/函数/Symbol/原型，Date→字符串，循环报错）
           手写（WeakMap 循环 + Date/RegExp/Map/Set + Reflect.ownKeys + 保留原型）
 ```
@@ -1048,31 +1030,15 @@ console.log(b.arr[1] !== a.arr[1]);// true   ← 深层也复制了
 |---|---|---|
 | 1 | `new` 的四步？ | 创建、链原型、绑 `this` 执行、处理返回值 |
 | 2 | 构造函数返回 `null` 会怎样？ | 忽略，返回新对象 |
-| 3 | 手写 `myNew` 的局限？ | 不能处理 `class`，要用 `Reflect.construct` |
-| 4 | `Object.create` 和 `new` 区别？ | 前者不执行构造函数 |
-| 5 | `Object.create(null)` 用在哪？ | 无原型字典，避免原型污染 |
-| 6 | `prototype` 和 `__proto__` 区别？ | 函数属性 vs 对象访问器 |
-| 7 | 原型链终点？ | `Object.prototype.__proto__ === null` |
-| 8 | `Function.__proto__` 是什么？ | `Function.prototype`，自环 |
-| 9 | `instanceof` 原理？ | 沿原型链找 `Ctor.prototype` |
-| 10 | `in` 和 `hasOwnProperty` 区别？ | 前者含原型链 |
-| 11 | 为什么不要在原型上放数组？ | 所有实例共享引用 |
-| 12 | 寄生组合继承怎么写？ | `Child.prototype = Object.create(Parent.prototype)` |
-| 13 | `class extends` 的两条链？ | `B.prototype.__proto__ === A.prototype`、`B.__proto__ === A` |
-| 14 | 派生类为什么要 `super()`？ | `this` 由 `super()` 创建 |
-| 15 | class 方法可枚举吗？ | 不可枚举 |
-| 16 | class 用 `apply` 调用会怎样？ | 抛 `TypeError` |
-| 17 | `#field` 和 `_field` 区别？ | 语言级私有 vs 命名约定 |
-| 18 | `Object.assign` 深还是浅？ | 浅 |
-| 19 | 它会触发 getter 吗？ | 会 |
-| 20 | 访问器属性拷过去还是访问器吗？ | 不是，变数据属性 |
-| 21 | 怎么保留访问器做浅拷贝？ | `Object.create(Object.getPrototypeOf(o), Object.getOwnPropertyDescriptors(o))` |
-| 22 | `structuredClone` 不支持什么？ | 函数、DOM、`Symbol` 键、原型 |
-| 23 | JSON 深拷贝会丢什么？ | `undefined`/函数/`Symbol`/原型；`Date`→字符串 |
-| 24 | 深拷贝怎么处理循环引用？ | `WeakMap` 记录原对象→副本 |
-| 25 | 为什么用 `WeakMap` 不用 `Map`？ | 不阻止 GC |
-| 26 | 深拷贝怎么保留 `Symbol` 键？ | `Reflect.ownKeys` |
-| 27 | 深拷贝怎么保留原型？ | `Object.create(Object.getPrototypeOf(obj))` |
-| 28 | 函数要不要深拷贝？ | 一般不拷，共享引用（函数无状态） |
-| 29 | `Object.assign` 能合并原型链属性吗？ | 不能，只拷自身可枚举 |
-| 30 | 这和 Vue 的 `data` 必须是函数有什么关系？ | 同一个道理：原型上共享，实例上私有 |
+| 3 | 手写 `myNew` 的局限？ | 不能处理 `class`/派生类；也不校验箭头函数、方法简写能否构造 |
+| 4 | `prototype` 和 `__proto__` 区别？ | 函数属性 vs `Object.prototype` 上的访问器 |
+| 5 | 原型链终点？ | `Object.prototype.__proto__ === null` |
+| 6 | `instanceof` 原理？ | 沿原型链找 `Ctor.prototype` |
+| 7 | 寄生组合继承怎么写？ | `Child.prototype = Object.create(Parent.prototype)` |
+| 8 | `class extends` 的两条链？ | `B.prototype.__proto__ === A.prototype`、`B.__proto__ === A` |
+| 9 | 派生类为什么要 `super()`？ | `this` 由 `super()` 创建 |
+| 10 | `#field` 和 `_field` 区别？ | 语言级私有 vs 命名约定 |
+| 11 | `Object.assign` 深还是浅？ | 浅 |
+| 12 | `structuredClone` 不支持什么？ | 函数/DOM 抛错；原型、`Symbol` 键、非可枚举丢 |
+| 13 | JSON 深拷贝会丢什么？ | `undefined`/函数/`Symbol`/原型；`Date`→字符串 |
+| 14 | 深拷贝怎么处理循环引用？ | `WeakMap` 记录原对象→副本 |
