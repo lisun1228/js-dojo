@@ -1,7 +1,8 @@
 /**
  * 知识图谱的受控概念词表。
  *
- * 只用于匹配文档标题（h1~h3），不读取正文，避免把示例代码里的词也算成考点。
+ * 只用于匹配文档标题与各级小标题，不读取正文，避免把示例代码里的词也算成考点。
+ * 标题 / h1 / h2 视为主题级命中：标了 strong 的概念在这两级同时出现时，可单独成边。
  * 新增概念时优先放“换个文档还能独立成立”的词，不要把「性能 / 安全 / 接口」这类泛词加回来。
  */
 export interface KnowledgeConcept {
@@ -11,6 +12,16 @@ export interface KnowledgeConcept {
   label: string
   /** 允许出现的最大文档数；核心工具名可以放宽，泛词不要放宽 */
   maxDf?: number
+  /**
+   * 同形异义排除：标题命中后，若还命中这里任一条，就不算该概念。
+   * 例：「节流」会命中「字节流」，但后者不是限流考点。
+   */
+  exclude?: RegExp[]
+  /**
+   * 强概念：在标题 / h1 / h2 里同时命中的两篇文档，允许只凭这一个概念建边。
+   * 只给「文档主题本身就是它」的词加，如 Promise、TCP；不要给泛词加。
+   */
+  strong?: boolean
 }
 
 const asciiTerm = /^[a-z0-9 .+#/-]+$/
@@ -24,7 +35,7 @@ export const matchesConcept = (text: string, term: string) =>
 
 export const knowledgeConcepts: KnowledgeConcept[] = [
   /* JavaScript 基础 */
-  { term: '闭包', label: '闭包' },
+  { term: '闭包', label: '闭包', strong: true },
   { term: '作用域', label: '作用域' },
   { term: 'this', label: 'this' },
   { term: '原型', label: '原型' },
@@ -35,7 +46,7 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
   { term: 'apply', label: 'apply' },
   { term: 'instanceof', label: 'instanceof' },
   { term: '防抖', label: '防抖' },
-  { term: '节流', label: '节流' },
+  { term: '节流', label: '节流', exclude: [/字节流/] },
   { term: '柯里化', label: '柯里化' },
   { term: '深拷贝', label: '深拷贝' },
   { term: '扁平化', label: '扁平化' },
@@ -45,10 +56,10 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
   { term: '洗牌', label: '洗牌' },
 
   /* 异步与元编程 */
-  { term: '事件循环', label: '事件循环' },
+  { term: '事件循环', label: '事件循环', strong: true },
   { term: '微任务', label: '微任务' },
   { term: '宏任务', label: '宏任务' },
-  { term: 'promise', label: 'Promise', maxDf: 12 },
+  { term: 'promise', label: 'Promise', maxDf: 12, strong: true },
   { term: 'async', label: 'async' },
   { term: 'await', label: 'await' },
   { term: '生成器', label: '生成器' },
@@ -76,12 +87,14 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
   { term: '插槽', label: '插槽' },
   { term: '自定义指令', label: '自定义指令' },
   { term: '路由守卫', label: '路由守卫' },
+  { term: 'vue router', label: 'Vue Router' },
+  { term: '路由懒加载', label: '路由懒加载' },
   { term: '路由', label: '路由' },
   { term: '状态管理', label: '状态管理' },
   { term: 'pinia', label: 'Pinia' },
   { term: 'vuex', label: 'Vuex' },
   { term: '组件通信', label: '组件通信' },
-  { term: 'keep-alive', label: 'keep-alive' },
+  { term: 'keep-alive', label: 'keep-alive', exclude: [/cluster/i] },
   { term: 'mixin', label: 'mixin' },
 
   /* React */
@@ -103,7 +116,7 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
   { term: 'sourcemap', label: 'Source Map' },
 
   /* 工程化 */
-  { term: 'webpack', label: 'Webpack', maxDf: 12 },
+  { term: 'webpack', label: 'Webpack', maxDf: 12, strong: true },
   { term: 'vite', label: 'Vite' },
   { term: 'babel', label: 'Babel' },
   { term: 'ast', label: 'AST' },
@@ -126,7 +139,7 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
   /* Node.js */
   { term: 'eventemitter', label: 'EventEmitter' },
   { term: 'stream', label: 'Stream' },
-  { term: 'buffer', label: 'Buffer' },
+  { term: 'buffer', label: 'Buffer', exclude: [/buffer pool/i] },
   { term: '中间件', label: '中间件' },
   { term: '进程', label: '进程' },
   { term: 'pm2', label: 'pm2' },
@@ -137,24 +150,27 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
 
   /* 网络 */
   { term: 'http', label: 'HTTP' },
+  { term: 'http 缓存', label: 'HTTP 缓存', strong: true },
   { term: 'http/2', label: 'HTTP/2' },
   { term: 'https', label: 'HTTPS' },
   { term: 'tls', label: 'TLS' },
-  { term: 'tcp', label: 'TCP' },
+  { term: 'tcp', label: 'TCP', strong: true },
   { term: 'udp', label: 'UDP' },
-  { term: 'websocket', label: 'WebSocket' },
+  { term: 'websocket', label: 'WebSocket', strong: true },
   { term: 'cors', label: 'CORS' },
   { term: '跨域', label: '跨域' },
   { term: '三次握手', label: '三次握手' },
   { term: '拥塞控制', label: '拥塞控制' },
+  { term: 'service worker', label: 'Service Worker' },
   { term: 'cdn', label: 'CDN' },
   { term: 'gzip', label: 'gzip' },
 
   /* 性能 */
   { term: '首屏', label: '首屏' },
+  { term: '强缓存', label: '强缓存' },
   { term: '懒加载', label: '懒加载' },
   { term: '预加载', label: '预加载' },
-  { term: '重排', label: '重排' },
+  { term: '重排', label: '重排', exclude: [/链表/] },
   { term: '重绘', label: '重绘' },
   { term: '内存泄漏', label: '内存泄漏' },
   { term: '垃圾回收', label: '垃圾回收' },
@@ -185,7 +201,7 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
   /* 算法与编程题 */
   { term: '排序', label: '排序' },
   { term: '链表', label: '链表' },
-  { term: '堆', label: '堆' },
+  { term: '堆', label: '堆', strong: true },
   { term: '栈', label: '栈' },
   { term: '队列', label: '队列' },
   { term: '哈希', label: '哈希' },
@@ -208,13 +224,13 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
   { term: '选择器', label: '选择器' },
   { term: '居中', label: '居中' },
   { term: '媒体查询', label: '媒体查询' },
-  { term: '动画', label: '动画' },
+  { term: '动画', label: '动画', exclude: [/动画帧/] },
   { term: '语义化', label: '语义化' },
   { term: 'seo', label: 'SEO' },
   { term: '无障碍', label: '无障碍' },
-  { term: '表单', label: '表单' },
+  { term: '表单', label: '表单', strong: true },
   { term: '存储', label: '存储' },
-  { term: '离线', label: '离线' },
+  { term: '离线', label: '离线', exclude: [/离线修改/] },
   { term: '脚本加载', label: '脚本加载' },
   { term: '同源', label: '同源' },
   { term: 'dom', label: 'DOM' },
@@ -223,6 +239,6 @@ export const knowledgeConcepts: KnowledgeConcept[] = [
   { term: '事件捕获', label: '事件捕获' },
   { term: 'flex', label: 'Flex' },
   { term: 'grid', label: 'Grid' },
-  { term: '浮动', label: '浮动' },
+  { term: '浮动', label: '浮动', exclude: [/无锁|意外升级/] },
   { term: '伪类', label: '伪类' },
 ]

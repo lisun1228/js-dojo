@@ -2,7 +2,11 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
-import { knowledgeConcepts, matchesConcept } from '../src/config/knowledge.ts'
+import {
+  knowledgeConcepts,
+  matchesConcept,
+  type KnowledgeConcept,
+} from '../src/config/knowledge.ts'
 import { categories } from '../src/router/tutorials.ts'
 import type {
   KnowledgeGraph,
@@ -15,7 +19,8 @@ import { collectVisibleLines, parseHeadings } from './markdown-scan.ts'
 /**
  * 知识图谱数据：节点是教程，边只有两种来源。
  *   - link：正文里的 /doc/:id 显式引用
- *   - concept：两篇文档的标题共享受控概念词，且满足稀有度门槛
+ *   - concept：两篇文档的标题共享受控概念词且满足稀有度门槛，
+ *     或强概念在双方的标题 / h1 / h2 里同时命中
  *
  * 同分类只用于页面分组，不生成边，避免每个分类内部变成全连接。
  */
@@ -37,6 +42,8 @@ const LINK_WEIGHT = 2
 interface DocInput {
   node: KnowledgeGraphNode
   concepts: string[]
+  /** 标题 / h1 / h2 级别命中的强概念，可单独建边 */
+  strongConcepts: Set<string>
   links: string[]
 }
 
@@ -50,6 +57,10 @@ const conceptLabel = new Map(knowledgeConcepts.map((concept) => [concept.term, c
 const conceptMaxDf = new Map(
   knowledgeConcepts.map((concept) => [concept.term, concept.maxDf ?? MAX_DF]),
 )
+
+/** 概念命中标题后，还要排掉同形异义的上下文（如「字节流」里的「节流」） */
+const matchConcept = (text: string, concept: KnowledgeConcept) =>
+  matchesConcept(text, concept.term) && !concept.exclude?.some((pattern) => pattern.test(text))
 
 const readDocs = (): DocInput[] => {
   const nodes = new Map<string, KnowledgeGraphNode>()
@@ -74,9 +85,19 @@ const readDocs = (): DocInput[] => {
       const visible = collectVisibleLines(lines)
       const headings = parseHeadings(visible)
       const text = [item.title, ...headings.map((heading) => heading.text)].join(' ').toLowerCase()
-      const concepts = knowledgeConcepts
-        .filter((concept) => matchesConcept(text, concept.term))
-        .map((concept) => concept.term)
+      const primaryText = [
+        item.title,
+        ...headings.filter((heading) => heading.level <= 2).map((heading) => heading.text),
+      ]
+        .join(' ')
+        .toLowerCase()
+      const matched = knowledgeConcepts.filter((concept) => matchConcept(text, concept))
+      const concepts = matched.map((concept) => concept.term)
+      const strongConcepts = new Set(
+        matched
+          .filter((concept) => concept.strong && matchConcept(primaryText, concept))
+          .map((concept) => concept.term),
+      )
 
       const links = new Set<string>()
       for (const { text: line } of visible) {
@@ -86,7 +107,7 @@ const readDocs = (): DocInput[] => {
         }
       }
 
-      docs.push({ node, concepts, links: [...links] })
+      docs.push({ node, concepts, strongConcepts, links: [...links] })
     }
   }
 
@@ -145,7 +166,10 @@ export const buildKnowledgeGraph = (): KnowledgeGraph => {
       if (shared.length === 0) continue
 
       const hasRare = shared.some((term) => (conceptDf.get(term) ?? 0) <= RARE_DF)
-      if (shared.length < 2 && !hasRare) continue
+      const hasStrong = shared.some(
+        (term) => docs[i].strongConcepts.has(term) && docs[j].strongConcepts.has(term),
+      )
+      if (shared.length < 2 && !hasRare && !hasStrong) continue
 
       shared.sort((a, b) => (conceptDf.get(a) ?? 0) - (conceptDf.get(b) ?? 0) || a.localeCompare(b))
 
