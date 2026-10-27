@@ -1,109 +1,102 @@
 # HTML · 07 HTML5 新特性全景
 
-> 本册覆盖：HTML5 有哪些新特性、Web Worker、WebSocket
-> 「HTML5 新特性」是最典型的「背清单」题——**背清单只能拿及格分，按场景归类才能拿高分**。
-> Web Worker 的核心考点是「**为什么不能操作 DOM**」和「**数据怎么传才不卡**」；WebSocket 的核心考点是「**和 SSE / 长轮询怎么选**」和「**心跳重连怎么做**」。
+> 本册覆盖：HTML5 新特性全景、Web Worker、WebSocket、Canvas 与 SVG
+> HTML5 不是版本号，而是 WHATWG Living Standard 下持续增补的一组能力；按「语义 / 能力 / 离线 / 性能」四组归类，每组给结论与边界。
 
 ---
 
 ## 7.1 一句话结论
 
-HTML5 不是一个「版本」，而是**一组能力的集合**（现在已经是 WHATWG 的 Living Standard，永远没有「HTML6」）。它的价值可以归为四句话：**让标签有语义、让浏览器有 API、让页面能离线、让前端能碰硬件**。
+HTML5 是一组能力的集合，不是一个版本：WHATWG 接管后转为 Living Standard，持续演进，不存在「HTML6」。能力可归为四句：**让标签有语义、让浏览器有 API、让页面能离线、让前端能用多线程与资源提示**。
 
 ---
 
 ## 7.2 HTML5 新特性全景
 
-### 7.2.1 先说答题策略
+### 7.2.1 答题框架
 
-题单给的是一个 9 项的无序清单（语义化标签、Canvas、SVG、Storage、Web Worker、WebSocket、Geolocation、input 新类型、video/audio）。
+直接背 9 项清单（语义化标签、Canvas、SVG、Storage、Web Worker、WebSocket、Geolocation、input 新类型、video/audio）会丢掉结构，任意一项都可能被继续追问。固定框架是四组：
 
-**这样答的问题**：听起来像背目录，面试官随便挑一个往下问你就得重新组织语言。
+> **语义（标签）**、**能力（浏览器 API）**、**离线（存储与缓存）**、**性能（多线程与预加载）**。
 
-**推荐答法**：**先给一句总纲，再分 4 组讲，每组点 2-3 个代表，最后说一个你真正用过的**。
-
-> **总纲**：HTML5 的更新我通常分四块看——**语义（标签）**、**能力（浏览器 API）**、**离线（存储与缓存）**、**性能（多线程与预加载）**。
+每组点 2-3 个代表，最后补一个实际用过的特性收口。
 
 ### 7.2.2 第一组：语义与结构
 
 | 特性 | 内容 |
 |---|---|
 | **语义化标签** | `header` `footer` `nav` `main` `article` `section` `aside` `figure` `figcaption` `time` `mark` `details`/`summary` `dialog` `hgroup` |
-| **表单增强** | 新 `type`：`email` `url` `tel` `number` `range` `date` `time` `datetime-local` `month` `week` `color` `search`<br>新属性：`placeholder` `required` `pattern` `autofocus` `multiple` `min`/`max`/`step` `list`（配 `datalist`）`form`（跨表单关联）<br>**约束校验 API**：`checkValidity()` `setCustomValidity()` `:valid` / `:invalid` / `:user-invalid` |
-| **文档结构** | `<html manifest>`（已废）、`data-*` 属性、`<template>`、`<slot>`（Web Components） |
-
-**表单校验的实际用法**（比背清单有用得多）：
+| **表单增强** | 新 `type`：`email` `url` `tel` `number` `range` `date` `time` `datetime-local` `month` `week` `color` `search`<br>新属性：`placeholder` `required` `pattern` `autofocus` `multiple` `min`/`max`/`step` `list`（配 `datalist`）`form`（跨表单关联）<br>约束校验：`checkValidity()` `setCustomValidity()` `reportValidity()` 与 `:valid` / `:invalid` / `:user-invalid` |
+| **文档结构** | `data-*` 属性、`<template>`（`content` 是 `DocumentFragment`）、`<slot>`（Web Components 分发） |
 
 ```html
-<form>
+<form id="signup" novalidate>
   <input type="email" name="mail" required
-         pattern=".+@company\.com$"
-         title="必须使用公司邮箱">
+         pattern=".+@company\.com$" title="必须使用公司邮箱">
   <button>提交</button>
 </form>
 <script>
-form.addEventListener('submit', (e) => {
-  if (!form.checkValidity()) {
-    e.preventDefault();
-    form.reportValidity();       // 触发浏览器原生气泡提示
-  }
-});
+  const form = document.getElementById('signup');
+  const mail = form.elements.mail;
 
-// 自定义校验
-input.addEventListener('input', () => {
-  input.setCustomValidity(
-    input.value.includes('admin') ? '不能用 admin 作为用户名' : ''
-  );
-});
+  // novalidate 关掉浏览器默认拦截，submit 里才能自己判
+  form.addEventListener('submit', (e) => {
+    if (!form.checkValidity()) {
+      e.preventDefault();
+      form.reportValidity();            // 触发浏览器原生气泡提示
+    }
+  });
+
+  // 自定义校验：清空字符串才恢复默认校验
+  mail.addEventListener('input', () => {
+    mail.setCustomValidity(mail.value.includes('admin') ? '不能用 admin 作为用户名' : '');
+  });
 </script>
 ```
 
-> **`type="email"` 的真实价值**：手机端会弹出**带 @ 的键盘**，`type="tel"` 弹数字键盘，`type="number"` 弹数字键盘。**这是移动端体验最直接的收益**，比「格式校验」更值钱。
+`pattern` 按整串匹配编译（`^(?:…)$`），`^` / `$` 可省；`type="email"` 与 `pattern` 需同时满足。移动端的主要收益是键盘类型：`email` 带 `@` 的键盘、`tel`/`number` 数字键盘；桌面端样式与提示文案各浏览器不一致，通常要自定义样式。
 
 ### 7.2.3 第二组：能力（浏览器 API）
 
-| 特性 | 说明 | 现在还用吗 |
-|---|---|---|
-| **`<video>` / `<audio>`** | 原生播放器，不再依赖 Flash | ✅ 核心 |
-| **`<track>`** | 字幕/章节轨道（WebVTT） | ✅ 无障碍要求 |
-| **Canvas 2D** | 像素级绘图，JS 命令式 | ✅ |
-| **内联 SVG** | 矢量、可被 CSS/JS 操作 | ✅ |
-| **WebGL / WebGPU** | 3D 与通用 GPU 计算 | ✅（WebGPU 是新方向） |
-| **拖放 API** | `draggable` + `dragstart/dragover/drop` | ⚠️ 体验差，多用库 |
-| **History API** | `pushState` / `replaceState` / `popstate`，SPA 路由基础 | ✅ 核心 |
-| **Geolocation** | `navigator.geolocation`（需用户授权） | ⚠️ 精度差，多用于 LBS 兜底 |
-| **File API** | `File` / `FileReader` / `Blob` / 拖拽上传 / 分片上传 | ✅ 核心 |
-| **Notification** | 桌面通知（需授权） | ⚠️ 常被滥用 |
-| **Clipboard API** | `navigator.clipboard.writeText` | ✅ 替代 `execCommand` |
-| **Fullscreen API** | `requestFullscreen()` | ✅ |
-| **DeviceOrientation / DeviceMotion** | 陀螺仪、加速度计 | ⚠️ 需 HTTPS + 授权 |
+| 特性 | 说明 |
+|---|---|
+| **`<video>` / `<audio>`** | 原生播放，替代 Flash；`<track>` 加载 WebVTT 字幕，`playsinline` 控制 iOS 内联播放 |
+| **Canvas 2D / 内联 SVG** | 位图即时绘制 / 矢量 DOM 节点，选型见 7.5 |
+| **WebGL / WebGPU** | 3D 渲染与 GPU 通用计算，WebGPU 是 WebGL 的后继 |
+| **History API** | `pushState` / `replaceState` / `popstate`，SPA 路由基础 |
+| **File API** | `File` / `FileReader` / `Blob`，拖拽上传与分片上传 |
+| **拖放 API** | `draggable` + `dragstart` / `dragover` / `drop`，需在 `dragover` 里 `preventDefault` |
+| **Clipboard API** | `navigator.clipboard.writeText()`，替代 `document.execCommand('copy')` |
+| **Fullscreen API** | `requestFullscreen()`，用户手势内调用 |
+| **Geolocation** | `navigator.geolocation`，需授权，且要求安全上下文 |
+| **Notification** | 桌面通知，需授权 |
+| **DeviceOrientation / DeviceMotion** | 陀螺仪、加速度计，需 HTTPS + 授权 |
 
 ### 7.2.4 第三组：离线与存储
 
-| 特性 | 状态 |
+| 特性 | 说明 |
 |---|---|
-| `localStorage` / `sessionStorage` | ✅ 常用 |
-| `IndexedDB` | ✅ 大容量结构化存储 |
-| **AppCache** | ❌ **已删除**（见 06 册 6.3） |
-| **Service Worker** | ✅ PWA 基础（见 06 册 6.3） |
-| `navigator.onLine` + `online`/`offline` 事件 | ✅ 简单的在线检测（不可靠，见下） |
+| `localStorage` / `sessionStorage` | 同步、按源隔离、容量受实现限制；`sessionStorage` 随标签页生命周期 |
+| `IndexedDB` | 异步、大容量结构化存储，支持索引与事务 |
+| **Service Worker** | 拦截网络请求、离线缓存、推送；取代了 AppCache（见 7.2.6） |
+| `navigator.onLine` + `online` / `offline` 事件 | 只反映网络接口状态，不代表能上网 |
 
-> **`navigator.onLine` 的坑**：它只表示「有没有连上网络接口」，**不代表能上网**。连着 WiFi 但没有外网时它仍是 `true`。可靠做法是**自己 ping 一个极小的接口**（如 `/ping` 返回 204），或者用 `fetch` 的失败来判断。
+`navigator.onLine` 连着 WiFi 但没有外网时仍是 `true`。要判断真实可达性，需自己请求一个极小接口（如返回 204 的 `/ping`），或直接以业务请求失败为准。
 
 ### 7.2.5 第四组：连接、线程与性能
 
 | 特性 | 说明 | 详见 |
 |---|---|---|
-| **WebSocket** | 全双工长连接 | 7.4 + 网络-11 |
-| **SSE（EventSource）** | 服务端单向推送，纯 HTTP，自带重连 | 7.4 |
+| **WebSocket** | 全双工长连接，HTTP Upgrade 握手 | 7.4 |
+| **SSE（EventSource）** | 服务端单向推送，纯 HTTP，内置重连 | 7.4 |
 | **WebRTC** | P2P 音视频与数据传输 | 音视频场景 |
-| **Web Worker** | 后台线程 | 7.3 |
-| **`requestAnimationFrame`** | 与帧对齐的动画回调 | 05 册 5.6 |
-| **`<link rel="preload">` / `prefetch`** | 资源预加载 | 04 册 4.4 |
-| **`postMessage` / `BroadcastChannel`** | 跨窗口/跨标签页通信 | 06 册 |
-| **`IntersectionObserver` / `MutationObserver` / `ResizeObserver`** | 观察者 API，替代 scroll 监听和轮询 | 懒加载、虚拟列表 |
+| **Web Worker** | 后台线程，`postMessage` 通信 | 7.3 |
+| **`requestAnimationFrame`** | 与合成帧对齐的动画回调 | 05 册 5.6 |
+| **`<link rel="preload">` / `prefetch`** | 提前请求当前页 / 后续页所需资源 | 04 册 4.4 |
+| **`postMessage` / `BroadcastChannel`** | 跨窗口、跨标签页通信 | 06 册 |
+| **`IntersectionObserver` / `MutationObserver` / `ResizeObserver`** | 观察者 API，替代 scroll 监听与轮询 | 懒加载、虚拟列表 |
 
-### 7.2.6 HTML5 删掉了什么（容易被追问）
+### 7.2.6 HTML5 删掉了什么
 
 | 被移除 | 替代 |
 |---|---|
@@ -111,28 +104,13 @@ input.addEventListener('input', () => {
 | `<applet>` | `<object>` / `<embed>` |
 | `<center>` `<font>` `<big>` `<strike>` `<tt>` `<acronym>` | CSS |
 | `<marquee>` `<blink>` | CSS 动画 |
-| **AppCache** | Service Worker |
-| `document.write`（未移除但不推荐） | DOM API |
+| **AppCache**（`<html manifest>`） | Service Worker |
 
 ### 7.2.7 面试怎么答
 
-**30 秒版**
-
-> HTML5 我一般分四块讲。**语义**上加了 `header`、`nav`、`article`、`section`、`footer` 这些标签，还有 `details`、`dialog` 这种自带交互的；**能力**上有了 `video`/`audio` 替代 Flash、Canvas 和 SVG、各种设备 API；**离线**上是 localStorage、IndexedDB 和 Service Worker；**性能和线程**上是 Web Worker、WebSocket、`requestAnimationFrame`，还有 `preload`/`prefetch` 这类资源提示。如果要挑一个我实际用得最多的，是 IntersectionObserver 替代 scroll 做懒加载和曝光统计。
-
-**追问表**
-
-| 追问 | 回答要点 |
-|---|---|
-| 现在还有 HTML6 吗 | 没有了，改成 WHATWG Living Standard，持续演进 |
-| HTML5 最重要的三个特性 | 语义化标签、多媒体、离线能力（按你的项目说） |
-| `video` 有哪些常用属性 | `src` `poster` `controls` `autoplay` `muted` `loop` `preload` `playsinline` |
-| 为什么 `autoplay` 不生效 | 浏览器策略：必须 `muted` 才允许自动播放 |
-| iOS 视频全屏怎么办 | `playsinline` + `webkit-playsinline` |
-| input 新类型在桌面端有用吗 | 主要是移动端键盘类型和原生校验；桌面端样式不统一，常被重置 |
-| `<template>` 干什么 | 声明不渲染的模板片段，供 JS 克隆（Web Components 基础） |
-| `navigator.onLine` 可靠吗 | 不可靠，只表示网络接口状态，要自己 ping |
-| History API 和 hash 路由区别 | History 用 `pushState` 改路径（需服务端 fallback），hash 用 `#`（不发请求但丑） |
+- **顺序**：一句话总纲（四组）→ 每组两个代表 → 一个实际用过的特性收口（如 `IntersectionObserver` 做懒加载）。
+- **能力组**：`video` 的常用属性是 `src` `poster` `controls` `autoplay` `muted` `loop` `preload` `playsinline`；`autoplay` 需 `muted`（或用户已与页面交互）才生效。
+- **路由**：`pushState` 改路径需服务端 fallback；hash 不发请求，但 URL 带 `#`。
 
 ---
 
@@ -140,157 +118,114 @@ input.addEventListener('input', () => {
 
 ### 7.3.1 一句话回答
 
-**Web Worker 是浏览器提供的「独立于主线程的后台线程」**，用来执行**计算密集型任务**，从而不阻塞 UI。它的核心限制是**不能访问 DOM**（不能碰 `window`、`document`、`parent`），只能通过 `postMessage` 把结果传回主线程。
+**Web Worker 是独立于主线程的后台线程**，用来跑计算密集型任务，避免阻塞 UI。它没有 DOM，也没有 `window`，与主线程只能通过 `postMessage` 通信（可用范围见 7.3.3）。
 
 ### 7.3.2 基本用法
 
 ```js
 // main.js
-const worker = new Worker('/worker.js');            // 或 { type: 'module' }
-
+const worker = new Worker('/worker.js');            // 模块脚本：{ type: 'module' }
 worker.postMessage({ cmd: 'parse', data: bigText });
-
-worker.onmessage = (e) => {
-  console.log('结果', e.data);
-};
-
-worker.onerror = (e) => {
-  console.error('worker 出错', e.message);
-};
-
-// 用完要终止，否则线程一直占着
-worker.terminate();
+worker.onmessage = (e) => console.log('结果', e.data);
+worker.onerror = (e) => console.error('worker 出错', e.message);
+worker.terminate();                                // 用完终止，否则线程常驻
 ```
 
 ```js
 // worker.js
 self.onmessage = (e) => {
   const { cmd, data } = e.data;
-  const result = heavyParse(data);
-  self.postMessage(result);          // 或者 postMessage(result)
+  self.postMessage(heavyParse(data));              // 等价于 postMessage(...)
 };
 ```
 
-### 7.3.3 ★ Worker 里能访问什么、不能访问什么
+### 7.3.3 ★ Worker 的可见环境
 
-**不能访问**（这是最常被问的）：
-
-| 不能用的 | 原因 |
+| 不可用 | 原因 |
 |---|---|
-| `document` | Worker 没有 DOM，也没有渲染上下文 |
-| `window` | 全局对象是 `self`（`DedicatedWorkerGlobalScope`） |
-| `parent` / `top` | 没有窗口层级 |
-| `alert` / `confirm` | 属于 UI |
-| `localStorage` / `sessionStorage` | 同步 API，会产生跨线程竞态；只能用 IndexedDB |
-| `XMLHttpRequest`（部分场景可用但不推荐） | 用 `fetch` |
+| `document` / `window` / `parent` / `top` | 没有 DOM 与窗口层级；全局对象是 `self`（`DedicatedWorkerGlobalScope`） |
+| `alert` / `confirm` | 属于主线程 UI |
+| `localStorage` / `sessionStorage` | 同步 API，跨线程共享同一份存储需全局互斥锁，规范未纳入 Worker；改用 IndexedDB |
 
-**可以访问**：
-
-| 能用的 | 说明 |
+| 可用 | 说明 |
 |---|---|
-| `navigator` | 部分属性（`userAgent` `language` `hardwareConcurrency`） |
-| `location` | **只读**（不能改 `href`） |
-| `fetch` / `WebSocket` | 能发网络请求 |
-| `IndexedDB` / `Cache API` | 能用存储 |
-| `setTimeout` / `setInterval` | 能用 |
+| `navigator` | 子集：`userAgent` `language` `hardwareConcurrency` |
+| `location` | 只读（`WorkerLocation`，给 `href` 赋值会抛 `TypeError`） |
+| `fetch` / `WebSocket` / `XMLHttpRequest` | 可发网络请求，推荐 `fetch` |
+| `IndexedDB` / `Cache API` | 存储 |
+| `setTimeout` / `setInterval` | 定时器 |
 | `atob` / `btoa` / `TextEncoder` / `TextDecoder` | 编解码 |
-| `crypto` | 加密 |
+| `crypto` | 加密与随机数 |
 | `importScripts()` | 加载其它脚本（classic worker） |
-| `OffscreenCanvas` | **可以在 Worker 里画图**（关键能力） |
+| `OffscreenCanvas` | 在 Worker 里绘图 |
 
-**为什么不能操作 DOM**（面试官最爱追问这一句）：
+**为什么不能操作 DOM**：DOM 是主线程独占的共享可变状态。若多线程都能修改，浏览器必须给整棵 DOM 树加锁，并与 CSSOM、布局等渲染阶段同步，渲染性能不可接受。规范因此把 DOM 限定在主线程，Worker 只做纯计算。
 
-> **因为 DOM 是主线程独占的共享可变状态。** 如果多个线程都能改 DOM，浏览器就必须给整棵 DOM 树加锁、做同步，这会彻底毁掉渲染性能（而且和 CSSOM/布局这些渲染流水线强耦合）。W3C 当年评估过「多线程 DOM」，结论是复杂度不可接受。所以规范选择了更简单的方案：**DOM 只归主线程，Worker 只做纯计算**。
-
-**那「在 Worker 里画图」怎么实现**：
+要在 Worker 里画图，就把画布所有权交出去：
 
 ```
-主线程：const canvas = document.querySelector('canvas');
-       const offscreen = canvas.transferControlToOffscreen();
-       worker.postMessage({ canvas: offscreen }, [offscreen]);   // 转移所有权
-
+主线程：const offscreen = canvas.transferControlToOffscreen();
+       worker.postMessage({ canvas: offscreen }, [offscreen]);
 Worker：const ctx = e.data.canvas.getContext('2d');
-       ctx.fillRect(...)      // 在 Worker 里画，UI 完全不受影响
+       ctx.fillRect(...)                                  // 与主线程渲染解耦
 ```
 
-> `OffscreenCanvas`（+ Worker）是做**高性能图表、地图、游戏**的关键手段。
+### 7.3.4 ★ 数据怎么传
 
-### 7.3.4 ★ 数据怎么传（性能关键）
-
-**默认是「结构化克隆（structured clone）」**，也就是**深拷贝**：
+`postMessage` 默认走**结构化克隆（structured clone）**，即深拷贝；**拷贝在发送方线程执行**，所以主线程传大对象照样卡。
 
 ```js
-const big = new Array(1e6).fill(0);
-worker.postMessage(big);      // ⚠️ 深拷贝 100 万个元素，主线程会卡一下
-```
+worker.postMessage(new Array(1e6).fill(0));          // 深拷贝 100 万个元素，主线程阻塞
 
-**问题**：拷贝大对象本身就在主线程上执行，**卡顿没消除，只是转移了**。
-
-**解法：Transferable Objects（转移所有权）**
-
-```js
-const buf = new ArrayBuffer(100 * 1024 * 1024);   // 100MB
-worker.postMessage({ buf }, [buf]);                // ★ 第二个参数是 transfer 列表
-console.log(buf.byteLength);                       // 0 ← 主线程这边已经「空了」
+const buf = new ArrayBuffer(100 * 1024 * 1024);
+worker.postMessage({ buf }, [buf]);                  // 第二个参数是 transfer 列表
+console.log(buf.byteLength);                         // 0 ← 原线程已不可再用
 ```
 
 | 对比 | 结构化克隆（拷贝） | Transferable（转移） |
 |---|---|---|
-| 内存 | 复制一份（双倍占用） | **不复制，所有权移交** |
-| 耗时 | 和体积成正比 | **接近 0**（O(1)） |
-| 原对象 | 仍可用 | **原线程不可再用**（`byteLength` 变 0） |
-| 支持的类型 | 对象/数组/Map/Set/Date/Blob/File/ImageData… | **`ArrayBuffer`**、`MessagePort`、`ImageBitmap`、`OffscreenCanvas`、`ReadableStream` |
+| 内存 | 复制一份（双倍占用） | 所有权移交，不复制 |
+| 耗时 | 与体积成正比 | 接近 O(1) |
+| 原对象 | 仍可用 | 不可再用（`byteLength` 变 0） |
+| 支持类型 | 对象/数组/Map/Set/Date/Blob/File/ImageData… | `ArrayBuffer`、`MessagePort`、`ImageBitmap`、`OffscreenCanvas`、`ReadableStream` |
 
-**还有第三种：`SharedArrayBuffer`（真共享内存）**
+**真共享内存：`SharedArrayBuffer` + `Atomics`**
 
 ```js
 const sab = new SharedArrayBuffer(1024);
 const view = new Int32Array(sab);
-// 两个线程看到同一块内存，用 Atomics 做原子操作
-Atomics.add(view, 0, 1);
-Atomics.wait(view, 0, 0);      // 阻塞等待（只有 Worker 里能 wait）
+Atomics.add(view, 0, 1);        // 原子自增，两个线程看到同一块内存
+Atomics.wait(view, 0, 0);       // 阻塞等待，会卡线程，只在 Worker 里用
 ```
 
-**代价**：`SharedArrayBuffer` 需要 **跨源隔离（cross-origin isolated）**——服务端必须同时返回：
+代价是**跨源隔离**：服务端必须同时返回下面两个响应头，否则页面里 `SharedArrayBuffer` 直接是 `undefined`（Spectre 侧信道缓解）。
 
 ```http
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-否则 `SharedArrayBuffer` 是 `undefined`（因为 Spectre 侧信道攻击）。**这也是为什么很多高性能 Web 应用需要特殊配置部署。**
-
 ### 7.3.5 三种 Worker
 
 | 类型 | 创建方式 | 特点 | 用途 |
 |---|---|---|---|
-| **Dedicated Worker** | `new Worker(url)` | **专属**于创建它的页面，页面关闭就终止 | 99% 的场景：大数据计算 |
-| **Shared Worker** | `new SharedWorker(url)` | **多个页面/标签页共享**同一个 Worker 实例，通过 `port` 通信 | 多标签页共享连接（少用） |
-| **Service Worker** | `navigator.serviceWorker.register(url)` | **独立于页面**，能拦截网络请求，可离线、可推送 | PWA、离线、缓存 |
-
-**三者对比记忆**：
-
-```
-Dedicated  → 一个页面一个线程，干重活
-Shared     → 多个页面共用一个线程，省资源
-Service    → 页面关了它还活着，管网络
-```
+| **Dedicated Worker** | `new Worker(url)` | 专属于创建它的页面，页面关闭即终止 | 大数据计算，绝大多数场景 |
+| **Shared Worker** | `new SharedWorker(url)` | 多个页面共享同一实例，经 `port` 通信 | 多标签页共享连接 |
+| **Service Worker** | `navigator.serviceWorker.register(url)` | 独立于页面，可拦截网络请求 | PWA、离线缓存、推送 |
 
 ### 7.3.6 什么时候该用 / 不该用
 
 | 该用 | 不该用 |
 |---|---|
-| 大文件解析（CSV/Excel/JSON，几十 MB） | 简单计算（`a + b`），启动成本 > 收益 |
+| 大文件解析（CSV/Excel/JSON，几十 MB） | 简单计算，创建与通信成本大于收益 |
 | 图像处理（滤镜、压缩、裁剪） | 需要频繁操作 DOM |
-| 加密/解密、哈希计算 | 数据量很小（拷贝成本 > 计算成本） |
-| 复杂的 diff / 搜索 / 排序 | 需要访问 `localStorage` |
-| 代码高亮（大文件） | 需要和 UI 高频同步（每帧数百次消息） |
-| WebAssembly 模块 | — |
+| 加密/解密、哈希计算 | 数据量小，拷贝成本大于计算成本 |
+| 复杂 diff / 搜索 / 排序 | 需要访问 `localStorage` |
+| 代码高亮、WebAssembly 模块 | 需要与 UI 高频同步（每帧数百条消息） |
 
-**启动成本**：创建一个 Worker 通常要 **几毫秒到几十毫秒**（要加载脚本、初始化 JS 引擎上下文）。所以**不要为每个小任务新建 Worker**，而是**池化**：
+创建 Worker 要加载脚本并初始化 JS 引擎上下文，成本远高于一次函数调用，所以不要为每个小任务新建，而要池化复用，池大小取 `navigator.hardwareConcurrency`：
 
 ```js
-// 简易 Worker 池
 class WorkerPool {
   constructor(url, size = navigator.hardwareConcurrency || 4) {
     this.idle = [];
@@ -317,57 +252,31 @@ class WorkerPool {
 }
 ```
 
-> `navigator.hardwareConcurrency` 能拿到逻辑 CPU 核数，池大小一般设成它。
-
 ### 7.3.7 面试怎么答
 
-**30 秒版**
-
-> Web Worker 是浏览器提供的后台线程，用来跑计算密集型任务，避免阻塞主线程。它最大的限制是**不能访问 DOM**，也没有 `window`，全局对象是 `self`，跟主线程只能通过 `postMessage` 通信。数据传递默认是结构化克隆，也就是深拷贝，大对象拷贝本身就会卡；要真正零开销就得用 Transferable，比如把 `ArrayBuffer` 的所有权转移过去。典型场景是大文件解析、图像处理、加密这些。
-
-**2 分钟版**
-
-> 我讲四点：能力边界、通信方式、类型、工程实践。
->
-> **能力边界**：Worker 里没有 `document`、没有 `window`，全局对象是 `self`。能用 `fetch`、`IndexedDB`、`crypto`、`setTimeout`，`location` 是只读的，**不能用 localStorage**（同步 API 会有跨线程问题）。**为什么不能操作 DOM**——因为 DOM 是主线程独占的共享可变状态，多线程改就要加锁、就要和渲染流水线同步，性能会被毁掉。所以规范的选择是：DOM 只归主线程，Worker 只做纯计算。如果真要在 Worker 里画图，可以用 `OffscreenCanvas`，主线程 `transferControlToOffscreen()` 把画布交出去。
->
-> **通信方式**：`postMessage` 默认是**结构化克隆**，也就是深拷贝。这里有个反直觉的点：**拷贝是在主线程上做的**，所以传一个几十 MB 的数组，主线程照样卡。真正零开销的做法是 **Transferable**——把 `ArrayBuffer` 的所有权转移过去，O(1)，代价是原线程不能再用了。再进一步是 `SharedArrayBuffer` 真共享内存，但需要服务端配 COOP 和 COEP 做跨源隔离。
->
-> **三种类型**：Dedicated 是一个页面一个，最常用；Shared 是多标签页共享；Service Worker 是独立于页面、能拦截网络请求的，用来做离线缓存。
->
-> **工程实践**：Worker 的启动成本是几毫秒到几十毫秒，所以不能每个小任务都新建，要池化，池大小用 `navigator.hardwareConcurrency`。另外不是所有计算都值得放 Worker——如果数据很小，拷贝和通信的成本可能比计算本身还大。
-
-**追问表**
+- **边界**：没有 `document` / `window`，全局是 `self`；无 `localStorage`，用 IndexedDB；绘图走 `OffscreenCanvas` + `transferControlToOffscreen`。
+- **原因**：DOM 是主线程独占的共享可变状态，多线程修改要加锁并与渲染流水线同步。
+- **通信**：默认结构化克隆且拷贝在发送方；零拷贝用 Transferable；真共享用 `SharedArrayBuffer` + `Atomics` + COOP/COEP。
+- **分类与工程**：Dedicated / Shared / Service Worker；Worker 要池化，数据太小时不值得进 Worker。
 
 | 追问 | 回答要点 |
 |---|---|
-| Worker 能操作 DOM 吗 | **不能**，没有 document/window |
-| 为什么不能操作 DOM | DOM 是主线程独占的共享可变状态，多线程要加锁，会毁掉渲染性能 |
-| Worker 能用 localStorage 吗 | 不能（同步 API），只能用 IndexedDB |
-| 数据怎么传 | `postMessage` + 结构化克隆（深拷贝） |
-| 怎么避免拷贝开销 | Transferable（`ArrayBuffer`/`ImageBitmap`/`MessagePort`），所有权转移 |
-| `SharedArrayBuffer` 怎么用 | 需要 COOP + COEP 跨源隔离，配合 `Atomics` |
-| 有几种 Worker | Dedicated / Shared / Service Worker |
-| Worker 里能画图吗 | 能，用 `OffscreenCanvas` + `transferControlToOffscreen` |
-| Worker 怎么终止 | `worker.terminate()`；Worker 内部 `self.close()` |
-| 启动成本高吗 | 几 ms 到几十 ms，要池化复用 |
-| 怎么知道 CPU 核数 | `navigator.hardwareConcurrency` |
-| Worker 能 import 模块吗 | 能，`new Worker(url, { type: 'module' })` |
-| Worker 出错怎么捕获 | `worker.onerror`；Worker 内部 `self.onerror` |
+| Worker 怎么终止 | 主线程 `worker.terminate()`；Worker 内部 `self.close()` |
+| Worker 能 import 模块吗 | 能，`new Worker(url, { type: 'module' })`，内部用 `import` |
+| Worker 出错怎么捕获 | 主线程 `worker.onerror`；Worker 内部 `self.onerror` / `unhandledrejection` |
 
 ---
 
 ## 7.4 WebSocket
 
-> 完整版（握手细节、帧协议、CSWSH 安全、Nginx 配置）见工作区 `计算机网络-71题/网络-11-WebSocket与实时通信.md`。本节只给「HTML5 新特性」语境下的答法。
+> 握手细节、帧协议、CSWSH 与 Nginx 配置见网络篇 WebSocket 一节；本节只保留「HTML5 新特性」语境下的结论。
 
 ### 7.4.1 一句话回答
 
-**WebSocket 是在单个 TCP 连接上的全双工协议**。它通过一次 HTTP Upgrade 握手（返回 **101**）从 HTTP 升级，之后双方可以**任意方向、任意时刻**发消息。
+**WebSocket 是单个 TCP 连接上的全双工协议**：一次 HTTP Upgrade 握手（服务端返回 **101 Switching Protocols**）后，双方可在任意时刻向任意方向发消息，此后不再走 HTTP 语义。
 
 ```js
 const ws = new WebSocket('wss://api.example.com/ws');
-
 ws.onopen = () => ws.send(JSON.stringify({ type: 'join', room: 1 }));
 ws.onmessage = (e) => console.log(JSON.parse(e.data));
 ws.onclose = (e) => console.log('关闭', e.code, e.reason);
@@ -378,44 +287,32 @@ ws.onerror = () => {};
 
 | | HTTP 轮询 | WebSocket |
 |---|---|---|
-| 通信方向 | 客户端拉（单向发起） | **双向** |
-| 连接 | 每次请求新建（或复用 keep-alive） | **一条长连接** |
-| 头部开销 | 每次几百字节 | 握手后每帧只有 **2~14 字节** |
-| 实时性 | 取决于轮询间隔 | **毫秒级** |
-| 服务端主动推 | ❌（只能等客户端来问） | ✅ |
+| 通信方向 | 客户端拉（单向发起） | 双向 |
+| 连接 | 每次请求新建（或复用 keep-alive） | 一条长连接 |
+| 头部开销 | 每次带完整 HTTP 头 | 握手后每帧只有 2~14 字节 |
+| 服务端主动推 | 不能，只能等客户端来问 | 能 |
+| 实时性 | 取决于轮询间隔 | 帧到达即推送 |
 
-### 7.4.3 实时方案怎么选（这才是本题的真正考点）
+### 7.4.3 实时方案怎么选
 
-| 方案 | 方向 | 实时性 | 自动重连 | 适用 |
-|---|---|---|---|---|
-| **短轮询** | 客户端拉 | 差 | — | 极简、消息频率极低 |
-| **长轮询** | 客户端拉（挂起） | 较好 | 需自己写 | 兼容老浏览器 |
-| **SSE** | **服务端 → 客户端**（单向） | 好 | **✅ 内置** | **通知、进度、日志流、AI 打字机效果** |
-| **WebSocket** | **双向** | **最好** | ❌ 需自己写 | 聊天、协作、游戏、行情 |
+| 方案 | 传输 | 自动重连 | 适用 |
+|---|---|---|---|
+| **短轮询** | HTTP | — | 消息频率极低，最省事 |
+| **长轮询** | HTTP 挂起 | 需自己写 | 需兼容极老浏览器或中间层不支持流式 |
+| **SSE** | HTTP（`text/event-stream`） | 内置，`Last-Event-ID` 续传 | 服务端单向推送：通知、进度、日志流、大模型逐 token 输出 |
+| **WebSocket** | 升级后的帧协议 | 需自己写 | 双向高频：聊天、协作、游戏、行情 |
 
-**选型口诀**：
+判断顺序：需要客户端频繁发消息才用 WebSocket；只要服务端推，SSE 更简单，代价是只支持文本、受 CORS 约束。
 
-```
-需要客户端频繁发消息吗？
-├─ 需要 → WebSocket
-└─ 不需要（只要服务端推）
-    ├─ 消息频率很低 → 短轮询（最省事）
-    ├─ 要兼容极老浏览器 → 长轮询
-    └─ 现代浏览器 → SSE（自带重连 + 断点续传，比 WS 简单）
-```
-
-> **一个高说服力的例子**：**ChatGPT 的打字机效果就是 SSE**，不是 WebSocket。因为只需要服务端单向流式输出，用 SSE 更简单、还自带重连。
-
-### 7.4.4 工程上必须自己做的三件事（WS 不像 SSE 那样开箱即用）
+### 7.4.4 工程上必须自己做的三件事
 
 | 事项 | 为什么必须做 | 怎么做 |
 |---|---|---|
-| **心跳** | Nginx 默认 `proxy_read_timeout` 60 秒，云 SLB 也有空闲超时，连接会被**静默断开**而两端不知道 | 应用层每 30 秒发 `{"type":"ping"}`；浏览器**不能主动发协议层 ping 帧** |
-| **重连** | 断线不会自动恢复 | **指数退避 + 随机抖动**（防服务端重启时十万客户端同时重连的惊群） |
-| **鉴权** | JS API **不支持自定义请求头** | 先 `POST /ws-ticket` 换一次性 ticket，再 `wss://...?ticket=xxx`（**别把长期 token 放 query**，会进 Nginx 日志） |
+| **心跳** | Nginx 默认 `proxy_read_timeout` 60 秒、云 SLB 也有空闲超时，连接会被静默断开而两端不知道 | 应用层定时发 `{"type":"ping"}`；浏览器 JS 不能发协议层 ping 帧，只能服务端发、浏览器自动回 pong |
+| **重连** | 断线不会自动恢复 | 指数退避 + 随机抖动，防止服务端重启时大量客户端同时重连（惊群） |
+| **鉴权** | 浏览器 WebSocket API 不支持自定义请求头 | 先 `POST /ws-ticket` 换一次性 ticket，再连 `wss://...?ticket=xxx`；长期 token 不放 query，会进访问日志 |
 
 ```js
-// 心跳 + 指数退避重连的最小实现
 class WS {
   constructor(url) { this.url = url; this.retry = 0; this.connect(); }
 
@@ -427,12 +324,12 @@ class WS {
         if (this.ws.readyState === WebSocket.OPEN) {
           this.ws.send(JSON.stringify({ type: 'ping' }));
         }
-      }, 30000);                                    // 心跳 30s
+      }, 30000);
     };
     this.ws.onclose = () => {
       clearInterval(this.timer);
       const base = Math.min(30000, 1000 * 2 ** this.retry++);
-      setTimeout(() => this.connect(), base + Math.random() * 1000);  // 抖动
+      setTimeout(() => this.connect(), base + Math.random() * 1000);   // 抖动
     };
     this.ws.onerror = () => this.ws.close();
   }
@@ -441,91 +338,49 @@ class WS {
 
 ### 7.4.5 面试怎么答
 
-**30 秒版**
-
-> WebSocket 是在单个 TCP 连接上的全双工协议，通过一次 HTTP Upgrade 握手、服务端返回 101 从 HTTP 升级上来，之后双方可以任意方向发消息。它和轮询的本质区别是**服务端能主动推**，而且握手之后每帧只有几个字节的头部开销。不过它不像 SSE 那样自带重连，心跳、重连、鉴权都得自己做。选型上，只需要服务端单向推的场景用 SSE 更划算——比如 ChatGPT 的打字机效果就是 SSE。
-
-**追问表**
+- **协议**：单 TCP 全双工；HTTP Upgrade → 101；之后是 WebSocket 帧协议，不再走 HTTP。
+- **对比轮询**：服务端可主动推，握手后每帧头部 2~14 字节。
+- **选型**：只需服务端推用 SSE（纯 HTTP、内置重连、只支持文本）；双向高频才用 WebSocket。
+- **工程**：心跳、指数退避重连、ticket 鉴权三件事 WS 都不内置，必须自己做。
 
 | 追问 | 回答要点 |
 |---|---|
-| WebSocket 握手返回什么状态码 | 101 Switching Protocols |
-| 之后还是 HTTP 吗 | 不是，改用 WebSocket 的帧协议 |
-| 和 SSE 区别 | SSE 单向、纯 HTTP、自带重连、只支持文本 |
-| 为什么要心跳 | Nginx 60s、SLB 有空闲超时，会静默断开 |
-| 浏览器能发 ping 帧吗 | 不能，只能服务端发、浏览器自动回 pong |
-| 怎么带 token | 先 HTTP 换一次性 ticket；query 里的长期 token 会进日志 |
 | 多节点怎么部署 | Redis Pub/Sub 广播，或粘性会话 |
-| Nginx 怎么配 | `proxy_http_version 1.1` + `Upgrade` + 调大 `proxy_read_timeout` |
-| 有安全问题吗 | 有，CSWSH：握手不受同源策略限制且会带 Cookie，服务端必须校验 Origin |
+| Nginx 怎么配 | `proxy_http_version 1.1` + `Upgrade` / `Connection` 头 + 调大 `proxy_read_timeout` |
+| 有什么安全问题 | CSWSH：握手不受同源策略限制且会带 Cookie，服务端必须校验 `Origin` |
 
 ---
 
-## 7.5 补充：Canvas vs SVG（HTML5 图形必问）
+## 7.5 补充：Canvas vs SVG
 
 | 维度 | Canvas | SVG |
 |---|---|---|
-| **本质** | **位图**（像素），JS 即时绘制 | **矢量**（DOM 节点），声明式 |
-| **渲染方式** | 立即模式（画完就没了，只留像素） | 保留模式（浏览器维护节点树） |
-| **事件** | ❌ 元素上没有事件，要自己做命中检测 | ✅ 每个图形都能绑事件 |
-| **缩放** | ❌ 放大失真（除非按 DPR 重绘） | ✅ 无损 |
-| **可访问性 / SEO** | ❌ 基本无法被读 | ✅ 可被读屏器和爬虫理解 |
-| **性能** | **大量对象、高频重绘时好**（一个 draw call 序列） | 少量对象时好；**对象上千会明显变慢**（DOM 开销） |
+| **本质** | 位图（像素），JS 即时绘制 | 矢量，DOM 节点声明式描述 |
+| **渲染模式** | 立即模式，画完只剩像素 | 保留模式，浏览器维护节点树 |
+| **事件** | 元素上没有事件，需自己做命中检测 | 每个图形都能绑事件 |
+| **缩放** | 放大失真（除非按 DPR 重绘） | 无损 |
+| **可访问性 / SEO** | 无法被读屏器与爬虫解析 | 节点文本可被解析 |
+| **性能** | 大量对象、高频重绘时好 | 少量对象时好，对象上千后 DOM 开销明显 |
 | **内存** | 一张位图 | 每个节点都有对象开销 |
-| **适合** | 游戏、图像处理、大数据量图表、视频帧 | 图标、地图、流程图、少量图形的交互图表 |
+| **适合** | 游戏、图像处理、大数据量图表、视频帧 | 图标、地图、流程图、少量可交互图形 |
 
-**选型口诀**：
-
-```
-图形少于 ~1000 个且需要交互/可访问 → SVG
-图形很多或每帧都在重画 → Canvas
-两者都要（如图表：坐标轴 SVG + 数据点 Canvas）→ 混合
-```
+选型：图形少于约 1000 个且需要交互/可访问用 SVG；对象多或每帧重绘用 Canvas；两者兼有可混合（坐标轴 SVG + 数据点 Canvas）。
 
 ---
 
 ## 7.6 速记卡
 
 ```
-HTML5 答题结构（别背清单，分四组）
-  ① 语义：header/footer/nav/main/article/section/aside/figure
-          details/summary、dialog、time、mark、hgroup
-  ② 能力：video/audio/track、Canvas/SVG/WebGL、History API、
-          File API、Clipboard、Geolocation、拖放
-          表单：email/url/tel/number/range/date/color + required/pattern
-                + checkValidity/setCustomValidity
-  ③ 离线：localStorage/sessionStorage/IndexedDB/Service Worker
-  ④ 性能：Web Worker、WebSocket、SSE、rAF、preload/prefetch、
-          IntersectionObserver/ResizeObserver
-  ★ 没有 HTML6，现在是 WHATWG Living Standard
-  删掉了：frame/frameset、center/font/big/strike、applet、marquee、AppCache
+【四组】语义 / 能力 / 离线 / 性能；无 HTML6，WHATWG Living Standard
+【表单】新 type 的价值在移动端键盘；校验三件套 checkValidity / setCustomValidity / reportValidity
+【移除】frame/frameset、applet、center/font/big/strike、marquee、AppCache
 
-Web Worker
-  独立线程，全局对象是 self，★ 没有 window/document，不能碰 DOM
-  不能用 localStorage（同步 API），能用 IndexedDB/fetch/crypto
-  ★ 为什么不能碰 DOM：DOM 是主线程独占的共享可变状态，多线程要加锁
-  通信：postMessage + 结构化克隆（深拷贝，★ 拷贝在主线程上做）
-  ★ Transferable：ArrayBuffer / ImageBitmap / MessagePort / OffscreenCanvas
-               转移所有权，O(1)，原线程不可再用
-  SharedArrayBuffer 需 COOP:same-origin + COEP:require-corp，配 Atomics
-  三种：Dedicated / Shared / Service Worker
-  在 Worker 里画图：OffscreenCanvas + transferControlToOffscreen
-  启动成本几 ms ~ 几十 ms → 池化，池大小 = hardwareConcurrency
-  适合：大文件解析、图像处理、加密、diff、代码高亮
-  不适合：简单计算、高频 DOM 操作、小数据
+【Worker】无 document/window/parent/top，全局 self，无 localStorage
+          有 fetch / IndexedDB / crypto / OffscreenCanvas
+【传递】结构化克隆在发送方拷贝 → Transferable O(1) 且原线程失效 → SAB 需 COOP+COEP
+【池化】大小取 hardwareConcurrency；数据太小不进 Worker
 
-WebSocket
-  单 TCP 全双工，HTTP Upgrade → 101，之后是帧协议
-  头部开销：握手后每帧 2~14 字节
-  必须自己做：心跳（30s，浏览器不能发 ping 帧）
-             重连（指数退避 + 抖动，防惊群）
-             鉴权（HTTP 换一次性 ticket）
-  选型：只需服务端推 → SSE（自带重连，ChatGPT 打字机就是 SSE）
-       需要双向高频 → WebSocket
-  安全：CSWSH（握手不受 SOP 限制 + 带 Cookie）→ 服务端校验 Origin
-
-Canvas vs SVG
-  Canvas：位图、立即模式、无元素事件、失真、大量对象好
-  SVG：矢量、保留模式、可绑事件、无损、可访问、对象多了慢
-  <1000 个且要交互 → SVG；大量/每帧重绘 → Canvas
+【WS】Upgrade 101；心跳 / 退避重连 / ticket 鉴权均需自建
+【选型】服务端单向推 → SSE；双向高频 → WebSocket
+【图形】<1000 且要交互 → SVG；大量对象或每帧重绘 → Canvas
 ```

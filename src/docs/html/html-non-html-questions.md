@@ -2,12 +2,7 @@
 
 > 本册覆盖：性能优化、Webpack 图片、loader 与 plugin、CSS 选择器、盒模型、伪元素与伪类、Vue 响应式、跨域、HTTP 与 HTTPS、GET 与 POST、状态码、内存泄漏
 >
-> **这一册的定位是「补课」，不是「深挖」**：
-> - 这 17 道题**根本不属于 HTML**，属于性能优化 / 工程化 / CSS / 框架 / 网络五个领域
-> - 本册只给「**能过面试、能接住追问**」的深度
-> - 想深挖请直接看工作区已有的专项文件夹：`性能优化-25题/`、`工程化-34题/`、`计算机网络-71题/`
->
-> **一个判断：如果面试官在这份「HTML 题单」里问出这 17 道题，说明这份题单是从别处拼来的，他的真实意图大概率是「摸底前端基础广度」而不是「深挖 HTML」。所以答这类题，广度 > 深度。**
+> 这些题不属于 HTML，分散在性能优化、工程化、CSS、框架、网络五个领域。本册给出能支撑追问的技术结论，不展开专项细节。
 
 ---
 
@@ -31,13 +26,11 @@
 
 ## 8.1 性能优化
 
-**同一道题问了 4 遍，而且 3 遍只写了「同性能优化文档」。这是整份题单里最高频的考点。**
-
 ### 8.1.1 一句话结论
 
-**性能优化不是「列手段」，而是「定位 → 度量 → 优化 → 验证」的闭环。** 面试时先讲指标，再讲链路，最后给数据。
+**性能优化不是「列手段」，而是「定位 → 度量 → 优化 → 验证」的闭环。** 先讲指标，再讲链路，最后给数据。
 
-### 8.1.2 先说指标（这一步就能超过 80% 的候选人）
+### 8.1.2 先说指标
 
 | 指标 | 全称 | 衡量什么 | 好 |
 |---|---|---|---|
@@ -47,7 +40,7 @@
 | TTFB | Time to First Byte | 服务端响应速度 | < 800ms |
 | FCP | First Contentful Paint | 首次出现内容 | < 1.8s |
 
-> **INP 在 2024 年 3 月正式取代 FID**。还说 FID 会显得知识没更新。
+> **INP 在 2024 年 3 月正式取代 FID**，Core Web Vitals 已不再包含 FID。
 
 ### 8.1.3 再按「五条链路」展开手段
 
@@ -72,28 +65,22 @@
 | **运行时** | 虚拟列表、防抖节流、`requestAnimationFrame`、Web Worker、时间切片、`content-visibility` | INP |
 | **缓存** | `index.html` no-cache + 静态资源 hash 长缓存、Service Worker、接口缓存 | 二次访问全部指标 |
 
-### 8.1.4 五个「面试官爱听」的具体案例（比泛泛而谈强 10 倍）
+### 8.1.4 五个典型案例
 
-| 现象 | 定位 | 根因 | 修复 | 收益 |
+| 现象 | 定位 | 根因 | 修复 | 改善方向 |
 |---|---|---|---|---|
-| 首屏白屏 3 秒 | Lighthouse 看 LCP 元素是首屏大图 | 图片 2.4MB，没压缩没 CDN | 转 AVIF + `srcset` + CDN + `preload` | LCP 3.1s → 1.4s |
-| 发版后用户看到旧页面 | 用户反馈「刷新才好」 | `index.html` 被强缓存 | 改为 `no-cache`，静态资源 hash | 白屏投诉归零 |
-| 列表滚动卡顿 | Performance 面板看长任务 | 一次渲染 5000 个 DOM 节点 | 虚拟列表（只渲染可视区 20 个） | 掉帧消失，INP 480ms → 90ms |
-| 输入框打字延迟 | Profile 看到每次输入都全量 filter | 大数据量同步计算 | 防抖 + 索引 + Worker | 输入延迟 300ms → 16ms |
-| 图片加载后页面跳动 | CLS 0.35 | `img` 没写 `width/height` | 加宽高 + `aspect-ratio` | CLS 0.35 → 0.02 |
+| 首屏白屏数秒 | Lighthouse 看 LCP 元素是首屏大图 | 图片 2.4MB，没压缩没 CDN | 转 AVIF + `srcset` + CDN + `preload` | LCP 回到 2.5s 内 |
+| 发版后用户看到旧页面 | 用户反馈「刷新才好」 | `index.html` 被强缓存 | 改为 `no-cache`，静态资源 hash | 旧页面问题消失 |
+| 列表滚动卡顿 | Performance 面板看长任务 | 一次渲染 5000 个 DOM 节点 | 虚拟列表（只渲染可视区 20 个） | 掉帧消失，INP 回到 200ms 内 |
+| 输入框打字延迟 | Profile 看到每次输入都全量 filter | 大数据量同步计算 | 防抖 + 索引 + Worker | 输入延迟降到一帧内 |
+| 图片加载后页面跳动 | CLS 0.35 | `img` 没写 `width/height` | 加宽高 + `aspect-ratio` | CLS 接近 0 |
 
-### 8.1.5 面试怎么答
+### 8.1.5 答题结构
 
-**30 秒版**
-
-> 我不会一上来列手段，先说指标。核心是三个 Core Web Vitals：LCP 衡量加载、INP 衡量交互、CLS 衡量视觉稳定。然后按链路拆：网络层做 CDN 和预连接，资源层做压缩和图片格式，加载时机做懒加载和 preload，渲染层做关键 CSS 和 SSR，运行时做虚拟列表和 Worker，最后是缓存。用 Lighthouse 定位、用 RUM 度量，改完再验证。
-
-**2 分钟版**（结构）
-
-> ① 先说指标（LCP/INP/CLS + 阈值）
-> ② 再说方法论：定位（Lighthouse + Performance 面板）→ 度量（RUM/`web-vitals`）→ 优化 → 验证
-> ③ 然后按五条链路各给 1-2 个具体手段
-> ④ 最后给一个**你真正做过的案例**（现象 → 定位 → 根因 → 修复 → 数据）
+1. **指标**：LCP（加载 < 2.5s）、INP（交互 < 200ms）、CLS（稳定 < 0.1），TTFB、FCP 辅助。
+2. **方法论**：Lighthouse / Performance 面板定位 → `web-vitals` + RUM 度量（看 P75/P95）→ 按链路优化 → 复测。
+3. **五条链路各 1-2 个手段**：网络、资源、加载时机、渲染、运行时与缓存。
+4. **一个真实案例**：现象 → 定位 → 根因 → 修复 → 数据。
 
 **追问表**
 
@@ -173,7 +160,7 @@ module: {
 
 **Vite 的对应**：默认 **< 4096 字节转 base64**，用 `build.assetsInlineLimit` 调；静态资源用 `assetsInclude` 扩展类型；`?url` / `?inline` / `?raw` 后缀显式指定。
 
-### 8.2.4 base64 的利弊（这是本题真正的考点）
+### 8.2.4 base64 的利弊
 
 | 优点 | 缺点 |
 |---|---|
@@ -189,10 +176,7 @@ module: {
 
 | 追问 | 回答要点 |
 |---|---|
-| `file-loader` 和 `url-loader` 区别 | 前者输出文件，后者小图转 base64，大图回退前者 |
-| Webpack 5 怎么替代 | `type: 'asset'` + `dataUrlCondition.maxSize` |
-| base64 的坏处 | 体积 +33%、不能单独缓存、拖慢关键资源 |
-| 阈值设多少 | 4~8KB；Vite 默认 4096 |
+| 阈值设多少 | 4~8KB，只内联真正的小图标 |
 | 图片还能怎么优化 | 压缩（sharp/squoosh）、WebP/AVIF、`srcset`、CDN、懒加载、SVG symbol |
 | SVG 怎么处理 | 用 `@svgr/webpack` 转 React 组件，或者 `svg-sprite-loader` 做雪碧图 |
 | `contenthash` 有什么用 | 内容变才变文件名，配合长期缓存 |
@@ -273,7 +257,6 @@ class MyPlugin {
 
 | 追问 | 回答要点 |
 |---|---|
-| loader 为什么从右到左 | 链式调用本质是 `compose`，最右边的先处理原始文件 |
 | plugin 怎么拿到 compiler | 构造函数注入，`apply(compiler)` 由 Webpack 调用 |
 | `compiler` 和 `compilation` 区别 | `compiler` 是全局唯一（启动到结束）；`compilation` 每次构建/增量编译新建 |
 | Tapable 是什么 | Webpack 的事件流库，SyncHook/AsyncSeriesHook 等 |
@@ -288,7 +271,7 @@ class MyPlugin {
 
 ### 8.4.1 一句话结论
 
-**优先级是四元组 `(a, b, c, d)`**：`a` 是内联样式，`b` 是 ID 数，`c` 是类/属性/伪类数，`d` 是元素/伪元素数。**同权重看书写顺序（后写的赢）**，`!important` 单独一档最高。
+**优先级是四元组 `(a, b, c, d)`**：`a` 是内联样式，`b` 是 ID 数，`c` 是类/属性/伪类数，`d` 是元素/伪元素数。**同权重看书写顺序（后写的赢）**，`!important` 单独分层（作者 `!important` 仍低于用户/UA 的 `!important`）。
 
 ### 8.4.2 选择器分类
 
@@ -307,7 +290,7 @@ class MyPlugin {
 | **`:is()` / `:where()`** | — | `:is()` 取括号内最高；**`:where()` 权重恒为 0** |
 | **`:has()`** | `.card:has(img)` | 相当于伪类，按括号内最高算 |
 
-### 8.4.3 权重不进位（最容易错的一点）
+### 8.4.3 权重不进位
 
 ```css
 /* (0,10,0,0) —— 10 个 class */
@@ -331,36 +314,26 @@ class MyPlugin {
 ⑦ 用户代理样式表（浏览器默认）
 ```
 
-**同一档内**：比权重 → 权重相同比「出现顺序」（后写的赢）→ 还相同则比「@layer 顺序」。
+**同一档内**：先比 `@layer` 顺序（未分层的普通声明高于任何分层）→ 再比权重 → 权重相同比出现顺序（后写的赢）。
 
 **`@layer`（现代 CSS 的优先级管理）**：
 
 ```css
 @layer reset, base, components, utilities;   /* 声明顺序：越后越高 */
-@layer components { .btn { color: red } }
-@layer utilities  { .text-blue { color: blue } }   /* 会赢，即使 components 在后面写 */
+@layer utilities  { .text-blue { color: blue } }
+@layer components { .btn { color: red } }    /* 写在后面也赢不了 utilities */
 ```
 
-**`@layer` 里的样式优先级低于「未分层」的样式**——这是它最大的用途：**让你引入的第三方库永远打不过你自己的样式**。
+**`@layer` 里的普通声明优先级低于「未分层」的普通声明**，典型用途是让引入的第三方库打不过自己的样式。
 
-### 8.4.5 面试怎么答
-
-**30 秒版**
-
-> CSS 优先级是四元组：内联样式、ID 数量、类/属性/伪类数量、元素/伪元素数量，逐位比较而不是相加。所以 10 个 class 也打不过 1 个 ID。同权重看书写顺序，后写的赢。`!important` 是单独一档，会覆盖普通声明。另外 `:where()` 的权重恒为 0，适合写 reset；`:is()` 取括号里最高的。现代还可以用 `@layer` 管理层级，让第三方库的样式天然低于自己的样式。
-
-**追问表**
+### 8.4.5 追问表
 
 | 追问 | 回答要点 |
 |---|---|
-| 权重会进位吗 | **不会**，逐位比较 |
 | `!important` 和 ID 谁高 | `!important` 高，但会破坏可维护性 |
-| `:not(.a)` 权重 | 按括号里的 `.a` 算，即 (0,0,1,0) |
-| `:where()` 有什么用 | 权重恒为 0，写 reset 不污染优先级 |
-| `:is()` 和 `:not()` 区别 | `:is` 匹配任一；`:not` 排除；都取括号内最高权重 |
 | 选择器写太深会慢吗 | 现代浏览器从右向左匹配 + 有优化，影响很小；但可读性和复用性是问题 |
 | CSS 变量受优先级影响吗 | 变量是「继承 + 就近覆盖」，也遵守层叠规则 |
-| 怎么覆盖第三方样式 | 提高选择器特异性、`@layer`、或者 `:where()` 让库不参与竞争 |
+| 怎么覆盖第三方样式 | 提高选择器特异性，或用 `@layer` 把库放到低优先级层；若库自身用 `:where()`，其权重为 0 |
 
 ---
 
@@ -368,9 +341,9 @@ class MyPlugin {
 
 ### 8.5.1 一句话结论
 
-**盒模型描述 `width` 到底包含什么**：`content-box`（默认）只含内容；`border-box` 含内容 + padding + border。**`margin` 不属于盒模型尺寸计算**——它在盒子**外面**。
+**盒模型描述 `width` 到底包含什么**：`content-box`（默认）只含内容；`border-box` 含内容 + padding + border。**`margin` 在盒子外面，不参与 `width` 计算**；CSS 盒模型的概念模型包含 margin，但尺寸计算不包含。
 
-> **纠正题单**：「盒模型 = content + padding + border + margin」。`margin` 不参与 `width` 计算，把它算进去会导致「设了 `width:100px; margin:10px` 以为总宽 100px」这种错误理解。
+常见误解是把 `margin` 算进 `width`，于是以为 `width:100px; margin:10px` 的总宽是 100px。
 
 ### 8.5.2 两种盒模型的尺寸计算
 
@@ -399,9 +372,9 @@ class MyPlugin {
 | **「所见即所设」** | 设 100px 就占 100px，符合直觉 |
 | **栅格系统好用** | `width: 33.33%` + `padding` 不会破格 |
 
-**代价**：改的是 `width` 的语义，老代码可能依赖 `content-box`；但现代项目基本无脑开启。
+**代价**：改的是 `width` 的语义，老代码可能依赖 `content-box`；现代项目通常全局开启。
 
-### 8.5.4 `margin` 折叠（BFC 之外的高频追问）
+### 8.5.4 `margin` 折叠
 
 | 场景 | 是否折叠 | 结果 |
 |---|---|---|
@@ -424,21 +397,12 @@ class MyPlugin {
 .parent { display: flow-root; }      /* 最干净的方案 */
 ```
 
-### 8.5.5 面试怎么答
-
-**30 秒版**
-
-> 盒模型是 `content + padding + border`，`margin` 在盒子外面，不参与 `width` 计算。两种模型：`content-box` 的 `width` 只算内容，实际占宽要加上 padding 和 border；`border-box` 的 `width` 包含 padding 和 border，内容区会被压缩。实践上项目都会全局设 `box-sizing: border-box`，这样写 `width:100%` 加 padding 不会溢出。另外 `margin` 会有折叠，相邻兄弟取较大值，父子在没有 padding/border/overflow 时也会折叠。
-
-**追问表**
+### 8.5.5 追问表
 
 | 追问 | 回答要点 |
 |---|---|
-| `margin` 属于盒模型吗 | 是盒模型的一部分，但**不参与 `width` 计算** |
-| 两种盒模型区别 | `width` 是否包含 padding + border |
-| `box-sizing` 默认值 | `content-box` |
+| `margin` 属于盒模型吗 | 概念上属于盒模型，但**不参与 `width` 计算** |
 | `margin` 折叠条件 | 普通流中的**块级**元素、垂直方向；flex/grid/浮动/绝对定位不折叠 |
-| 怎么阻止父子折叠 | `overflow:hidden`、`padding`、`border`、`display: flow-root` |
 | BFC 是什么 | 块级格式化上下文，独立布局区域，内部不影响外部；触发方式 `overflow:hidden`、`float`、`position:absolute`、`display:flow-root`/`flex`/`grid` |
 | `outline` 和 `border` 区别 | `outline` 不占空间、不能分边设置（`outline-offset` 可调） |
 
@@ -453,8 +417,8 @@ class MyPlugin {
 | | 伪类 `:` | 伪元素 `::` |
 |---|---|---|
 | **是否真实存在** | ✅ 真实元素，只是加了状态 | ❌ **虚拟的**，不在 DOM 里 |
-| **能绑 JS 事件吗** | ✅ 能 | ❌ **不能**（不在 DOM） |
-| **能否被 JS 选中** | ✅ `querySelector(':hover')` 可以 | ❌ 不能 `querySelector` |
+| **能绑 JS 事件吗** | ✅ 元素本身能绑（状态不产生独立事件） | ❌ **不能**（不在 DOM） |
+| **能否被 JS 选中** | ✅ 选择器可用，`querySelectorAll(':hover')` 能匹配到（含祖先） | ❌ 不能 `querySelector` |
 | **权重** | (0,0,1,0) | (0,0,0,1) |
 | **代表** | `:hover` `:focus` `:first-child` `:nth-child()` `:not()` `:checked` `:disabled` `:has()` | `::before` `::after` `::first-line` `::first-letter` `::selection` `::placeholder` `::marker` `::backdrop` |
 
@@ -467,13 +431,13 @@ class MyPlugin {
 | **结构位置** | `:first-child` `:last-child` `:only-child` `:nth-child()` `:nth-of-type()` `:first-of-type` `:empty` `:root` |
 | **逻辑** | `:not()` `:is()` `:where()` `:has()` |
 
-**四个值得单独记的**：
+**四个常用伪类**：
 
-| 伪类 | 用途 | 面试价值 |
+| 伪类 | 用途 | 要点 |
 |---|---|---|
-| **`:focus-visible`** | 只在**键盘操作**时显示焦点框，鼠标点击不显示 | 无障碍最佳实践（既保留可达性又不难看） |
+| **`:focus-visible`** | 由浏览器判断是否需要可见焦点：键盘导航通常匹配，普通按钮鼠标点击通常不匹配 | 既保留键盘可达性，又避免鼠标点击时出现焦点框 |
 | **`:focus-within`** | 子元素获得焦点时，**父元素**也匹配 | 做「输入框聚焦时整行高亮」 |
-| **`:has()`** | **父选择器**（CSS 终于有了） | `.card:has(img)` 选「含图片的卡片」；`.form:has(:invalid)` 选「有错误的表单」 |
+| **`:has()`** | **父选择器** | `.card:has(img)` 选「含图片的卡片」；`.form:has(:invalid)` 选「有错误的表单」 |
 | **`:where()`** | 权重恒为 0 | 写 reset 不污染优先级 |
 
 ### 8.6.3 `::before` / `::after` 的三个要点
@@ -496,23 +460,16 @@ class MyPlugin {
 
 **用例**：清除浮动（`clearfix`）、装饰图标、引号、下划线动效、`::after` 做遮罩层。
 
-### 8.6.4 面试怎么答
-
-**30 秒版**
-
-> 伪类描述元素的**状态或位置**，元素本来就在 DOM 里，比如 `:hover`、`:focus`、`:nth-child`、`:not`；伪元素是**创建一个不存在的子元素**，用来做装饰，比如 `::before`、`::after`、`::first-line`、`::selection`。区别最直接的一点是：**伪元素不在 DOM 里，所以不能绑事件、不能 `querySelector`**。`::before` 和 `::after` 必须写 `content`，而且默认是 `inline`，想设宽高得改 `display`。另外现代 CSS 有几个很实用的伪类：`:focus-visible` 只在键盘操作时显示焦点框，`:has()` 是父选择器，`:where()` 权重恒为 0。
-
-**追问表**
+### 8.6.4 追问表
 
 | 追问 | 回答要点 |
 |---|---|
 | 单冒号和双冒号区别 | 单是伪类，双是伪元素；CSS2 伪元素也能用单冒号（兼容） |
 | `::before` 不显示怎么办 | 检查 `content` 是否写了、`display` 是否是 inline |
 | 伪元素能绑事件吗 | **不能**，不在 DOM |
-| 伪元素能设 z-index 吗 | 能，但必须在定位上下文里；常常要配 `position` |
-| `:has()` 兼容性 | Chrome 105+、Safari 15.4+、Firefox 121+，现在可用了 |
-| `:focus` 和 `:focus-visible` | 后者只在键盘导航时匹配，避免鼠标点击出现焦点框 |
-| 伪元素和伪类的权重 | (0,0,1,0) 和 (0,0,0,1) |
+| 伪元素能设 z-index 吗 | 能，但 `z-index` 只对定位元素（`position` 非 `static`）或 flex/grid 子项生效，伪元素通常要配 `position` |
+| `:has()` 兼容性 | Chrome 105+、Safari 15.4+、Firefox 121+ |
+| `:focus` 和 `:focus-visible` | 后者由浏览器判断是否需要可见焦点，鼠标点击普通按钮时通常不匹配 |
 | 清除浮动怎么写 | `.clearfix::after { content:''; display:block; clear:both }`；现在直接 `display: flow-root` |
 
 ---
@@ -521,7 +478,7 @@ class MyPlugin {
 
 ### 8.7.1 一句话结论
 
-**Vue 2 用 `Object.defineProperty` 劫持每个属性的 getter/setter**（遍历递归）；**Vue 3 用 `Proxy` 代理整个对象**（惰性递归）。核心都是三件事：**数据劫持 → 依赖收集（getter 里 track）→ 派发更新（setter 里 trigger）**。
+**Vue 2 用 `Object.defineProperty` 劫持每个属性的 getter/setter**（遍历递归）；**Vue 3 用 `Proxy` 代理整个对象**（惰性递归）。核心链路一致：**数据劫持 → 依赖收集（getter 里 track）→ 派发更新（setter 里 trigger）→ 微任务批量执行**。
 
 ### 8.7.2 Vue 2：`Object.defineProperty`
 
@@ -544,7 +501,7 @@ function defineReactive(obj, key, val) {
 }
 ```
 
-**四个无法绕过的缺陷**（这是本题的考点）：
+**四个缺陷**：
 
 | 缺陷 | 表现 | 解法 |
 |---|---|---|
@@ -596,7 +553,7 @@ function reactive(target) {
 | **解构会丢失响应性** | `const { count } = reactive(obj)` 之后 `count` 不再是响应式的（要用 `toRefs`） |
 | **代理对象 ≠ 原对象** | `reactive(obj) !== obj`，比较时要注意 |
 
-### 8.7.4 两者共同的三步模型
+### 8.7.4 两者共同的四步模型
 
 ```
 ① 数据劫持
@@ -616,20 +573,11 @@ function reactive(target) {
 
 **为什么用微任务**：同一个 tick 里改 10 次数据，只重新渲染 1 次（`nextTick` 后统一 flush）。
 
-### 8.7.5 面试怎么答
-
-**30 秒版**
-
-> Vue2 用 `Object.defineProperty` 劫持每个属性的 getter 和 setter，getter 里收集依赖、setter 里派发更新。它有四个缺陷：监听不到新增和删除属性、监听不到数组索引和 length、必须初始化时递归遍历、要手动 `$set`。Vue3 改用 `Proxy` 代理整个对象，能拦截 13 种操作，所以新增删除、数组索引、Map/Set 全都支持；而且是惰性递归，只有访问到的嵌套对象才代理，初始化更快。代价是不支持 IE，而且 `reactive` 解构会丢响应性，要用 `toRefs`。
-
-**追问表**
+### 8.7.5 追问表
 
 | 追问 | 回答要点 |
 |---|---|
-| Vue2 为什么监听不到数组索引 | `defineProperty` 只能劫持已有属性，改索引不触发 setter；所以重写了 7 个数组方法 |
-| Vue3 为什么能监听数组索引 | `Proxy` 的 `set` 陷阱能拦到 |
 | `ref` 和 `reactive` 区别 | `ref` 包基本类型（`.value`），`reactive` 只能对象；`ref` 存对象时内部也用 `reactive` |
-| 为什么解构丢响应性 | 解构出来的是**值**不是引用；用 `toRefs` 保持引用 |
 | `computed` 怎么实现 | 本质是带缓存的 effect（`dirty` 标记 + 依赖变化才重算） |
 | `nextTick` 原理 | 微任务（`Promise.then`），在 DOM 更新后执行 |
 | Vue3 的 `effect` 是什么 | 响应式副作用，渲染函数、`watch`、`computed` 都基于它 |
@@ -641,7 +589,7 @@ function reactive(target) {
 
 ### 8.8.1 一句话结论
 
-**跨域问题的根源是「同源策略」——它限制的是「读取」，不是「发送」。** 请求常常已经发出去了（服务端也处理了），只是**浏览器不让 JS 读响应**。所以「跨域」不是「请求发不出去」，这个认知差异是这道题的分水岭。
+**跨域问题的根源是「同源策略」——它限制的是「读取」，不是「发送」。** 请求常常已经发出去了（服务端也处理了），只是**浏览器不让 JS 读响应**。所以「跨域」不等于「请求发不出去」。
 
 ### 8.8.2 同源与限制范围
 
@@ -689,10 +637,11 @@ Access-Control-Allow-Credentials: true
 fetch(url, { credentials: 'include' });
 ```
 
+后端响应头三条缺一不可：
+
 ```http
-// 后端 —— 三条缺一不可
 Access-Control-Allow-Credentials: true
-Access-Control-Allow-Origin: https://a.com     ← ★ 不能是 *（浏览器直接拒绝）
+Access-Control-Allow-Origin: https://a.com     ← 不能是 *（浏览器直接拒绝）
 Access-Control-Allow-Headers: ...              ← 不能有 *
 ```
 
@@ -706,30 +655,22 @@ Access-Control-Allow-Headers: ...              ← 不能有 *
 | **postMessage** | 跨窗口通信 | 支持跨域 iframe | 只能通信，不能替代 API | 嵌套页面、微前端 |
 | **WebSocket** | 不受同源策略限制 | 双向 | — | 实时场景（但要防 CSWSH） |
 
-```js
-// Nginx 反代（生产最常用）
+```nginx
+# Nginx 反代（生产最常用）
 location /api/ {
   proxy_pass https://backend.example.com/;
   proxy_set_header Host $host;
 }
-// 前端直接请求同源的 /api/xxx，不产生跨域
 ```
 
-### 8.8.5 面试怎么答
+前端直接请求同源的 `/api/xxx`，不产生跨域。
 
-**30 秒版**
-
-> 跨域源于同源策略，同源是协议、域名、端口三者都相同。**这里要纠正一个常见误解：同源策略限制的是「读响应」，不是「发请求」**——简单请求其实已经发出去了，服务端也处理了，只是浏览器不让 JS 读结果。主流方案是 CORS，服务端返回 `Access-Control-Allow-Origin` 这些东西；不满足简单请求三个条件会先发一个 OPTIONS 预检。带 Cookie 的话前端要 `credentials: 'include'`，后端 `Allow-Credentials` 必须是 true 且 `Allow-Origin` 不能是星号。生产环境最常用的其实是 Nginx 反向代理，直接消除跨域。
-
-**追问表**
+### 8.8.5 追问表
 
 | 追问 | 回答要点 |
 |---|---|
-| 同源策略限制什么 | 限制**读**，不限制发 |
-| 简单请求三个条件 | 方法 GET/HEAD/POST、头部是安全头、Content-Type 三种之一 |
 | 预检什么时候触发 | 不满足简单请求条件；`OPTIONS` 请求 |
 | 怎么减少预检 | `Access-Control-Max-Age` 缓存；把自定义头改成简单头 |
-| `Allow-Origin: *` 能带 Cookie 吗 | **不能**，必须写具体源 |
 | 为什么 JSONP 只能 GET | 靠 `<script src>` 加载，script 只能 GET |
 | `document.domain` 还能用吗 | 已废弃（Chrome 115 起移除） |
 | WebSocket 受同源限制吗 | **不受**，所以有 CSWSH，服务端必须校验 `Origin` |
@@ -756,20 +697,20 @@ location /api/ {
 | 浏览器提示 | 「不安全」 | 锁标 |
 | 成本 | 无 | 证书（Let's Encrypt 免费） |
 
-### 8.9.3 为什么用「混合加密」（必问）
+### 8.9.3 为什么用「混合加密」
 
 | 加密方式 | 速度 | 密钥分发 | 用途 |
 |---|---|---|---|
 | **对称加密**（AES） | **快**（快几个数量级） | ❌ 密钥怎么安全传给对方？ | **加密数据** |
-| **非对称加密**（RSA/ECDHE） | **慢** | ✅ 公钥可以公开 | **协商密钥 + 验证身份** |
+| **非对称算法**（RSA/ECDHE） | **慢** | ✅ 公钥可以公开 | **协商密钥 + 验证身份** |
 
 ```
-① 用非对称加密（ECDHE）协商出一个「对称密钥」
+① 用 ECDHE 协商出一个「对称密钥」
 ② 之后所有数据用对称密钥加密（AES-GCM）
-③ 证书用来证明「这个公钥真的是 example.com 的」
+③ 证书链证明「这个服务器确实是 example.com」
 ```
 
-> **常见错误答法**：「HTTPS 用非对称加密传数据」——**错**。非对称只用来协商/验证，数据全程对称加密。
+常见错误：「HTTPS 用非对称加密传数据」。非对称只用来协商/验证，数据全程对称加密。
 
 ### 8.9.4 追问表
 
@@ -806,11 +747,10 @@ location /api/ {
 | **能被浏览器预加载/预取** | ✅ | ❌ |
 | **编码** | `application/x-www-form-urlencoded`（URL 编码） | 可以任意（JSON、form-data、二进制） |
 | **安全性（防窥探）** | ❌ 参数在 URL 里，会进日志、历史、Referer | 相对好（body 不进日志和 Referer） |
-| **TCP 包数（旧说法）** | 常被说成「1 个包」 | 「2 个包」 |
 
-> **纠正两个流传很广的错误**：
+> **两个常见误解**：
 > 1. **「GET 有长度限制、POST 没有」**——HTTP 规范**两者都没有**长度限制；限制来自浏览器和服务器实现。
-> 2. **「GET 一个 TCP 包、POST 两个」**——这是十几年前的观测，现代浏览器和 TLS 下完全不成立，别当知识讲。
+> 2. **「GET 一个 TCP 包、POST 两个」**——这是十几年前的观测，现代浏览器和 TLS 下不成立。
 
 ### 8.10.3 什么时候必须用 POST
 
@@ -818,17 +758,13 @@ location /api/ {
 |---|---|
 | 新增/修改数据 | GET 应该安全，用 GET 做写操作会被爬虫/预取误触发 |
 | 传敏感信息（密码） | URL 会进日志、历史、Referer |
-| 传大量数据（文件） | URL 长度不够，且二进制无法放 query |
-| 需要非 ASCII/二进制 | 要 base64 二次编码，很丑 |
+| 传大量数据（文件） | URL 不适合承载大量数据，且二进制无法放 query |
+| 需要非 ASCII/二进制 | 要 base64 二次编码，有额外开销 |
 
 ### 8.10.4 追问表
 
 | 追问 | 回答要点 |
 |---|---|
-| GET 有长度限制吗 | 规范无；浏览器/服务器有限制（2KB~8KB 常见） |
-| POST 幂等吗 | 不幂等；重复提交会产生多条记录 |
-| 为什么 GET 能被缓存 | 语义上是「取」，缓存不会改变状态 |
-| GET 传敏感数据行吗 | 不行：URL 会进 Nginx 日志、浏览器历史、Referer |
 | RESTful 里怎么用 | GET 查、POST 增、PUT 全量改、PATCH 局部改、DELETE 删 |
 | 表单默认是 GET 吗 | 是；传密码/文件必须显式 `method="post"` |
 
@@ -838,19 +774,19 @@ location /api/ {
 
 ### 8.11.1 一句话结论
 
-**五位分类：1xx 信息、2xx 成功、3xx 重定向、4xx 客户端错、5xx 服务端错。** 面试重点不是「背全表」，而是 **301 vs 302 vs 307 vs 308**、**401 vs 403**、**502 vs 503 vs 504**。
+**五类：1xx 信息、2xx 成功、3xx 重定向、4xx 客户端错、5xx 服务端错。** 重点是几组易混码：**301 vs 302 vs 307 vs 308**、**401 vs 403**、**502 vs 503 vs 504**。
 
 ### 8.11.2 重点状态码表
 
-| 码 | 含义 | 面试要点 |
+| 码 | 含义 | 要点 |
 |---|---|---|
 | **200** | OK | — |
 | **201** | Created | 创建成功，常配 `Location` 头指向新资源 |
 | **204** | No Content | 成功但**无响应体**（常用于 DELETE、OPTIONS） |
 | **206** | Partial Content | **断点续传 / 分段下载**，配 `Range` |
 | **301** | Moved Permanently | **永久**重定向，**会被浏览器/CDN 缓存**，SEO 传权重。**慎用，改错了很难回滚** |
-| **302** | Found | **临时**重定向，不缓存（无缓存头时部分浏览器也会缓存） |
-| **303** | See Other | 强制用 **GET** 访问新地址（POST 后跳转用这个最语义正确） |
+| **302** | Found | **临时**重定向；默认不缓存，是否缓存取决于响应头（部分浏览器会启发式缓存） |
+| **303** | See Other | 强制用 **GET** 访问新地址（POST 后跳转应用 303） |
 | **304** | Not Modified | **协商缓存命中**，只回头不回体 |
 | **307** | Temporary Redirect | 临时重定向，**严格保持原方法和请求体**（302 的修正版） |
 | **308** | Permanent Redirect | 永久重定向，**严格保持原方法**（301 的修正版） |
@@ -866,24 +802,20 @@ location /api/ {
 | **503** | Service Unavailable | 服务**暂时不可用**（过载 / 维护），应带 `Retry-After` |
 | **504** | Gateway Timeout | **网关等上游超时** |
 
-### 8.11.3 三组最容易混的
+### 8.11.3 五组易混状态码
 
 | 对比 | 区别 |
 |---|---|
 | **301 vs 302** | 永久 vs 临时；301 会被缓存，**上线后改不回来** |
 | **302 vs 307** | 302 历史上很多实现会把 POST 改成 GET；**307 严格保持方法和 body** |
-| **301 vs 308** | 同上，308 是 301 的「严格保持方法」版本 |
+| **301 vs 308** | 都永久；308 是 301 的「严格保持方法」版本 |
 | **401 vs 403** | 401 = **你是谁？**（没认证）；403 = **我知道你是谁，但你不能**（没权限） |
-| **502 vs 503 vs 504** | 502 = 上游返回了**垃圾**；503 = **自身**过载/维护；504 = 上游**太慢** |
+| **502 vs 503 vs 504** | 502 = 上游返回**无效响应**；503 = **自身**过载/维护；504 = 上游**太慢** |
 
 ### 8.11.4 追问表
 
 | 追问 | 回答要点 |
 |---|---|
-| 301 为什么危险 | 被浏览器和 CDN 长期缓存，配错了很难回滚 |
-| 304 有 body 吗 | **没有**，只有响应头 |
-| 302 会缓存吗 | 无 `Cache-Control` 时部分浏览器会缓存；严格说不应该 |
-| 401 和 403 怎么选 | 未登录/token 失效 → 401；登录了但角色不够 → 403 |
 | 502 怎么排查 | 看上游服务是否存活、端口、健康检查、Nginx `error_log` |
 | 504 怎么排查 | 上游处理慢（慢 SQL、下游超时）、反代 `proxy_read_timeout` 太短 |
 | 204 和 200 空响应区别 | 204 语义明确「无内容」，不该有 body；200 + 空 body 不规范 |
@@ -897,21 +829,21 @@ location /api/ {
 
 **内存泄漏 = 「本该被 GC 回收的对象，因为还有引用指向它，所以回收不掉」。** 在 JS 里，根因几乎总是**意外的强引用**。
 
-### 8.12.2 七种典型场景（按实际发生率排序）
+### 8.12.2 九种典型场景
 
 | # | 场景 | 代码 | 为什么泄漏 |
 |---|---|---|---|
 | **1** | **未清理的定时器** | `setInterval(() => render(data), 1000)` 组件销毁时没 `clearInterval` | 定时器回调持有 `data` 和组件作用域 |
 | **2** | **未解绑的事件监听** | `window.addEventListener('resize', onResize)` | `window` 是永久对象，持有回调 → 回调闭包持有组件 |
-| **3** | **脱离 DOM 的引用（detached DOM）** | `this.el = document.querySelector('#x'); el.remove();` | JS 变量还引用着已被移除的 DOM，整个子树都回收不掉 |
+| **3** | **脱离 DOM 的引用（detached DOM）** | `this.el = document.querySelector('#x'); this.el.remove();` | JS 变量还引用着已被移除的 DOM，整个子树都回收不掉 |
 | **4** | **闭包持有大对象** | 闭包捕获了巨大的数组但只用其中一个字段 | 闭包保留整个作用域链 |
-| **5** | **全局变量** | `function f() { leak = bigData }`（漏了 `var/let`） | 挂到 `window` 上永不回收 |
+| **5** | **全局变量** | `function f() { leak = bigData }`（非严格模式下漏了 `var/let`） | 挂到 `window` 上永不回收 |
 | **6** | **Observer 未断开** | `new IntersectionObserver(cb)` 没 `disconnect()` | 观察者持有目标元素引用 |
-| **7** | **`Map`/`Set` 强引用** | `map.set(domNode, data)` 从不 delete | `Map` 的 key 是强引用；用 **`WeakMap`** 解决 |
-| 8 | `console.log` 持有对象 | 生产环境别留 | DevTools 会保留引用（关闭面板才释放） |
-| 9 | 未取消的 `fetch` / Promise | 组件卸载后回调还执行 | 用 `AbortController` |
+| **7** | **`Map`/`Set` 强引用** | `map.set(domNode, data)` 从不 delete | `Map` 的 key 是强引用；用 **`WeakMap`/`WeakSet`** 解决 |
+| **8** | **`console.log` 持有对象** | `console.log(bigData)` | DevTools 会保留对象引用（清除控制台或关闭面板后释放） |
+| **9** | **未取消的 `fetch` / Promise** | 组件卸载后回调仍执行 | 闭包持有组件作用域；用 `AbortController` 取消 |
 
-### 8.12.3 一个修复前后对比（面试讲这个很实在）
+### 8.12.3 修复前后对比
 
 ```js
 // ❌ 泄漏：组件卸载后定时器和监听还在
@@ -938,9 +870,9 @@ export default {
 };
 ```
 
-> **Vue3 的官方姿势**：把定时器/监听放进 `watchEffect` 或 `onScopeDispose`，用 effect scope 自动清理。
+> **Vue 3 的清理方式**：在 `setup` 或 `effectScope` 内用 `onScopeDispose` 注册清理函数；`watchEffect` 的 `onCleanup` 也能清理副作用。
 
-### 8.12.4 怎么排查（这道题的第二层）
+### 8.12.4 怎么排查
 
 | 工具 | 用途 |
 |---|---|
@@ -949,7 +881,7 @@ export default {
 | **Allocation instrumentation on timeline** | 看内存分配的时序，找「该回收没回收」的蓝色块 |
 | **`performance.memory`**（Chrome） | 脚本里读 `usedJSHeapSize` 做监控 |
 
-**三次快照法**是标准答案：
+**三次快照法**的步骤：
 
 ```
 ① 打开页面，拍 Snapshot 1
@@ -970,7 +902,7 @@ export default {
 | 怎么检测泄漏 | Heap Snapshot 三次对比 + Performance monitor 看堆趋势 |
 | 定时器为什么会泄漏 | 回调闭包持有作用域，且定时器被浏览器持有 |
 | SPA 为什么更容易泄漏 | 页面不刷新，泄漏会累积；组件反复挂载卸载放大了问题 |
-| React/Vue 里怎么防 | `useEffect` 返回清理函数 / `onUnmounted` 清理；订阅类用 effect scope |
+| React/Vue 里怎么防 | React 用 `useEffect` 返回清理函数；Vue 用 `onUnmounted` / `onScopeDispose` 清理 |
 | 内存泄漏的表现 | 页面越用越卡、切页面后内存不降、最终崩溃（OOM） |
 
 ---
@@ -978,13 +910,12 @@ export default {
 ## 8.13 速记卡
 
 ```
-性能优化（4 次，最高频）
+性能优化
   ★ 先说指标：LCP<2.5s（加载）INP<200ms（交互）CLS<0.1（稳定）
   ★ INP 已取代 FID（2024.3）
   方法论：定位(Lighthouse/Performance) → 度量(RUM/web-vitals) → 优化 → 验证
   五链路：网络(CDN/preconnect) 资源(压缩/图片/字体) 渲染(关键CSS/SSR)
          运行时(虚拟列表/Worker/rAF) 缓存(HTTP/SW)
-  ★ 必须准备一个「现象→定位→根因→修复→数据」的案例
 
 Webpack 图片
   webpack4：file-loader（输出文件）+ url-loader（小图 base64）
@@ -1001,11 +932,11 @@ loader vs plugin
 CSS 优先级
   四元组 (内联, ID, 类/属性/伪类, 元素/伪元素)，★ 不进位
   10 个 class 打不过 1 个 ID
-  层叠：!important > 内联 > 作者 > 用户 > UA
+  层叠：UA !important > 用户 !important > 作者 !important > 内联 > 作者 > 用户 > UA
   :where() 权重 0；:is() 取括号最高；@layer 管理层级
 
 盒模型
-  ★ margin 不参与 width 计算（纠正题单）
+  ★ margin 在盒外，不参与 width 计算
   content-box：width = 内容；border-box：width = 内容+padding+border
   实践：* { box-sizing: border-box }
   margin 折叠：相邻兄弟/父子（无 padding|border|overflow）/空元素；flex/grid 不折叠
@@ -1021,7 +952,7 @@ CSS 优先级
 Vue 响应式
   Vue2：defineProperty 逐属性 → 缺陷：新增/删除属性、数组索引/length、全量递归、要 $set
   Vue3：Proxy 整对象，13 种拦截 → 惰性递归、支持 Map/Set、不需要 $set
-  共同三步：劫持 → 收集依赖(get/track) → 派发更新(set/trigger) → 微任务批量
+  共同链路：劫持 → 收集依赖(get/track) → 派发更新(set/trigger) → 微任务批量
   代价：不支持 IE；解构丢响应性（toRefs）
 
 跨域
@@ -1034,7 +965,7 @@ HTTP vs HTTPS
   HTTPS = HTTP + TLS（机密性 + 完整性 + 身份认证）；80 vs 443
   ★ 混合加密：非对称只协商密钥，数据全程对称
   TLS1.3 = 1-RTT，只留 ECDHE（前向安全）；0-RTT 有重放风险
-  HTTP 会阻塞渲染的东西更多：混合内容会被拦
+  HTTPS 页面加载 HTTP 资源会被当作混合内容拦截
 
 GET vs POST
   ★ 本质是语义：GET 安全+幂等，POST 都不
@@ -1045,11 +976,11 @@ GET vs POST
   2xx：200 201 204 206
   3xx：301 永久 · 302 临时 · 303 强制GET · 304 协商缓存 · 307 临时保方法 · 308 永久保方法
   4xx：400 401 未认证 · 403 无权限 · 404 405 409 429
-  5xx：500 502 上游垃圾 · 503 自身过载 · 504 上游超时
+  5xx：500 502 上游无效响应 · 503 自身过载 · 504 上游超时
 
 内存泄漏
-  七种：定时器 / 事件监听 / detached DOM / 闭包持大对象 / 全局变量 /
-       Observer 未 disconnect / Map 强引用（→ WeakMap）
+  九种：定时器 / 事件监听 / detached DOM / 闭包持大对象 / 全局变量 /
+       Observer 未 disconnect / Map 强引用（→ WeakMap/WeakSet）/ console.log / 未取消的 fetch
   排查：Heap Snapshot 三次对比 + Performance monitor 看堆趋势
   SPA 更严重（不刷新，累积）
 ```
