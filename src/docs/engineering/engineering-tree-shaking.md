@@ -27,24 +27,22 @@
 >
 > **30.** 同第20题。
 
-**这句话每一句都对，但每一句都不够**：
+四句话各自缺的部分：
 
 | 题单说的 | 缺什么 |
 |---|---|
-| 「删除未使用的代码」 | 谁删？**不是 webpack 删的**（下面有实测） |
-| 「基于 ESM 静态分析」 | 为什么 CJS 不行？——因为 `require` 是**运行时**求值 |
-| 「生产模式自动开启」 | 自动开了什么？`usedExports` 和 `minimize` 是**两件事** |
-| 「CommonJS 不支持」 | 不准确。**Rollup 对部分 CJS 也能做到**，只是不可靠 |
-
-> 「生产模式自动开启」这句话最容易误导人。我实测下来：**只开 `usedExports` 不压缩，代码一行都不会少。**
+| 「删除未使用的代码」 | 删除发生在哪一步：分析是打包器做的，webpack 下真正删代码的是 Terser |
+| 「基于 ESM 静态分析」 | 为什么 CJS 不行——`require` 是**运行时**求值 |
+| 「生产模式自动开启」 | 自动开的是 `usedExports` 标记和 `minimize` 两件事，后者才删代码 |
+| 「CommonJS 不支持」 | 不准确：`exports.x = fn` 这类规整形态，Rollup/Rolldown 能摇（见 5.4） |
 
 ---
 
 ## 5.2 一句话结论
 
-> Tree shaking = **静态分析标出「没用到的导出」 + 压缩器真正删掉它们**。
+> Tree shaking = **静态分析算出「哪些导出没被用到」 + 把它删掉**。
 >
-> **这是两个步骤，两个工具干的。** 缺任何一步都不叫 tree shaking。
+> 分析与删除是两个步骤，但两步由谁做取决于打包器：webpack 只标记、删除落在压缩阶段；Rollup/Rolldown 在打包阶段就删（5.3 实测）。
 
 ---
 
@@ -52,12 +50,13 @@
 
 ### 实验设计
 
-源码：
+三个导出都没被使用：`unusedFn` 被 import 但没有读取，`square`、`unusedGreet` 没被 import。
 
 ```js
 // src/index.js
 import { add, unusedFn } from './math.js';
 import { greet } from './string.js';
+import './polyfill.js';                 // 只有副作用，没有导出
 console.log(add(1, 2));
 console.log(greet('world'));
 
@@ -69,102 +68,69 @@ export function square(x) { return x * x; }
 // src/string.js
 export function greet(name) { return `hi ${name}`; }
 export function unusedGreet() { return 'never used'; }
-```
 
-`unusedFn`、`square`、`unusedGreet` **三个都没被调用**。
+// src/polyfill.js
+console.log('[polyfill] executed');
+Array.prototype.myIncludes = function (x) { return this.indexOf(x) !== -1; };
+```
 
 ### 四组配置与结果
 
-| # | 配置 | 产物体积 | `unusedFn` | `unusedGreet` | `square` |
-|---|---|---|---|---|---|
-| b1 | 全部关闭（`minimize:false, usedExports:false`） | **3573 B** | 残留 | 残留 | 残留 |
-| b2 | 开 `usedExports` | **3003 B** | 残留 | 残留 | 残留 |
-| b3 | 再加 `sideEffects` + `concatenateModules` | **413 B** | 残留 | 残留 | 残留 |
-| b4 | 再加 `minimize`（Terser） | **62 B** | **已删除** | **已删除** | **已删除** |
+Rolldown 1.2.13，`format: 'esm'`，无 banner：
 
-### 关键发现 ①：`usedExports` 只加注释，不删代码
+| # | 配置 | 产物 | `unusedFn`/`square`/`unusedGreet` | polyfill 副作用 |
+|---|---|---|---|---|
+| b1 | 默认 `treeshake`，`minify: false` | **399 B** | 全被删除 | 保留 |
+| b2 | b1 + `minify` | **204 B** | 全被删除 | 保留 |
+| b3 | `treeshake.moduleSideEffects: false` | **246 B** | 全被删除 | **被删除** |
+| b4 | b3 + `minify` | **101 B** | 全被删除 | **被删除** |
 
-`b2` 的产物里多了两行注释：
+### 关键发现 ①：未使用的导出在打包阶段就没了
 
-```js
-/* unused harmony exports unusedFn, square */
-/* unused harmony export unusedGreet */
-```
-
-**只是注释！** 函数体原封不动：
+b1 没有压缩，产物里已经找不到三个未使用函数，只剩用到的两个（省略 `//#region` 分隔注释）：
 
 ```js
-function add(a, b) { return a + b; }
-function unusedFn() { return 'I am never called'; }    ← 还在
-function square(x) { return x * x; }                   ← 还在
-```
-
-**为什么 webpack 不直接删？** 因为删代码是「危险的优化」——如果判断错了（比如这个函数其实通过某种动态方式被调用了），删掉就是线上事故。webpack 选择**只做标记**，把「删」这个动作交给压缩器——压缩器已经在做死代码消除（DCE），顺手就删了。
-
-### 关键发现 ②：`concatenateModules`（scope hoisting）能大幅减小体积，但不删代码
-
-`b3` 从 3003 B 降到 **413 B**（-86%），但三个函数**都还在**：
-
-```js
-/******/ (() => { // webpackBootstrap
-/******/ 	"use strict";
-
-;// ./src/math.js
-function add(a, b) { return a + b; }
-function unusedFn() { return 'I am never called'; }
-function square(x) { return x * x; }
-
-;// ./src/string.js
-function greet(name) { return `HI ${name}`; }
-function unusedGreet() { return 'never used'; }
-
-;// ./src/index.js
+function add(a, b) {
+  return a + b;
+}
+function greet(name) {
+  return `hi ${name}`;
+}
 console.log(add(1, 2));
-console.log(greet('world'));
-
-/******/ })()
+console.log(greet("world"));
 ```
 
-**注意变化**：
+Rolldown/Rollup 在生成 chunk 时就删除。**webpack 5 不同**：开 `usedExports` 后只在产物里插入 `/* unused harmony export unusedFn */` 这类注释，函数体保留，要等 Terser 才消失（webpack 侧行为按其文档描述，本仓库只有 Rolldown，未复测）。
 
-- `__webpack_modules__` 表没了
-- `__webpack_require__` 运行时没了
-- 模块外壳没了，所有代码**被拼到一个作用域里**
-- `(0, _math.add)(1,2)` 变成了直接 `add(1, 2)`
+webpack 只标记不删的原因：删除是不可回退的优化，判断错（例如导出被动态访问）就是线上事故；标记错了只是多留代码，删除交给本来就在做 DCE 的压缩器。
 
-**这就是 scope hoisting（作用域提升）**。它的收益比 tree shaking 还大（3573 → 413），但**完全不删代码**。
+### 关键发现 ②：`sideEffects` 决定整个模块能不能跳过
 
-> **这个数据很有说服力**：很多人以为「包变小就是 tree shaking 生效了」，实际上**webpack 里体积下降最大的一步往往是 scope hoisting**。
+`import './polyfill.js'` 没有任何导出被使用。b1 仍保留它——默认假设模块有副作用；b3 把 `moduleSideEffects` 设为 `false` 后整段消失（399 → 246 B），`Array.prototype.myIncludes` 也就不存在了。同一开关在库侧写作 `package.json` 的 `sideEffects` 字段，用于 `node_modules` 里的包（5.5 实测）。
 
-### 关键发现 ③：真正删除的是 Terser
+scope hoisting 是另一件事：它只去掉模块外壳（webpack 的 `concatenateModules`），不删任何导出。Rolldown 的产物本身就是单个作用域，没有 `__webpack_require__` 这类模块运行时。
 
-`b4` 的完整产物（62 字节）：
+### 关键发现 ③：`minify` 只做压缩
 
-```js
-(()=>{"use strict";console.log(3),console.log("HI world")})();
-```
-
-**三个函数全没了。** 而且 `console.log(3)` —— Terser 还顺手做了**常量折叠**（`1 + 2` 在编译期算成 `3`），`` `HI ${name}` `` 也被折叠成字符串常量 `"HI world"`。
+b2 相对 b1 少的 195 B、b4 相对 b3 少的 145 B，全部来自压缩（去空白、改短变量名），没有额外的删除动作。压缩器在这之外还会做常量折叠、模板字符串折叠，但不影响哪些模块被包含。
 
 ### 结论：Tree Shaking 的四个必要条件
 
 ```
-① 源码是 ESM
+① 源码是 ESM（静态结构，读语法树就能算依赖）
    ↓
-② usedExports 分析出「哪些导出没被用」→ 加注释标记
+② 算出「哪些导出没被用到」→ 删除（Rolldown/Rollup）或标记（webpack 的 usedExports）
    ↓
-③ sideEffects 告诉打包器「能不能安全地跳过整个模块」
+③ sideEffects / moduleSideEffects 决定「没有导出被使用的模块」能否整块跳过
    ↓
-④ 压缩器（Terser）真正删除死代码
+④ 压缩（webpack 必须靠 Terser 才真正删；Rolldown/Rollup 里只影响体积）
 ```
 
-**缺任何一个都不生效**。最常见的「tree shaking 没生效」就是缺了 ④ —— 因为很多人为了调试把 `minimize: false` 打开，然后以为 tree shaking 坏了。
+webpack 下四步缺一不可，最常见的「没生效」就是 `minimize: false`——标记不产生删除。Rolldown/Rollup 下第②步在打包阶段完成，关掉压缩照样能删掉未使用导出（b1 与 b2 都只剩两个函数）。
 
 ---
 
 ## 5.4 为什么 CJS 不能 Tree Shaking
-
-对比两种写法的本质差别：
 
 ```js
 // ESM：静态的
@@ -185,26 +151,26 @@ const { add } = require('./math.js');
 | 导出是**声明式**的 | `export function add` 直接写在语法里 |
 | **没有运行时求值** | 解析 import 语句不需要执行任何代码 |
 
-所以打包器**只需要读语法树**就能知道完整的依赖关系。
+打包器只需要读语法树就能拿到完整的依赖关系。
 
 ### CJS 为什么不能
 
 ```js
 const name = process.env.NODE_ENV === 'production' ? './prod.js' : './dev.js';
-const mod = require(name);                          // ← 路径是运行时算出来的
+const mod = require(name);                          // ← 路径运行时才算得出来
 
 if (someCondition) {
   require('./optional-feature.js');                 // ← 条件加载
 }
 
-module.exports = someFunction();                    // ← 导出什么是运行时决定的
+module.exports = someFunction();                    // ← 导出什么运行时才知道
 ```
 
-**打包器根本不知道 `require` 会加载什么**——它要执行代码才知道。所以只能保守地**全部保留**。
+打包器要执行代码才知道会加载什么，只能保守地全部保留。
 
-### 那为什么 Rollup 对 CJS 有时也能 shake？
+### 那为什么 Rollup 对 CJS 有时也能 shake
 
-因为很多 CJS 代码是**Babel 从 ESM 转过来的**，形态很规整：
+因为很多 CJS 是 Babel 从 ESM 转出来的，形态规整：
 
 ```js
 "use strict";
@@ -213,18 +179,15 @@ exports.add = add;
 function add(a, b) { return a + b; }
 ```
 
-Rollup 的 `commonjs` 插件能识别这种模式，把它「还原」成 ESM 再 shake。**但这是启发式的**——遇到 `Object.assign(exports, {...})` 或动态导出就失效。
+Rolldown 1.2.13 实测：入口 `import { add } from './cjs-math.cjs'`，`exports.add = ...` / `exports.unused = ...` 的写法产物 378 B，`unused` 已被删；换成 `Object.assign(exports, { add, unused })` 后产物 481 B，`unused` 原样保留。这是模式匹配，不是语言保证。
 
-> **准确的说法**：
-> 「CJS 不是『绝对不能』tree shaking，是『不能可靠地』。ESM 的静态结构是**语言层面保证**的，CJS 的模式识别是**工具层面的猜测**。所以给库的作者的建议是：**一定要提供 ESM 产物（`module` 字段或 `exports.import`）**。」
+准确的说法：CJS 不是「绝对不能」，是「不能可靠地」。ESM 的静态性由语言层面保证，CJS 靠工具猜；所以库要同时提供 ESM 产物（`module` 字段或 `exports.import`，见 5.9）。
 
 ---
 
 ## 5.5 `sideEffects` 是最容易出事的地方
 
 ### 为什么需要它
-
-考虑这段代码：
 
 ```js
 // index.js
@@ -236,174 +199,112 @@ console.log('[polyfill] executed');
 Array.prototype.myIncludes = function (x) { return this.indexOf(x) !== -1; };
 ```
 
-**这两个 import 都没有「使用任何导出」**。如果打包器只看 `usedExports`，就会认为「这个模块没被用到」→ 删掉。
+这两个 import 都没有「使用导出」。只看导出使用情况，模块会被判定为无用而删掉，`Array.prototype.myIncludes` 随之消失，运行时是 `TypeError`。
 
-但删掉 `polyfill.js`，`Array.prototype.myIncludes` 就不存在了 → **线上直接报错**。
+`sideEffects` 字段就是给打包器的声明：这个模块有副作用，即使没人用它的导出也不能删。
 
-所以需要 `sideEffects` 字段告诉打包器：**「这个文件有副作用，即使没人用它的导出，也不能删。」**
+### 实测：三组 package.json
 
-### 实测：三组对照
+包 `side-demo` 的 `index.js` 只有上面两行副作用代码，入口为 `import { add } from './math.js'; import 'side-demo';`，Rolldown 1.2.13、不压缩：
 
-模块里有一句 `console.log('[polyfill] executed')` 和一行原型修改。
+| 配置 | 产物 | polyfill |
+|---|---|---|
+| 不写 `sideEffects` | **306 B** | 保留（默认假设有副作用） |
+| `"sideEffects": false` | **137 B** | **整段删除** |
+| `"sideEffects": ["./index.js"]` | **306 B** | 保留 |
 
-#### ① 不写 `sideEffects` 字段（默认保守）
-
-```json
-{ "name": "side-demo", "version": "1.0.0" }
-```
-
-产物（未压缩部分已展开）：
+`sideEffects: false` 的产物只剩业务代码：
 
 ```js
-(()=>{
-  var o={509(){
-    console.log("[polyfill] executed"),
-    Array.prototype.myIncludes=function(o){return -1!==this.indexOf(o)}
-  }};
-  ...
-  e(509),            // ← polyfill 模块被执行了
-  console.log(3)
-})();
+function add(a, b) { return a + b; }
+console.log(add(1, 2));
 ```
 
-**副作用保留** ✓ —— 但代价是 polyfill 模块被单独留了一份（体积大）。
-
-#### ② `sideEffects: false`（危险！）
-
-```json
-{ "name": "side-demo", "version": "1.0.0", "sideEffects": false }
-```
-
-产物：
-
-```js
-(()=>{"use strict";console.log(3)})();
-```
-
-**`polyfill` 整段消失了！** 这一行代码在浏览器里跑会直接崩：
-
-```
-TypeError: [].myIncludes is not a function
-```
-
-> **这就是那个著名的线上事故**：库作者在 `package.json` 里写了 `"sideEffects": false`，但实际有副作用文件，导致使用方的 polyfill / 样式 / 全局注册全部被删。
-
-#### ③ 白名单（正确做法）
-
-```json
-{
-  "name": "side-demo",
-  "version": "1.0.0",
-  "sideEffects": ["**/*.css", "./src/polyfill.js"]
-}
-```
-
-产物与 ① 相同 —— **副作用保留** ✓，同时其他纯模块仍可被安全地摇掉。
+到浏览器里就是 `TypeError: [].myIncludes is not a function`。`false` 的含义是「这个包的所有模块都没有副作用」，只要包里有一个 polyfill、样式或全局注册，写 `false` 就是错的。
 
 ### 什么时候必须写 `sideEffects: false`
 
 | 场景 | 该不该写 |
 |---|---|
-| **业务应用**（自己构建、自己用） | 写。能有明显收益。但**必须用白名单把 css、polyfill、全局注册列出来** |
-| **UI 组件库** | 写，但要非常小心。`@vue/*`、`antd` 都写了，且用白名单排出样式文件 |
+| **业务应用**（自己构建、自己用） | 写，但必须用白名单列出 css、polyfill、全局注册 |
+| **UI 组件库** | 写，且用白名单排出样式文件（`@vue/*`、`antd` 都这样做） |
 | **工具库（纯函数）** | 放心写 `false` |
 | **有任何模块顶层副作用的库** | 用白名单，不要写 `false` |
 
-**常见的「会被误删」的文件类型**：
+常见的「会被误删」的文件：
 
 ```
 *.css / *.scss        ← 样式注入
 *.polyfill.js         ← 原型方法扩展
 src/setup.js          ← 全局注册（app.use、Vue.prototype.$xxx）
-src/global.d.ts        ← 只有类型，无所谓（不产出代码）
+src/global.d.ts       ← 只有类型，不产出代码，无所谓
 ```
 
 ---
 
 ## 5.6 bundle 为什么越来越大
 
-### 题单答案的问题
+题单给的原因只有「依赖增多、代码没拆分」两条，优化项也只有动作、没有代价。按出现频率拆开：
 
-> 「原因：依赖增多、代码没拆分。优化：路由懒加载、SplitChunks 拆公共包、Tree Shaking、externals、按需加载 UI 库。」
-
-**方向对，但「原因」只有两个，太浅**。而且「优化」里的每一项都没有说「代价」。
-
-### 六个真实原因（按出现频率排序）
+### 六个真实原因
 
 | # | 原因 | 怎么确认 | 典型体积 |
 |---|---|---|---|
-| 1 | **引入了完整 UI 库** | 看 bundle 里的 `antd`/`element-plus` 占比 | 几百 KB ~ 1 MB+ |
-| 2 | **`moment` / `lodash` 全量引入** | `moment` 带所有 locale 约 **230 KB** | 200 KB+ |
+| 1 | **引入了完整 UI 库** | 看 bundle 里 `antd`/`element-plus` 占比 | 几百 KB ~ 1 MB+ |
+| 2 | **`moment`/`lodash` 全量引入** | `moment` 带全部 locale 约 230 KB | 200 KB+ |
 | 3 | **图标库全量引入** | `import * as Icons from '@ant-design/icons'` | 1 MB+ |
-| 4 | **sourcemap 被打进了产物** | 检查 `.map` 是否被误引入 | —— |
+| 4 | **sourcemap 被打进产物** | 检查 `.map` 是否被误引入 | —— |
 | 5 | **重复依赖**（同一库多个版本） | `npm ls react` 出现多个版本 | 每份 ×N |
 | 6 | **没做代码分割**（所有页面一个 bundle） | bundle 数与路由数对比 | 与页面数成正比 |
 
-### 定位手段（这比「优化手段」更重要）
+### 定位手段
 
-**第一步：先看现状，别猜。**
+先看现状，再改配置。
 
 ```bash
 # webpack：生成统计文件
 npx webpack --profile --json > stats.json
-# 然后拖进 https://webpack.github.io/analyse/ 或 https://chrisbateman.github.io/webpack-visualizer/
-```
-
-```bash
-# 更直观：rollup-plugin-visualizer（Vite 也能用）
-npm i -D rollup-plugin-visualizer
+# 拖进 https://webpack.github.io/analyse/ 或 https://chrisbateman.github.io/webpack-visualizer/
 ```
 
 ```js
-// vite.config.js
+// vite.config.js —— rollup-plugin-visualizer 同样适用于 Vite
 import { visualizer } from 'rollup-plugin-visualizer';
-export default {
-  plugins: [visualizer({ open: true, gzipSize: true })],
-};
+export default { plugins: [visualizer({ open: true, gzipSize: true })] };
 ```
 
-**产出的是一个 treemap 图**：哪个包占多少面积，一眼就能看到。
+产物是 treemap：哪个包占多少面积一眼可见。按「占用面积 × 可优化性」排序；前几名常常是根本不该出现的依赖（重复的 lodash 版本、整个图标库），先删不该有的，再优化该有的。
 
-**第二步：按「占用面积 × 可优化性」排序处理。**
-
-> **这一步是面试高分点**：
-> 「我不会一上来就说『做代码分割』。我先跑 visualizer 看 treemap，通常前三名就占了 60% 以上。有时候前三名里有两个是根本不该出现的（比如重复的 lodash 版本、或者误引入的整个图标库）。**先删掉不该有的，再优化该有的。**」
-
-### 优化手段与代价对照表
+### 优化手段与代价
 
 | 手段 | 收益 | 代价 / 风险 | 优先级 |
 |---|---|---|---|
-| **按需引入 UI 库** | 极大（1 MB → 100 KB） | 需要配插件（`babel-plugin-import` / `unplugin-vue-components`） | ⭐⭐⭐⭐⭐ |
+| **按需引入 UI 库** | 极大（全量 → 只打进用到的组件） | 需要配插件（`babel-plugin-import` / `unplugin-vue-components`） | ⭐⭐⭐⭐⭐ |
 | **替换重库** | 大（`moment` 230 KB → `dayjs` 2 KB） | 要改代码，注意 API 差异 | ⭐⭐⭐⭐⭐ |
 | **路由级代码分割** | 大（首屏只加载当前路由） | 需要 `import()`，注意 loading 态 | ⭐⭐⭐⭐⭐ |
 | **`splitChunks` 拆 vendor** | 中（利用缓存） | 多几个请求 | ⭐⭐⭐⭐ |
-| **Tree Shaking + `sideEffects`** | 中 | 有误删风险（上面讲的三组实验） | ⭐⭐⭐⭐ |
-| **`externals` 走 CDN** | 大（bundle 里没有 React/Vue） | **依赖 CDN 可用性**，且失去版本锁定 | ⭐⭐⭐ |
+| **Tree Shaking + `sideEffects`** | 中 | 有误删风险（5.5 三组实验） | ⭐⭐⭐⭐ |
+| **`externals` 走 CDN** | 大（bundle 里没有 React/Vue） | 依赖 CDN 可用性，失去版本锁定 | ⭐⭐⭐ |
 | **图片压缩 / 转 WebP** | 大（但有上限） | 需要构建流程支持 | ⭐⭐⭐⭐ |
-| **压缩 + gzip/brotli** | 中（通常 -70%） | **服务器要配**（很多人忘了） | ⭐⭐⭐⭐⭐ |
-| **删 sourcemap** | 大 | **失去线上排查能力** | ⭐⭐ |
+| **压缩 + gzip/brotli** | 中 | 服务器要配 | ⭐⭐⭐⭐⭐ |
+| **删 sourcemap** | 大 | 失去线上排查能力 | ⭐⭐ |
 
-> **最后一条要特别提醒**：很多人为了减小体积把生产 sourcemap 关了。**这是错的**——应该用 `hidden-source-map`，产物里不带 `//# sourceMappingURL`，但 map 文件上传到 Sentry。这样既不暴露源码，又能定位错误。
+sourcemap 不该直接关：用 `hidden-source-map`，产物里不带 `//# sourceMappingURL`，map 上传到 Sentry，既不暴露源码又能定位错误。
 
-### 一个最容易被忽略的点：gzip/brotli 没配
+### gzip/brotli 没配
 
 ```nginx
-# Nginx
 gzip on;
 gzip_types text/css application/javascript application/json image/svg+xml;
 gzip_min_length 1024;
 gzip_comp_level 6;
 
-# brotli（需要模块）
-brotli on;
+brotli on;   # 需要模块
 brotli_types text/css application/javascript application/json image/svg+xml;
 brotli_comp_level 6;
 ```
 
-**效果**：1 MB 的 JS 传到浏览器实际只有 **250 KB 左右**（brotli 更小）。
-
-> **面试可以这样说**：
-> 「我遇到过一次『优化了很久没效果』，最后发现**服务器根本没开 gzip**。所以我们看到的『bundle 大小』和用户实际下载的大小差 4 倍。**优化之前先确认压缩开了没有**，这是性价比最高的一步。」
+经验值：1 MB 的 JS 传到浏览器约 250 KB（brotli 更小）。看到的「bundle 大小」和用户实际下载量相差约 4 倍，优化前先确认压缩开着——这一步成本最低。
 
 ---
 
@@ -417,28 +318,18 @@ brotli_comp_level 6;
 
 ### `splitChunks` 的默认行为（webpack 5）
 
-webpack 5 的默认值已经比 4 好很多：
-
 ```js
 splitChunks: {
   chunks: 'async',        // 默认只对异步 chunk 分割
   minSize: 20000,         // 小于 20KB 不拆
   cacheGroups: {
-    defaultVendors: {     // node_modules 的包
-      test: /[\\/]node_modules[\\/]/,
-      priority: -10,
-      reuseExistingChunk: true,
-    },
-    default: {            // 业务代码的公共部分
-      minChunks: 2,       // 被 2 个以上 chunk 引用才拆
-      priority: -20,
-      reuseExistingChunk: true,
-    },
+    defaultVendors: { test: /[\\/]node_modules[\\/]/, priority: -10, reuseExistingChunk: true },
+    default: { minChunks: 2, priority: -20, reuseExistingChunk: true },
   },
 }
 ```
 
-**注意默认 `chunks: 'async'`**——意味着**同步 import 的 node_modules 不会自动拆**。要拆全部得改成 `'all'`。
+默认 `chunks: 'async'` 意味着**同步 import 的 node_modules 不会自动拆**，要拆全部得改成 `'all'`。
 
 ### 一个实用的 `splitChunks` 配置
 
@@ -462,27 +353,21 @@ splitChunks: {
       minSize: 30000,
     },
     // ③ 业务公共组件
-    common: {
-      name: 'common',
-      minChunks: 2,
-      priority: 10,
-      chunks: 'all',
-      reuseExistingChunk: true,
-    },
+    common: { name: 'common', minChunks: 2, priority: 10, chunks: 'all', reuseExistingChunk: true },
   },
 }
 ```
 
-**分层的逻辑**：**变化频率越低的，越应该单独成包**。
+分层原则：**变化频率越低的，越应该单独成包**。
 
 | 层 | 变化频率 | 缓存策略 |
 |---|---|---|
 | framework（React/Vue） | 几乎不变（升级才变） | 长期缓存 `max-age=31536000, immutable` |
 | libs（其他三方） | 偶尔变（加依赖才变） | 长期缓存 |
 | common（业务公共） | 经常变 | 中等缓存 |
-| 页面 chunk | 每次发版都变 | 短缓存 + contenthash |
+| 页面 chunk | 每次发版都变 | 短缓存 + `[contenthash]` |
 
-> **这就是「用哈希做缓存」的核心思想**：`[contenthash]` 保证内容不变就不换文件名，从而能长期缓存。**把变化频率不同的代码分开打包，才能最大化缓存命中率。**
+`[contenthash]` 保证内容不变就不换文件名，这是长期缓存能生效的前提。
 
 ---
 
@@ -490,35 +375,17 @@ splitChunks: {
 
 ### Tree Shaking
 
-> 「Tree shaking 本质是**用『副作用是否可判定』换体积**。它需要四个条件同时满足，我实测过每一步：
->
-> **第一，源码必须是 ESM。** 因为 `import`/`export` 是静态声明，打包器读语法树就能画出依赖图。CJS 的 `require` 是运行时求值，打包器不知道会加载什么，只能全保留。
->
-> **第二，`usedExports` 标出没用的导出。** 但这里有个反直觉的点——**webpack 只加注释，不删代码**。产物里是一行 `/* unused harmony exports unusedFn, square */`，函数体还在。
->
-> **第三，`sideEffects` 决定整模块能不能跳过。** 比如 `import './polyfill.js'`，没有任何导出被使用，但它是为了副作用。标错了直接删掉就是线上事故。
->
-> **第四，真正删除的是 Terser。** 我做了一组对照：同一份代码，全关 3573 字节，开 `usedExports` 3003 字节，加 scope hoisting 413 字节，**最后加 Terser 变成 62 字节**。前 3 步一个函数都没删，最后一步全删了。
->
-> 所以我的结论是：**『生产模式自动开启 tree shaking』这句话要拆开看——自动开的是标记，删除要靠压缩器。** 调试时关掉 `minimize`，tree shaking 就等于没生效。」
+- 本质是**用「副作用是否可判定」换体积**：ESM 是静态声明，打包器读语法树就能画出依赖图；CJS 的 `require` 运行时求值，只能全保留。
+- `usedExports` 按导出标记使用情况；webpack 只加注释，真正的删除落在 Terser，所以 `minimize: false` 时看不到任何删除。
+- Rollup/Rolldown 在打包阶段就删掉未使用导出：同一份源码，不压缩 399 B 里已经没有未使用函数，开 `minify` 只是压到 204 B。
+- `sideEffects` 是模块级的「能否整块跳过」；`import './polyfill.js'` 没有任何导出被使用，标错就直接删掉，运行时报 `TypeError`。包侧写 `false` 时，产物从 306 B 变成 137 B，polyfill 一起没了。
+- 结论：「生产模式自动开启 tree shaking」要拆开看——自动开的是标记与压缩，删除与否取决于压缩器或打包器。
 
 ### bundle 变大
 
-> 「我分两步：**先定位，再优化**。
->
-> 定位我会跑 `rollup-plugin-visualizer` 或 `webpack --json` 出 treemap。**通常前三名占 60% 以上**，而且经常能发现不该出现的东西——重复的 lodash 版本、误引入的整个图标库、被一起打进来的 moment locale。
->
-> 优化我会按性价比排序：
->
-> 第一优先是**替换重库**，moment 换 dayjs 从 230 KB 到 2 KB，收益最大改动最小。
->
-> 第二是**按需引入**，UI 库和图标库必须配 `unplugin-*` 自动按需。
->
-> 第三是**路由级代码分割**，首屏只加载当前路由。
->
-> 第四是 `splitChunks` 分层——框架代码、第三方库、业务公共、页面 chunk 分开，**让变化频率不同的代码有不同的缓存周期**。
->
-> 还有一个最容易被忽略的：**服务器有没有开 gzip / brotli**。1 MB 的 JS 压缩后只有 250 KB。我有一次优化了很久没效果，最后发现根本没开压缩。」
+- 先定位再优化：`rollup-plugin-visualizer` 或 `webpack --json` 出 treemap，按面积 × 可优化性排序，先删不该出现的依赖。
+- 再按性价比动手：替换重库 → UI 库/图标库按需引入 → 路由级分割 → `splitChunks` 按变化频率分层。
+- 最后确认服务端 gzip/brotli 已开启，否则测到的所有体积数字都失真。
 
 ---
 
@@ -527,17 +394,17 @@ splitChunks: {
 | 追问 | 答法 |
 |---|---|
 | `usedExports` 和 `sideEffects` 区别？ | `usedExports` 是**导出级**（这个 `export` 有没有被 import）；`sideEffects` 是**模块级**（这个模块能不能整个跳过） |
-| 为什么 `usedExports` 不直接删代码？ | 删除是危险操作，webpack 只做保守的标记，把删除交给已在做 DCE 的压缩器。**这样即使标记错了，也不会造成事故** |
-| scope hoisting 是什么？ | 把多个模块的代码**拼到一个作用域**里，去掉模块外壳和 `__webpack_require__` 调用。要求模块是 ESM 且没有循环依赖 |
-| scope hoisting 有什么限制？ | ① 必须是 ESM；② 不能有循环依赖（否则拼接顺序无法确定）；③ 会改变变量作用域，可能有边界问题（webpack 会保守跳过） |
-| tree shaking 后代码真的完全不执行吗？ | 是。被摇掉的模块**连顶层代码都不会执行**。所以「为了副作用而 import」必须靠 `sideEffects` 保住 |
-| 为什么组件库要提供 ESM 产物？ | CJS 产物无法可靠 tree shaking。看 `package.json` 的 `module` 字段或 `exports` 的 `import` 条件 |
-| `exports` 字段和 `main`/`module` 的关系？ | `exports` 是新标准，能精确控制「什么条件下用哪个文件」。优先级高于 `main`/`module`。**配错了会导致「明明有 ESM 产物却用的是 CJS」** |
-| 怎么验证 tree shaking 生效了？ | 三个办法：① 搜产物里有没有那个函数名；② 用 visualizer 看模块是否还在 treemap 里；③ 加个 `console.log` 到「应该被摇掉」的模块顶层，看运行时有没有打印 |
-| `import * as X` 会影响 tree shaking 吗？ | 会。`import * as X` 会让打包器认为「可能用到任意导出」，保守地全保留。**尽量用具名导入** |
-| 动态 `import()` 的 chunk 也能 tree shaking 吗？ | 能，每个异步 chunk 独立做 tree shaking |
-| `externals` 和 `splitChunks` 区别？ | `externals` 是**不打包**（从全局变量/CDN 拿）；`splitChunks` 是**单独打包成一个文件**。前者能减小 bundle，但引入了外部依赖风险 |
-| 微前端能减小首屏体积吗？ | 能，但要付出「运行时集成」的代价（样式隔离、JS 沙箱、通信机制）。**如果只是想要代码分割，不需要微前端** |
+| 为什么 webpack 的 `usedExports` 不直接删代码？ | 删除是危险操作，webpack 只做保守标记，删除交给已在做 DCE 的压缩器；标错了也不会造成事故 |
+| scope hoisting 是什么？ | 把多个模块的代码拼到一个作用域，去掉模块外壳和 `__webpack_require__` 调用。要求模块是 ESM 且没有循环依赖 |
+| scope hoisting 有什么限制？ | ① 必须是 ESM；② 不能有循环依赖（拼接顺序无法确定）；③ 会改变变量作用域，边界情况下 webpack 会保守跳过 |
+| tree shaking 后代码真的完全不执行吗？ | 是。被摇掉的模块连顶层代码都不会执行，所以「为了副作用而 import」必须靠 `sideEffects` 保住 |
+| 为什么组件库要提供 ESM 产物？ | CJS 产物只能靠模式匹配，不可靠。看 `package.json` 的 `module` 字段或 `exports` 的 `import` 条件 |
+| `exports` 字段和 `main`/`module` 的关系？ | `exports` 是新标准，按条件决定用哪个文件，优先级高于 `main`/`module`；配错会出现「明明有 ESM 产物却加载了 CJS」 |
+| 怎么验证 tree shaking 生效了？ | ① 在产物里搜函数名；② 用 visualizer 看模块是否还在 treemap；③ 给「应该被摇掉」的模块顶层加 `console.log`，看运行时是否打印 |
+| `import * as X` 会影响 tree shaking 吗？ | 取决于打包器：Rolldown 实测 `import * as math` 后只用 `math.add`，未使用导出仍被删除，命名空间被拍平成直接调用；webpack 侧更保守，文档建议用具名导入。**能具名导入就具名导入** |
+| 动态 `import()` 的 chunk 也能 tree shaking 吗？ | 能，每个异步 chunk 独立分析 |
+| `externals` 和 `splitChunks` 区别？ | `externals` 是**不打包**（从全局变量/CDN 拿）；`splitChunks` 是**单独打包成一个文件**。前者减小 bundle，但引入外部依赖风险 |
+| 微前端能减小首屏体积吗？ | 能，但要付出运行时集成代价（样式隔离、JS 沙箱、通信机制）。只想要代码分割时不需要微前端 |
 
 ---
 
@@ -546,25 +413,25 @@ splitChunks: {
 ```
 【Tree Shaking 四条件】
 ① ESM（静态可分析）
-② usedExports → 只加注释 /* unused harmony exports */
-③ sideEffects → 模块级「能否跳过」
-④ Terser → 真正删除  ★ webpack 不删！
+② 分析未使用导出 → Rolldown/Rollup 打包阶段就删；webpack 只加注释 /* unused harmony export */
+③ sideEffects → 模块级「能否跳过」，默认 true
+④ 压缩 → webpack 靠 Terser 才真正删；Rolldown 只影响体积
 
-【实测四阶段】
-全关 3573B → +usedExports 3003B → +scopeHoisting 413B → +Terser 62B
-前 3 步一个函数没删；第 4 步全删
-最终产物：(()=>{"use strict";console.log(3),console.log("HI world")})();
-（Terser 顺带做了常量折叠）
+【实测（Rolldown 1.2.13，同一份 5.3 源码）】
+默认 399B（未使用导出已删，polyfill 保留）
++minify 204B
+moduleSideEffects:false 246B（polyfill 被删）
+两者都开 101B
 
 【为什么 CJS 不能】
-require 是运行时求值，路径可能拼接、条件加载
-ESM 是语言层保证的静态结构；CJS 是工具层的模式猜测
+require 运行时求值：路径可拼接、可条件加载、可运行时改 exports
+ESM 是语言层保证；CJS 是工具层模式匹配
+exports.x = fn 能摇（378B）；Object.assign(exports, {...}) 摇不动（481B，unused 仍在）
 
-【sideEffects 三组实测】★
-不写        → polyfill 保留（但体积大）
-false       → (()=>{"use strict";console.log(3)})();  ← polyfill 被删！线上必崩
-白名单      → 保留，且其他纯模块仍可摇
-
+【sideEffects 三组（包级，minify 关）】
+不写 306B → polyfill 保留
+false 137B → polyfill 被删，线上 TypeError
+白名单 ["./index.js"] 306B → 保留，其他纯模块仍可摇
 必须白名单列出的：*.css / polyfill / 全局注册文件
 
 【bundle 变大六个原因】
@@ -572,19 +439,14 @@ UI 库全量 / moment+lodash 全量 / 图标库全量
 sourcemap 误入 / 重复依赖多版本 / 没做代码分割
 
 【优化优先级】
-① 替换重库（moment → dayjs：230KB → 2KB）
+① 替换重库（moment → dayjs）
 ② 按需引入（UI 库 + 图标库）
 ③ 路由级分割
 ④ splitChunks 分层（按变化频率）
-⑤ 确认 gzip/brotli 开了（1MB → 250KB）
+⑤ 确认 gzip/brotli 开了
 
-【splitChunks 分层原则】
-变化频率越低，越单独成包
-framework > libs > common > page
-默认 chunks:'async'，要拆同步依赖得改 'all'
-
-【sourcemap】
-别直接关，用 hidden-source-map + 上传 Sentry
+【splitChunks】默认 chunks:'async'；要拆同步依赖改 'all'
+【sourcemap】别直接关，用 hidden-source-map + 上传 Sentry
 ```
 
 ---
@@ -592,18 +454,17 @@ framework > libs > common > page
 ## 5.11 自测
 
 ```
-□ 能说出 tree shaking 的四个条件
-□ 能说出「webpack 只标记、Terser 才删」这个事实
-□ 能背出四阶段实测的体积（3573 → 3003 → 413 → 62）
-□ 能说出 scope hoisting 干了什么、为什么体积降那么多
-□ 能解释 CJS 为什么不能可靠 tree shaking
+□ 能说出 tree shaking 的四个条件，并指出 webpack 与 Rolldown 在第②④步的差别
+□ 能说清「滚动的是标记还是删除」：webpack 只标记，Terser 才删
+□ 能在关闭压缩的情况下判断产物里还会不会有未使用导出
+□ 能解释 scope hoisting 干了什么，以及它为什么不算 tree shaking
+□ 能解释 CJS 为什么只能靠模式匹配，并说出哪种 CJS 写法摇不动
 □ 能说出 usedExports 和 sideEffects 的层级差别
-□ 能描述 sideEffects:false 误删 polyfill 的现象
+□ 能描述 sideEffects:false 误删 polyfill 的产物形态与运行时错误
 □ 能说出白名单必须包含哪几类文件
 □ 能列出 bundle 变大的六个原因
-□ 能说出定位体积问题用什么工具
+□ 能说出定位体积问题用什么工具、看什么
 □ 能按性价比排序至少四个优化手段
-□ 能说出 moment → dayjs 的体积差
 □ 能解释 splitChunks 分层为什么要按「变化频率」
 □ 能说出 webpack 5 的 chunks 默认值是 async
 □ 能说出 sourcemap 为什么不该直接关

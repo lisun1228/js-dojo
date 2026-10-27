@@ -1,7 +1,6 @@
 # 工程化 02｜Webpack 原理与插件开发
 
-> 覆盖题号：18（Webpack 打包原理）｜17（loader 和 plugin 区别）｜15（tapable）｜32（手写 loader）｜22（手写 plugin）
-> 去重后：**5 个考点**，全部是高频题
+> 覆盖：Webpack 打包原理、loader 与 plugin 的区别、Tapable、手写 loader、手写 plugin —— **5 个考点**
 
 ---
 
@@ -21,20 +20,12 @@
 
 ## 2.0 先说题单的问题
 
-这两道题题单直接甩走了：
+本册两题都落在构建流程上：
 
-> **18. Webpack 打包原理**
-> 参考答案：`同性能优化文档第11题。`
->
-> **17. webpack loader 和 plugin 区别**
-> 参考答案：`同 HTML 文档第24题。`
+- **Webpack 打包原理**：从 entry 构建依赖图，把模块包成函数，生成自带 `require` 的运行时。
+- **loader 和 plugin 的区别**：loader 转换单文件内容，plugin 介入构建流程。
 
-**这两个指向的文档都不在本工作区。** 而讽刺的是：
-
-- 「Webpack 打包原理」是工程化面试**出题率第一**的题
-- 「loader 和 plugin 区别」是**几乎每场必问**的题
-
-所以本册是整套文档里**信息增量最大**的一册——基本从零写起。
+后三节（Tapable、loader、plugin）是这两题的下钻。
 
 ---
 
@@ -44,9 +35,7 @@
 
 > Webpack 做三件事：**从入口出发递归构建依赖图 → 把每个模块包成函数 → 生成一个能自己实现 `require` 的运行时**。
 
-**记住这句话就够了。** 剩下所有细节都是它的展开。
-
-### 四个核心概念（先分清，不然后面全乱）
+### 四个核心概念
 
 | 概念 | 是什么 | 数量关系 |
 |---|---|---|
@@ -57,20 +46,18 @@
 
 **关系**：`Module → (分组) → Chunk → (生成) → Bundle → (写盘) → Asset`
 
-**最容易混的一句**：
-
-> 「**Chunk 是逻辑概念，Bundle 是物理文件。** 一个 entry 对应一个初始 chunk，`splitChunks` 会额外拆出 vendor chunk，`import()` 会生成异步 chunk。每个 chunk 最终变成一个 bundle 文件——但如果开了 `[contenthash]`，一个 chunk 也可能产出多个 asset（js + map）。」
+> **Chunk 是逻辑概念，Bundle 是物理文件。** 一个 entry 对应一个初始 chunk，配置 `splitChunks` 后会额外拆出 vendor chunk，`import()` 会生成异步 chunk；每个 chunk 默认产出一个 bundle 文件，开启 sourcemap 后还会多出 `.map`。
 
 ### 完整流程（四阶段）
 
 ```
 ① 初始化
    ├─ 合并命令行参数 + webpack.config.js + 默认配置 → 最终 options
-   ├─ new Compiler(options)         ← 全局唯一，代表「一次构建的生命周期」
-   ├─ 加载所有 plugin，调用 plugin.apply(compiler)
-   └─ 根据 entry 创建 Compilation  ← 每次构建一个，代表「一次编译过程」
+   ├─ new Compiler(options)         ← 全局唯一，代表一次构建的生命周期
+   └─ 加载所有 plugin，调用 plugin.apply(compiler)
 
 ② 编译（Make）
+   ├─ 创建 Compilation              ← 每次构建一个，代表一次编译过程
    ├─ 从 entry 开始，调用 NormalModuleFactory 创建 Module
    ├─ 对每个 Module：
    │    ├─ resolve：找到文件真实路径（enhanced-resolve）
@@ -80,24 +67,24 @@
    └─ 对每个依赖重复上述过程 → 递归形成「依赖图」
 
 ③ 优化（Optimize / Seal）
-   ├─ tree shaking（标记 + 交给 Terser 删）
+   ├─ tree shaking（标记 used exports，production 下由 Terser 删除）
    ├─ splitChunks（拆公共包）
    ├─ scope hoisting（模块拼接）
    └─ 生成 Chunk
 
 ④ 生成（Emit）
    ├─ 用 webpack-sources 把 Chunk 转成源码字符串
-   ├─ 应用 template（mainTemplate / chunkTemplate）
+   ├─ 按 chunk 类型走 renderManifest，由 JavascriptModulesPlugin 生成模块代码
    └─ 写入 output.path
 ```
 
-**四个阶段对应四个钩子**（后面 plugin 会用到）：
+流程中的关键钩子（plugin 会用到）：
 
 ```
-initialize → beforeCompile → compilation → ... → processAssets → emit → done
+initialize → beforeCompile → thisCompilation → make → processAssets → emit → done
 ```
 
-### 实测：webpack 产物到底长什么样
+### 产物结构
 
 源码（`src/index.js`）：
 
@@ -108,15 +95,15 @@ console.log(add(1, 2));
 console.log(greet('world'));
 ```
 
-`dist/bundle.js`（webpack 5.112.0，development，关闭压缩）：
+`dist/bundle.js`（webpack 5，development，关闭压缩）：
 
 ```js
 /******/ (() => { // webpackBootstrap
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
 
-/***/ "./src/math.js"
-(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+/***/ "./src/math.js":
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 __webpack_require__.r(__webpack_exports__);          // ← 标记为 ES Module
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
@@ -128,10 +115,11 @@ function add(a, b) { return a + b; }
 function unusedFn() { return 'I am never called'; }
 function square(x) { return x * x; }
 
-/***/ },
+/***/ }),
 
-/***/ "./src/string.js"
-(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+/***/ "./src/string.js":
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
 __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
   greet: () => (/* binding */ greet),
@@ -139,7 +127,8 @@ __webpack_require__.d(__webpack_exports__, {
 });
 function greet(name) { return `hi ${name}`; }
 function unusedGreet() { return 'never used'; }
-/***/ }
+
+/***/ })
 
 /******/ 	});
 /************************************************************************/
@@ -190,12 +179,10 @@ console.log((0, _string_js__WEBPACK_IMPORTED_MODULE_1__.greet)('world'));
 每个模块被包成一个函数，参数固定三个：
 
 ```js
-(module, module.exports, __webpack_require__) => { ... }
+(module, __webpack_exports__, __webpack_require__) => { ... }
 ```
 
-**这就是「模块作用域隔离」的实现方式**——每个源文件的内容被放进一个函数体里，所以不同文件里的同名变量不会冲突。
-
-> **面试可以直接说**：「webpack 的模块隔离不是靠作用域链，是靠**把每个模块包进一个函数**。这也是为什么产物里有一堆 `function(module, exports, __webpack_require__)`——那是模块的外壳。」
+**这就是「模块作用域隔离」的实现方式**——每个源文件的内容被放进一个函数体里，所以不同文件里的同名变量不会冲突。产物里每个模块都有一层 `function(module, __webpack_exports__, __webpack_require__)` 外壳。
 
 #### ② `__webpack_module_cache__` 是「模块单例」的来源
 
@@ -211,7 +198,7 @@ if (cachedModule !== undefined) return cachedModule.exports;
 Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
 ```
 
-**为什么用 getter？** 因为 ESM 的导出是**活绑定（live binding）**：
+因为 ESM 的导出是**活绑定（live binding）**：
 
 ```js
 // counter.js
@@ -226,15 +213,11 @@ console.log(count);   // 1 ← 拿到的是最新值
 
 如果 webpack 直接 `exports.count = count`（赋值），那拷贝的是 0，`inc()` 之后 `console.log` 还是 0。**用 getter 每次读取都取当前值，才符合 ESM 语义。**
 
-> 这一条知道的人很少，说出来非常加分。
-
-#### ④ `(0, _math_js__.add)(1, 2)` 这个奇怪的写法
+#### ④ `(0, _math_js__.add)(1, 2)` 这个写法
 
 为什么不直接 `_math_js__.add(1, 2)`？
 
-因为 `obj.method()` 会让 `this` 指向 `obj`。如果被调用的函数内部用到了 `this`，行为就不对了。`(0, fn)` 这个逗号表达式**返回函数本身**，等于把 `this` 断成 `undefined`/`globalThis`，符合 ESM 里「导出的函数不该有 this 归属」的语义。
-
-> 这就是前面 JS 册讲的「`(0, obj.fn)()` 会丢 this」在 webpack 产物里的实际应用。
+因为 `obj.method()` 会让 `this` 指向 `obj`。如果被调用的函数内部用到了 `this`，行为就不对了。`(0, fn)` 这个逗号表达式**返回函数本身**，等于把 `this` 断成 `undefined`/`globalThis`，符合 ESM 里「导出的函数不该有 this 归属」的语义；这正是「`(0, obj.fn)()` 会丢 `this`」的规则在产物里的用法。
 
 #### ⑤ `__webpack_require__.r` 标记 ESM
 
@@ -245,9 +228,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
 `__esModule: true` 是**给 Babel/TS 的 interop 用的**：`import x from 'cjs-module'` 时，编译器看到 `__esModule` 就知道「这是 ESM，`default` 在 `.default` 上」，否则会把整个 `module.exports` 当 `default`。
 
-### 手写一个 mini bundler（30 行核心逻辑）
-
-面试官问「原理」时，如果你能说「我写过」，可信度完全不同。下面这个版本可以跑。
+### 手写一个 mini bundler
 
 ```js
 const fs = require('fs');
@@ -262,7 +243,7 @@ function parseModule(filePath) {
   code = code.replace(
     /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"];?/g,
     (_, names, spec) => {
-      const abs = resolve(dir, spec);
+      const abs = path.resolve(dir, spec);
       deps.push(abs);
       return `const {${names}} = __REQ__("${abs}");`;   // ← 先写路径，id 稍后定
     }
@@ -299,10 +280,11 @@ function generate(byPath, list) {
     const code = mod.code.replace(/__REQ__\("([^"]+)"\)/g, (_, abs) => {
       return `__require(${byPath.get(abs).id})`;
     });
-    return `    ${mod.id}: function (__exports, __require) {\n${indent(code)}\n    }`;
+    return `    ${mod.id}: function (__exports, __require) {\n${code}\n    }`;
   }).join(',\n');
 
   return `(function () {
+  "use strict";
   const __modules = {
 ${body}
   };
@@ -318,7 +300,7 @@ ${body}
 }
 ```
 
-#### 实测：依赖图
+#### 依赖图
 
 ```
 #0 src/index.js    依赖: math.js → #1, string.js → #2   导出: []
@@ -327,7 +309,7 @@ ${body}
 #3 src/upper.js    依赖: 无                              导出: [upper]
 ```
 
-#### 实测：生成的 bundle
+#### 生成的 bundle（整理后）
 
 ```js
 (function () {
@@ -368,29 +350,29 @@ ${body}
 })();
 ```
 
-#### 实测：运行结果
+#### 预期输出
 
 ```
 3
 hi WORLD
 ```
 
-**能跑。** 这个 60 行的东西就是 webpack 的骨架。
+核心就是「模块表 + 缓存 + `require` 运行时」，与 webpack 产物结构一致。
 
-### ⚠️ 我写这个 bundler 时踩的坑（值得说）
+### 全局 id 与占位符
 
-第一版我这样写：
+一个常见错误是把模块内依赖下标当成全局 id：
 
 ```js
 code = code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"];?/g,
   (_, names, spec) => {
     const id = deps.length;        // ← 错！这是「模块内局部下标」
-    deps.push(resolve(dir, spec));
+    deps.push(path.resolve(dir, spec));
     return `const {${names}} = __require(${id});`;
   });
 ```
 
-生成的产物直接报错：
+生成的产物会报错：
 
 ```
 TypeError: add is not a function
@@ -400,15 +382,13 @@ TypeError: add is not a function
 
 - `index.js` 里 `math.js` 是第 0 个依赖 → 生成 `__require(0)`
 - 但 `#0` 是 `index.js` 自己！
-- 于是 `index.js` require 了自己，`add` 当然不是函数
+- 于是 `index.js` require 了自己，`add` 不是函数
 
 **修法**：先写占位符 `__REQ__("绝对路径")`，**等所有模块都编完号，再统一替换成真实 id**。
 
-> **这个坑恰好解释了 webpack 为什么要分「解析」和「生成」两个阶段。** 解析阶段不知道全局 id，只有把所有模块收集完才能分配。所以必须允许中间产物（我这里的 `__REQ__` 占位符，webpack 里是 `dependency` 对象）先存在，到生成阶段才定 id。
+这也是 webpack 分「解析」和「生成」两个阶段的原因：解析阶段拿不到全局 id，只有收集完所有模块才能编号。所以中间产物（这里的 `__REQ__` 占位符，webpack 里是 `dependency` 对象）必须先存在，到生成阶段再定 id。
 
-**面试可以直接讲这个**：「我手写 bundler 时犯过一个错，把模块内的依赖下标当成全局 id，结果入口 require 了自己。修法是分两趟：先建图编号，再替换 require。」
-
-### 追问链
+### 追问链：打包原理
 
 | 追问 | 答法 |
 |---|---|
@@ -417,8 +397,6 @@ TypeError: add is not a function
 | 循环依赖 webpack 怎么处理？ | 会有「部分导出」现象。A import B，B import A：B 先执行时 A 还没执行完，拿到的是 A 的**不完整 exports**。所以循环依赖里不要用顶层变量 |
 | `__webpack_require__.d` 为什么用 getter？ | ESM 的导出是**活绑定**。用 getter 才能保证 `import` 到的值随源模块变化 |
 | `(0, fn)()` 是什么？ | 逗号表达式返回函数本身，断开 `this`。webpack 用它是为了符合 ESM 语义 |
-| 一个 entry 会生成几个 bundle？ | 至少 1 个。加了 `splitChunks` 会有 vendor bundle，用了 `import()` 会有异步 chunk，每个异步 chunk 一个 bundle |
-| Module / Chunk / Bundle 区别？ | Module = 源文件；Chunk = 模块的逻辑分组；Bundle = 产物文件 |
 | webpack 5 的持久化缓存在哪一层？ | 在「编译」阶段。`cache: { type: 'filesystem' }` 把模块的 transform 结果存到 `node_modules/.cache/webpack`，二次构建跳过 loader |
 | 为什么 webpack 冷启动慢？ | 因为**必须先完整构建依赖图才能返回第一个结果**。几千个模块要全部 resolve + transform + parse 完，才能开始生成 |
 | 打包原理和 Vite 的差别在哪？ | webpack 是「先打包再服务」，Vite 开发时是「浏览器要什么就给什么，按需编译」。**这是两者速度差的根源** |
@@ -427,13 +405,7 @@ TypeError: add is not a function
 
 ## 2.2 loader 和 plugin 的区别
 
-### ⚠️ 这题题单是悬空的
-
-> 「同 HTML 文档第24题」—— 那个文档不在工作区。
-
-而这是**工程化面试出现率最高的题之一**。下面完整给。
-
-### 一句话结论
+### 一句话结论：loader 与 plugin
 
 > **loader 是「翻译官」，只处理单个文件的源码转换；plugin 是「监工」，能介入构建的任意阶段。**
 
@@ -442,19 +414,14 @@ TypeError: add is not a function
 | 维度 | loader | plugin |
 |---|---|---|
 | **作用对象** | **单个文件**的源码 | **整个构建流程** |
-| **工作时机** | 模块加载时（`normalModuleLoader` 阶段） | 任意钩子（initialize 到 done） |
-| **形态** | 一个函数 `(source) => newSource` | 一个类/对象，有 `apply(compiler)` |
-| **配置位置** | `module.rules` | `plugins: []` |
+| **工作时机** | 模块构建时，loader runner 执行 loader 链 | 任意钩子（initialize 到 done） |
+| **形态与配置** | 函数 `(source) => newSource`，写在 `module.rules` | 类/对象，`apply(compiler)`，写在 `plugins` |
 | **能做什么** | 只能改**文本/二进制内容** | 能改配置、改模块、改 chunk、生成文件、读写磁盘 |
-| **不能做什么** | 不能新增/删除模块，不能改构建流程 | （几乎无限制，但比 loader 重） |
+| **不能做什么** | 不能新增/删除模块，不能改构建流程 | 几乎没有限制，但比 loader 重 |
 
-### 关键区别的通俗解释
+loader 无状态：只拿到单个文件内容；plugin 拿到 `compiler`/`compilation`，能看到整个依赖图、chunk 和 assets。
 
-> 「loader 只能看到**一个文件的内容**，它是无状态的——给它一段字符串，它返回另一段字符串，**它不知道这个文件属于谁、还有多少文件要处理**。
->
-> plugin 能拿到 `compiler` 和 `compilation` 对象，**能看到整个依赖图、所有 chunk、所有产物**。所以「生成一个 manifest 文件」这种跨文件的事，只能 plugin 做。」
-
-### loader 链的执行顺序（实测）
+### loader 链的执行顺序
 
 配置：
 
@@ -467,7 +434,7 @@ module: {
 }
 ```
 
-三个 loader 都打了 log。实测输出：
+执行顺序：
 
 ```
 l1 pitch（最先执行）
@@ -520,64 +487,37 @@ use: ['style-loader', 'css-loader', 'sass-loader']
 
 ### 为什么还要有 pitch 阶段？
 
-**pitch 是「提前拦截」的机会。** 如果某个 loader 的 `pitch` 返回了值，**后面的 loader（包括 resource 本身）全部跳过**，直接把这个值往回传。
+**pitch 是「提前拦截」的机会。** 如果某个 loader 的 `pitch` 返回非 `undefined`，**后面的 loader（包括 resource 本身）全部跳过**，直接把这个值往回传。
 
-**真实用例**：`style-loader` 用 pitch 实现了「不读 CSS 文件内容也能工作」：
+更典型的例子是 `vue-loader`：它的 `pitch` 里会**重新发起一次请求**，把 `.vue` 文件拆成 `<template>`、`<script>`、`<style>` 三个虚拟模块。不借助 pitch 难以实现这种「一个文件变多个请求」。
 
-```js
-// style-loader 的 pitch 大致逻辑
-pitch() {
-  // 不 return，继续往下走
-}
-```
+### 回答要点：loader 与 plugin
 
-更典型的例子是 `vue-loader`：它的 `pitch` 里会**重新发起一次请求**，把 `.vue` 文件拆成 `<template>`、`<script>`、`<style>` 三个虚拟模块。如果不借助 pitch，很难实现这种「一个文件变多个请求」。
+- **作用对象**：loader 处理单个文件源码，是无状态转换；plugin 面向整个构建流程。
+- **配置与形态**：loader 在 `module.rules` 里按 `test` 匹配，形态是函数；plugin 在 `plugins` 数组里，构造时收 options、`apply(compiler)` 时注册钩子。
+- **能力边界**：loader 只改内容（scss→css、TS→JS、图片→base64）；plugin 能改流程（生成 HTML、抽离 CSS、生成 manifest、拷贝资源）。
+- **执行时机**：loader 只在模块构建时跑；plugin 可在 `initialize` 到 `done` 的任意钩子跑。
+- **一句话**：改「一个文件的内容」用 loader，改「构建过程」用 plugin。
 
-> **这个点很难，面试说出来是降维打击**：「pitch 阶段的核心价值是**能提前返回、短路后续 loader**。vue-loader 就是靠它在 pitch 里发起子请求，把单文件组件拆成多个虚拟模块。」
-
-### 面试怎么说（2 分钟版）
-
-> 「我一般从五个维度对比：
->
-> **第一是作用对象**。loader 只处理单个文件的源码，是无状态的转换函数；plugin 面向整个构建流程。
->
-> **第二是配置位置**。loader 写在 `module.rules` 里，靠 `test` 匹配文件；plugin 写在 `plugins` 数组里，构造时传参、`apply` 时注册钩子。
->
-> **第三是能做什么**。loader 只能改内容——把 scss 变 css、把 TS 变 JS、把图片变 base64。plugin 能改流程——生成 HTML、抽离 CSS、生成 manifest、拷贝静态资源。
->
-> **第四是执行时机**。loader 只在模块加载时跑；plugin 可以在从 `initialize` 到 `done` 的任意钩子上跑。
->
-> **第五是它们的关联**。loader 链是洋葱模型：pitch 从左到右，normal 从右到左。因为 normal 本质是函数嵌套 `a(b(c(source)))`。
->
-> 一句话总结：**需要改『一个文件的内容』用 loader，需要改『构建过程』用 plugin。**」
-
-### 追问链
+### 追问链：loader 与 plugin
 
 | 追问 | 答法 |
 |---|---|
-| 怎么判断一个问题该用 loader 还是 plugin？ | 问自己：**「我要处理的东西在某个文件里吗？」** 是 → loader；否 → plugin。比如「给所有 CSS 加浏览器前缀」是 loader（单个 css 文件）；「把所有 CSS 抽成一个文件」是 plugin（跨文件） |
+| 怎么判断一个问题该用 loader 还是 plugin？ | 判断标准：**要处理的东西是否在某个文件里？** 是 → loader；否 → plugin。比如「给所有 CSS 加浏览器前缀」是 loader（单个 css 文件）；「把所有 CSS 抽成一个文件」是 plugin（跨文件） |
 | 一个 loader 可以是 async 吗？ | 可以，用 `this.async()` 拿到 callback，处理完再调。比如读子文件、调接口 |
 | loader 能拿到配置吗？ | 能。`this.getOptions()` 拿 `use: [{ loader, options }]` 里的 options |
 | loader 里怎么拿到文件路径？ | `this.resourcePath`。还有 `this.context`（所在目录）、`this.query`（旧式参数） |
-| plugin 能改 webpack 配置吗？ | 能。在 `environment` 或 `afterPlugins` 钩子里改 `compiler.options`。但**改了要自己保证一致性**，容易出诡异问题 |
+| plugin 能改 webpack 配置吗？ | 能。在 `environment` 或 `afterPlugins` 钩子里改 `compiler.options`。但**改了要自己保证一致性**，容易出问题 |
 | `compiler` 和 `compilation` 区别？ | `compiler` 是**全局唯一**的，代表整个 webpack 生命周期，有 `run`/`watch`/`done`；`compilation` 是**每次构建一个**，代表一次编译，有 `modules`/`chunks`/`assets`。**watch 模式下 compiler 一个、compilation 很多个** |
-| loader 处理顺序能通过配置改吗？ | 能用 `enforce: 'pre' | 'post'` 调整相对位置。pre 在所有 normal loader 之前，post 在之后 |
+| loader 处理顺序能通过配置改吗？ | 能用 `enforce: 'pre' / 'post'` 调整相对位置。pre 在所有 normal loader 之前，post 在之后 |
 
 ---
 
 ## 2.3 Tapable：webpack 的插件系统内核
 
-### 题单答案的问题
+Tapable 是 webpack 的事件系统，需要说清三件事：钩子类型、与 EventEmitter 的差异、`stage` 的作用。
 
-> 「Tapable 是 Webpack 的事件库，实现钩子系统（同步/异步/串行/并行）。plugin 通过 tap 钩子介入构建流程。」
-
-**方向对，但太浅**。缺三个关键：
-
-1. **九种钩子的区别**（这是重点）
-2. **为什么 webpack 不用 EventEmitter**
-3. **`stage` 参数的作用**
-
-### 一句话结论
+### 一句话结论：Tapable
 
 > Tapable 是**带返回值语义和异步控制的事件系统**——比 EventEmitter 多了「中断」「传值」「串并行」三种能力。
 
@@ -587,10 +527,10 @@ pitch() {
 |---|---|---|
 | 监听 | `on` | `tap` / `tapAsync` / `tapPromise` |
 | 触发 | `emit`（不等待） | `call` / `callAsync` / `promise`（**能等待**） |
-| 中断后续 | ❌ 做不到 | ✅ Bail 系列 |
-| 上一个的返回值传给下一个 | ❌ | ✅ Waterfall 系列 |
-| 控制执行顺序 | 只能靠注册顺序 | ✅ `stage` 参数 |
-| 知道谁注册了 | ❌ | ✅ `tapInfo` |
+| 中断后续 | 做不到 | Bail 系列 |
+| 上一个的返回值传给下一个 | 不支持 | Waterfall 系列 |
+| 控制执行顺序 | 只能靠注册顺序 | `stage` 参数 |
+| 知道谁注册了 | 不支持 | `tapInfo` |
 
 **核心差别**：webpack 的构建是**流程**，不是**通知**。
 
@@ -599,7 +539,9 @@ pitch() {
 
 所以 webpack 需要一个「能等待、能中断、能传值」的钩子系统。
 
-### 九种钩子（实测语义）
+### 钩子类型与语义
+
+tapable 提供 10 个钩子类，常用的是下面 6 个；其余 4 个（`AsyncParallelBailHook`、`AsyncSeriesBailHook`、`AsyncSeriesWaterfallHook`、`AsyncSeriesLoopHook`）由同样的维度组合而来。
 
 ```js
 const T = require('tapable');
@@ -614,7 +556,7 @@ h.tap('B', (a, b) => { console.log('B:', a, b, '← 拿不到 A 的返回值'); 
 h.call(1, 2);
 ```
 
-实测：
+输出：
 
 ```
 A: 1 2
@@ -632,7 +574,7 @@ h.tap('C', x => { console.log('C 收到:', x, '← B 的返回值'); return x; }
 h.call(1);
 ```
 
-实测：
+输出：
 
 ```
 A 收到: 1
@@ -641,7 +583,7 @@ C 收到: 22 ← B 的返回值
 最终: 22
 ```
 
-**用途**：`compilation.hooks.assetPath`（改产物路径）、`NormalModuleFactory.hooks.beforeResolve`（改解析参数）。**每个插件基于前一个的结果继续改。**
+**用途**：`compilation.hooks.assetPath`（改产物路径）。**每个插件基于前一个的结果继续改。**
 
 #### ③ SyncBailHook：任一返回非 undefined 就中断
 
@@ -653,7 +595,7 @@ h.tap('C', () => { console.log('C 执行 ← 不会打印'); });
 h.call(1);
 ```
 
-实测：
+输出：
 
 ```
 A 执行
@@ -661,9 +603,9 @@ B 执行，返回 "STOP"
 call 返回值: STOP
 ```
 
-**C 完全没执行。** 「Bail」就是「保释、提前退出」。
+**C 不执行。** 「Bail」就是「提前退出」。
 
-**用途**：`optimization` 相关钩子里，某个插件说「我已经优化过了，别再继续」，返回 `true` 即中断。
+**用途**：`compiler.hooks.shouldEmit` 返回 `false` 即阻止输出；返回非 `undefined` 就提前退出后续 tap。
 
 #### ④ SyncLoopHook：返回非 undefined 就重头再来
 
@@ -675,7 +617,7 @@ h.tap('B', () => { console.log('B 执行（A 终于返回 undefined 后）'); })
 h.call(1);
 ```
 
-实测：
+输出：
 
 ```
 A 第 1 次
@@ -689,6 +631,8 @@ B 执行（A 终于返回 undefined 后）
 #### ⑤⑥ AsyncSeriesHook / AsyncParallelHook：串行 vs 并行
 
 ```js
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 const mk = (Hook) => {
   const h = new Hook(['n']);
   h.tapPromise('A', async () => { console.log('A start'); await sleep(40); console.log('A end'); });
@@ -701,20 +645,20 @@ const mk = (Hook) => {
 
 ```
 A start → A end → B start → B end
-耗时 62ms（40 + 20）
+总耗时约为 40 + 20
 ```
 
 并行（`AsyncParallelHook`）：
 
 ```
 A start → B start → B end → A end
-耗时 42ms（max(40, 20)）
+总耗时约为 max(40, 20)
 ```
 
 **用途**：
 
 - `AsyncSeriesHook`：`compiler.hooks.emit`、`beforeCompile`——有先后依赖，必须串行
-- `AsyncParallelHook`：`compiler.hooks.afterEmit`——多个插件做的事互不依赖，并行更快
+- `AsyncParallelHook`：`compiler.hooks.make`——多个插件并行添加依赖，互不等待
 
 ### 注册方式：`tap` / `tapAsync` / `tapPromise`
 
@@ -729,13 +673,6 @@ hook.tapAsync('name', (args, callback) => { ...; callback(); });
 hook.tapPromise('name', async (args) => { ... });
 ```
 
-实测两者都能用：
-
-```
-tapAsync 执行，x = 42
-tapPromise 执行，x = 42
-```
-
 **区别**：
 
 | 方式 | 错误处理 | 代码量 |
@@ -743,7 +680,7 @@ tapPromise 执行，x = 42
 | `tapAsync` | 必须 `callback(err)` 传错误，**漏调 callback 会永久挂起** | 多 |
 | `tapPromise` | `throw` / `reject` 即可 | 少 |
 
-> **`tapAsync` 忘调 callback 是 webpack 插件的经典 bug**：构建会卡住不动，也不报错。所以新插件一律用 `tapPromise`。
+`tapAsync` 漏调 `callback` 会让构建一直等下去，且不报错；新代码优先 `tapPromise`。
 
 ### `stage` 参数：控制同一钩子内多个 tap 的顺序
 
@@ -753,7 +690,7 @@ h.tap('plain', () => console.log('默认 0'));
 h.tap({ name: 'stage-20', stage: -20 }, () => console.log('stage -20'));
 ```
 
-实测：
+输出：
 
 ```
 [stage -20] 最后注册但最先执行
@@ -763,42 +700,36 @@ h.tap({ name: 'stage-20', stage: -20 }, () => console.log('stage -20'));
 
 **规则**：`stage` 越小越先执行；不写视为 `0`；同 stage 按注册顺序。
 
-**为什么要这个？** 因为 plugin 的注册顺序取决于 `plugins` 数组顺序，而**第三方插件的位置你控制不了**。如果某个插件的逻辑必须在另一个之前跑，就得靠 `stage`。
+**为什么要这个？** plugin 的注册顺序取决于 `plugins` 数组顺序，而**第三方插件的位置不受控**。如果某个插件的逻辑必须在另一个之前跑，就得靠 `stage`。
 
-> 真实例子：`webpack.DefinePlugin` 要在 `processAssets` 的早期阶段替换常量，否则后续插件看到的是未替换的代码。所以它用了很小的 stage。
+例：`TerserPlugin` 注册在 `PROCESS_ASSETS_STAGE_OPTIMIZE_SIZE`（400），体积报告类插件注册在 `PROCESS_ASSETS_STAGE_REPORT`（5000）；stage 选错，统计到的是压缩前的体积。
 
-### 一个必须知道的细节：`tap` 不带 name 会报错
+### `tap` 必须传 name
 
 ```js
-h.tap(() => {});     // ✗ Error: Invalid tap options
+h.tap(() => {});     // 错误：tap 的第一个参数必须是 name 或含 name 的 options 对象
 ```
 
-看起来是「可选参数」，实际**必须传 name**（或 options 对象且含 name）。这个坑我在实测时踩到了。
+`tap` 的第一个参数不是可选参数，必须传 name（或 options 对象且含 name）。
 
-### 面试怎么说
+### 回答要点：Tapable
 
-> 「Tapable 可以理解成**加强版 EventEmitter**。EventEmitter 只能 `on`/`emit`，发出去就不管了；Tapable 有九种钩子，在『同步/异步』×『是否中断』×『是否传值』三个维度上组合。
->
-> 最常用的三种：
-> - **SyncHook**：纯通知，比如 `environment`
-> - **SyncBailHook**：任一插件返回非 undefined 就中断，比如优化类钩子
-> - **AsyncSeriesHook**：异步串行，比如 `emit`
->
-> 还有 **SyncWaterfallHook**，上一个的返回值传给下一个，`assetPath` 用的就是它——这样多个插件可以依次修改产物路径。
->
-> webpack 不用 EventEmitter 的根本原因是：**构建是流程不是通知**，必须能等待、能中断、能传值。」
+- Tapable 可以理解成**加强版 EventEmitter**：多了「等待、中断、传值」。
+- 常用：`SyncHook`（纯通知，如 `environment`）、`SyncBailHook`（返回非 undefined 中断）、`SyncWaterfallHook`（返回值传递，如 `assetPath`）、`AsyncSeriesHook`（异步串行，如 `emit`）。
+- `tap` / `tapAsync` / `tapPromise` 分别对应同步、callback、Promise 注册；异步优先 `tapPromise`。
+- 不用 EventEmitter 的根因：**构建是流程不是通知**，必须能等待、中断、传值。
 
-### 追问链
+### 追问链：Tapable
 
 | 追问 | 答法 |
 |---|---|
 | tapable 性能为什么好？ | 它用了**动态生成函数**（`new Function`）来编译出最优的执行路径。第一次调用时会根据 tap 的数量和类型生成专用函数，避免每次循环判断 |
-| `tap` 和 `tapAsync` 能在同一个钩子上混用吗？ | 能，但**不建议**。混用容易搞错执行顺序，且 SyncHook 上挂 `tapPromise` 会直接报错 |
+| `tap` 和 `tapAsync` 能在同一个钩子上混用吗？ | 能，但**不建议**。混用容易搞错执行顺序；`SyncHook` 上挂 `tapPromise` 会直接报错 |
 | plugin 里怎么知道当前是第几次构建？ | `compilation` 对象每次构建都不同，可以在 `compilation` 钩子里存引用。或者看 `compiler.hooks.watchRun` 被调了几次 |
 | 钩子能取消吗？ | 没有「取消」的概念，但 `Bail` 系列能中断后续 tap，`AsyncSeriesHook` 里 `reject` 会中断整个链 |
 | `intercept` 是干什么的？ | 拦截钩子的调用过程，能拿到「谁注册了」「什么时候调用」「参数是什么」。**性能分析插件用它来统计每个 tap 的耗时** |
 
-实测 `intercept` 输出：
+`intercept` 的回调顺序：
 
 ```
 [register] P1     ← 注册时
@@ -811,7 +742,7 @@ P1 执行
 
 ## 2.4 手写一个 loader
 
-### 题单答案的问题
+### 常见 loader 写法的问题
 
 ```js
 module.exports = function(source) {
@@ -820,7 +751,7 @@ module.exports = function(source) {
 };
 ```
 
-**只有骨架**，缺四个关键点：
+只有骨架，还缺四个关键点：
 
 1. **怎么拿 options**
 2. **怎么处理异步**
@@ -873,13 +804,13 @@ module: {
 }
 ```
 
-**实测效果**（我在 02 册的 demo 里跑过）：源文件里的 `` `hi ${name}` `` 被改成 `` `HI ${name}` ``，最终产物里是 `console.log("HI world")`。
+效果：源文件里的 `` `hi ${name}` `` 会被改成 `` `HI ${name}` ``。
 
 ### 异步 loader
 
 ```js
 module.exports = function asyncLoader(source) {
-  const callback = this.async();          // 拿到 callback，表示「我会异步返回」
+  const callback = this.async();          // 拿到 callback，表示「异步返回」
 
   someAsyncWork(source)
     .then(result => callback(null, result))
@@ -889,7 +820,7 @@ module.exports = function asyncLoader(source) {
 };
 ```
 
-**`this.async()` 的机制**：调用它会让 webpack 进入「等待」状态，直到你调 `callback`。**如果忘了调，构建会永久挂起**——这是自定义 loader 最常见的事故。
+**`this.async()` 的机制**：调用它会让 webpack 进入「等待」状态，直到调用 `callback`。**漏调 `callback`，构建会永久挂起**——这是自定义 loader 最常见的事故。
 
 ### loader 的 `this` 上有什么
 
@@ -909,24 +840,24 @@ module.exports = function asyncLoader(source) {
 | `this.mode` | `development` / `production` |
 | `this.target` | 编译目标（`web` / `node`） |
 
-> **`this.addDependency` 是最容易被忽略的一个**。如果你的 loader 读了配置文件，不声明依赖的话，**改配置文件不会触发重新构建**——开发时要手动重启。
+`this.addDependency` 用于 loader 读取了额外文件的情况：不声明依赖，改被读取的文件不会触发重新构建。
 
-### 追问链
+### 追问链：loader
 
 | 追问 | 答法 |
 |---|---|
-| loader 的返回值必须是字符串吗？ | 可以是 `Buffer`（处理二进制，配 `raw: true`）。也可以 `this.callback` 传任意类型 |
+| loader 的返回值必须是字符串吗？ | 可以是 `Buffer`（处理二进制，配 `raw: true`）。`this.callback` 的 content 同样支持 string/Buffer |
 | 怎么处理二进制文件？ | 加 `module.exports.raw = true`，此时 `source` 是 `Buffer` |
 | loader 能返回多个文件吗？ | 不能直接返回，但能 `this.emitFile` 额外输出 |
 | 为什么 loader 要「无状态」？ | 因为 webpack 可能并行/缓存地调用它。**状态放在闭包或 `this` 上，不要放模块级变量** |
-| 官方 loader 里最值得看的？ | `babel-loader`（缓存、多线程）、`css-loader`（如何把 CSS 变成 JS）、`raw-loader`（最简）。**读 `raw-loader` 源码 10 分钟能懂 loader 全貌** |
+| 官方 loader 推荐读哪些？ | `babel-loader`（缓存）、`css-loader`（如何把 CSS 变成 JS）、`raw-loader`（最简） |
 | 怎么调试自己写的 loader？ | ① `console.log` 到终端（loader 跑在 Node 里，不是浏览器）；② `debugger` + `node --inspect-brk node_modules/webpack/bin/webpack.js` |
 
 ---
 
 ## 2.5 手写一个 plugin
 
-### 题单答案的问题
+### 常见 plugin 写法的问题
 
 ```js
 class MyPlugin {
@@ -939,26 +870,24 @@ class MyPlugin {
 }
 ```
 
-**这个答案有三个问题，其中一个是我实测出来的**：
+常见答案有三个问题：
 
-1. **`compiler.hooks.emit` 在 webpack 5 里已废弃**（下面有实测的警告）
+1. 在 `emit` 阶段改 `compilation.assets` 会触发废弃警告
 2. 没有 `apply` 之外的结构（options 怎么传）
 3. 没说清 `compilation.assets` 怎么改（webpack 5 要用 `emitAsset`）
 
-### 实测：`compiler.hooks.emit` 会报废弃警告
+### emit 阶段修改 assets 的废弃警告
 
-我按题单的写法做了一个 plugin，跑 webpack 5.112 后输出：
+在 `compiler.hooks.emit` 里直接改 `compilation.assets`，webpack 5 会输出：
 
 ```
-(node:8127) [DEP_WEBPACK_COMPILATION_ASSETS] DeprecationWarning:
+[DEP_WEBPACK_COMPILATION_ASSETS] DeprecationWarning:
 Compilation.assets will be frozen in future, all modifications are deprecated.
 BREAKING CHANGE: No more changes should happen to Compilation.assets after sealing the Compilation.
   Do changes to assets earlier, e.g. in Compilation.hooks.processAssets.
 ```
 
-**官方明确说了：不要改 `compilation.assets` 了，改到 `compilation.hooks.processAssets` 里。**
-
-> 这是「题单答案已过时」的直接证据。面试时能指出这一点，说明你**真的在写 webpack 5 插件**，而不是背了几年前的博客。
+官方要求把资源修改放到 `compilation.hooks.processAssets`，并用 `emitAsset` / `updateAsset`。
 
 ### 正确的 plugin 实现
 
@@ -972,7 +901,7 @@ class BuildManifestPlugin {
   apply(compiler) {
     const PLUGIN_NAME = 'BuildManifestPlugin';
 
-    // ① 用 processAssets 而不是 emit（webpack 5 的正确姿势）
+    // ① 用 processAssets 处理资源
     compiler.hooks.thisCompilation.tap(PLUGIN_NAME, (compilation) => {
       compilation.hooks.processAssets.tap(
         {
@@ -1003,17 +932,17 @@ class BuildManifestPlugin {
 module.exports = BuildManifestPlugin;
 ```
 
-### 实测：钩子执行顺序
+### 钩子执行顺序
 
-我在 plugin 里注册了 5 个钩子，构建时的真实输出：
+在 plugin 里注册 6 个钩子后，顺序是：
 
 ```
 [hook] initialize
 [hook] beforeCompile
 [hook] compilation
 [hook] processAssets
-[hook] emit → 生成 manifest.json
-[hook] done, time = 103 ms
+[hook] emit
+[hook] done
 ```
 
 **顺序**：`initialize → beforeCompile → compilation → processAssets → emit → done`
@@ -1029,7 +958,7 @@ module.exports = BuildManifestPlugin;
 | `processAssets` | AsyncSeriesHook | 处理产物资源 | **生成/修改文件** |
 | `done` | AsyncSeriesHook | 构建完成 | 统计、通知、上报 |
 
-### `processAssets` 的 stage 常量（要记住常用的几个）
+### `processAssets` 的 stage 常量
 
 ```js
 compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_*
@@ -1040,67 +969,31 @@ compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_*
 | `ADDITIONAL` | -2000 | 加额外资源 |
 | `PRE_PROCESS` | -1000 | 预处理 |
 | `DERIVED` | -200 | 派生资源（如从 js 生成 map） |
-| `ADDITIONS` | 0 | 新增 |
-| `OPTIMIZE` | 100 | 优化（压缩） |
-| `OPTIMIZE_COUNT` | 200 | 优化阶段计数 |
-| `SUMARY` / `REPORT` | 4000 / 5000 | 最后，用于报告 |
+| `ADDITIONS` | -100 | 给现有资源追加内容 |
+| `OPTIMIZE` | 100 | 通用优化 |
+| `OPTIMIZE_COUNT` | 200 | 优化资源数量 |
+| `OPTIMIZE_SIZE` | 400 | 压缩、删除空白 |
+| `SUMMARIZE` / `REPORT` | 1000 / 5000 | 整理资源 / 最终报告 |
 
-> **为什么需要 stage？** 因为「生成文件」和「压缩文件」有先后依赖。压缩插件必须在 100 附近，你要统计体积的插件必须在 5000（压缩之后），否则统计到的还是压缩前的体积。
+**为什么需要 stage？** 因为「生成文件」和「压缩文件」有先后依赖。压缩插件必须在 400 附近，统计体积的插件必须在 5000（压缩之后），否则统计到的还是压缩前的体积。
 
-### 一个更真实的 plugin：自动生成版本号文件
+### 回答要点：plugin
 
-```js
-class VersionFilePlugin {
-  constructor({ filename = 'version.txt', version }) {
-    this.filename = filename;
-    this.version = version;
-  }
+- 写 plugin 三步：类 + `constructor(options)`；`apply(compiler)`；在 `apply` 里注册钩子。
+- webpack 5 不要改 `compilation.assets`（`emit` 阶段会报 `DEP_WEBPACK_COMPILATION_ASSETS`），改到 `thisCompilation` 的 `processAssets`，用 `emitAsset` / `updateAsset`。
+- `processAssets` 要显式给 `stage`（默认 0）；统计最终体积用 `PROCESS_ASSETS_STAGE_REPORT`（5000），否则拿到压缩前的产物。
 
-  apply(compiler) {
-    const name = 'VersionFilePlugin';
-    compiler.hooks.thisCompilation.tap(name, (compilation) => {
-      compilation.hooks.processAssets.tap(
-        { name, stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL },
-        () => {
-          const content = `${this.version}\n${new Date().toISOString()}\n`;
-          compilation.emitAsset(
-            this.filename,
-            new compiler.webpack.sources.RawSource(content)
-          );
-        }
-      );
-    });
-  }
-}
-```
-
-**这个插件解决真实问题**：前端发版后，运维/客服需要快速确认「线上跑的是哪个版本」。一个 `version.txt` 比让人打开控制台找 hash 快得多。
-
-### 面试怎么说
-
-> 「写 plugin 就三步：
->
-> **第一步，定义类，构造函数收 options。** 因为 webpack 是 `new Plugin(options)` 之后调 `apply`。
->
-> **第二步，实现 `apply(compiler)`。** webpack 会在初始化阶段调用它，参数是全局唯一的 `compiler`。
->
-> **第三步，在 `apply` 里注册钩子。**
->
-> 这里有个**版本差异必须说清**：webpack 4 时代大家都在 `compiler.hooks.emit` 里改 `compilation.assets`；但 **webpack 5 已经废弃了这个做法**，实测会报 `DEP_WEBPACK_COMPILATION_ASSETS` 警告，要求改到 `compilation.hooks.processAssets` 里，用 `emitAsset` 新增、`updateAsset` 修改。
->
-> 而且 `processAssets` 要传 `stage`。如果你想统计最终体积，`stage` 必须大于压缩插件的（用 `PROCESS_ASSETS_STAGE_REPORT`）。**这个 stage 选错了，你统计到的就是压缩前的体积**——我踩过。」
-
-### 追问链
+### 追问链：plugin
 
 | 追问 | 答法 |
 |---|---|
 | `apply` 会被调几次？ | 一次。webpack 初始化时遍历 `plugins`，对每个调 `plugin.apply(compiler)` |
 | 为什么要 `thisCompilation` 而不是 `compilation`？ | `compilation` 钩子在**子 compiler**（比如 `childCompilers`）里也会触发，容易重复注册。`thisCompilation` 只针对当前 compiler |
 | 怎么在 plugin 里读文件？ | `compiler.inputFileSystem`（不是 `fs`）。这样能走 webpack 的缓存层 |
-| 怎么改某个模块的内容？ | 用 `compilation.hooks.succeedModule` 或写个 loader。**改模块内容优先用 loader，plugin 改模块很别扭** |
+| 怎么改某个模块的内容？ | 用 `compilation.hooks.succeedModule` 或写个 loader。**改模块内容优先用 loader，不推荐用 plugin** |
 | plugin 能改变 entry 吗？ | 能，在 `initialize` 或 `beforeCompile` 里改 `compiler.options.entry`。但要小心已经创建的 compilation |
 | 怎么让 plugin 只在 production 生效？ | 在配置里 `plugins: isProd ? [new P()] : []`，或者 plugin 内部判 `compiler.options.mode` |
-| 写 plugin 最容易犯的错？ | ① 用了废弃的 `emit`；② `tapAsync` 忘调 `callback` 导致挂起；③ 直接赋值 `compilation.assets[x] = ...`（webpack 5 里会丢）；④ stage 选错导致拿到未压缩的产物 |
+| 写 plugin 的常见错误？ | ① 在 `emit` 阶段改 assets；② `tapAsync` 忘调 `callback` 导致挂起；③ 直接赋值 `compilation.assets[x] = ...`（seal 后只读）；④ stage 选错导致拿到未压缩的产物 |
 
 ---
 
@@ -1117,9 +1010,9 @@ class VersionFilePlugin {
 | loader 链为什么从右往左 | 本质是函数嵌套 `a(b(c(src)))` |
 | pitch 有什么用 | 能提前返回、短路后续 loader（vue-loader 靠它拆 SFC） |
 | 为什么不用 EventEmitter | 构建是流程，需要「等待 / 中断 / 传值」 |
-| Tapable 九种钩子怎么记 | 三维组合：同步/异步 × 是否中断（Bail）× 是否传值（Waterfall） |
+| Tapable 钩子怎么记 | 同步 4 + 异步并行 2 + 异步串行 4，再按 Bail / Waterfall / Loop 区分语义 |
 | `stage` 干什么 | 控制同一钩子内多个 tap 的顺序，越小越先 |
-| webpack 5 生成文件的正确方式 | `compilation.hooks.processAssets` + `emitAsset`（`emit` 已废弃） |
+| webpack 5 生成文件的正确方式 | `compilation.hooks.processAssets` + `emitAsset`（`emit` 阶段改 assets 已废弃） |
 | `tapAsync` 最大的坑 | 忘调 `callback` → 构建永久挂起 |
 | `thisCompilation` vs `compilation` | 后者在子 compiler 里也会触发，前者更安全 |
 
@@ -1132,7 +1025,7 @@ class VersionFilePlugin {
 Module → Chunk → Bundle → Asset
 四阶段：初始化 / 编译（Make）/ 优化（Seal）/ 生成（Emit）
 产物 = __webpack_modules__（模块函数表）+ __webpack_require__（缓存 + 执行）
-模块隔离靠「包成函数」，不靠作用域链
+模块隔离靠「包成函数」形成独立函数作用域
 
 【产物五个细节】
 .r()  标记 __esModule / Symbol.toStringTag
@@ -1141,10 +1034,10 @@ Module → Chunk → Bundle → Asset
 (0, fn)()  断开 this 符合 ESM 语义
 __webpack_module_cache__  模块单例
 
-【手写 bundler 踩的坑】
+【手写 bundler 的全局 id】
 把「模块内依赖下标」当「全局 id」→ 入口 require 了自己
 修法：先占位 __REQ__(路径)，建完图再替换成 id
-这正好解释了 webpack 为什么要分「解析」和「生成」两阶段
+对应 webpack 的「解析」与「生成」两阶段
 
 【loader vs plugin】
 loader：单文件 / module.rules / 改内容 / 无状态
@@ -1153,13 +1046,13 @@ plugin：全流程 / plugins[] / 改流程 / 有 compiler
 pitch 能提前返回短路（vue-loader 拆 SFC 靠它）
 
 【tapable】
-九钩子 = 同步/异步 × Bail（中断）× Waterfall（传值）
+10 个钩子类：同步 4 + 异步并行 2 + 异步串行 4
 SyncHook 不收集返回值
 Bail 返回非 undefined 即中断
 Loop 返回非 undefined 从第一个 tap 重来
-Series 串行 62ms / Parallel 并行 42ms
+Series 串行（耗时相加）/ Parallel 并行（取最慢者）
 stage 越小越先执行
-tap 必须传 name，否则 Invalid tap options
+tap 必须传 name
 
 【写 plugin 三步】
 ① 类 + constructor(options)
@@ -1167,9 +1060,9 @@ tap 必须传 name，否则 Invalid tap options
 ③ 注册钩子
 
 【webpack 5 关键变更】
-compiler.hooks.emit 已废弃（实测 DEP_WEBPACK_COMPILATION_ASSETS）
-改用 compilation.hooks.processAssets + emitAsset
-processAssets 要传 stage（统计体积要用 REPORT，否则拿到压缩前的）
+emit 阶段修改 compilation.assets 已废弃（DEP_WEBPACK_COMPILATION_ASSETS）
+改用 processAssets + emitAsset
+processAssets 要传 stage（统计体积用 REPORT，否则拿到压缩前的）
 用 thisCompilation 而不是 compilation
 ```
 
@@ -1178,7 +1071,7 @@ processAssets 要传 stage（统计体积要用 REPORT，否则拿到压缩前�
 ## 2.8 自测
 
 ```
-□ 能说出 webpack 四阶段，以及每阶段对应哪个钩子
+□ 能说出 webpack 四阶段，以及流程中的关键钩子
 □ 能分清 Module / Chunk / Bundle / Asset
 □ 能解释「模块为什么要包成函数」
 □ 能解释 __webpack_require__.d 为什么用 getter
@@ -1188,11 +1081,11 @@ processAssets 要传 stage（统计体积要用 REPORT，否则拿到压缩前�
 □ 能画出 loader 链的洋葱模型（pitch/normal 方向）
 □ 能解释 pitch 阶段的实际用途
 □ 能说出为什么 webpack 不用 EventEmitter
-□ 能列出九种钩子并说出三种最常用的
+□ 能列出 tapable 的钩子类型并说出三种最常用的
 □ 能解释 Bail / Waterfall / Loop 的语义
 □ 能说出 stage 的作用和一个真实场景
 □ 能说出 webpack 5 里生成文件的正确方式
-□ 能说出 emit 为什么被废弃
+□ 能说出 emit 阶段改 assets 为什么被废弃
 □ 能说出 tapAsync 忘调 callback 的后果
 □ 能说出手写 loader 需要声明 addDependency 的场景
 □ 能记住六个常用钩子的顺序

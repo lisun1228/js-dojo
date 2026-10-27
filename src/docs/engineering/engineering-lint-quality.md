@@ -22,16 +22,13 @@
 
 > 「ESLint：检查代码质量 + 格式。Prettier：只做格式（统一风格）。配合用：ESLint 管质量，Prettier 管格式，eslint-config-prettier 关闭冲突规则。」
 
-**这个答案框架是对的**，是这份题单里质量较高的一条。但缺两个关键：
-
-1. **没说清「为什么它们会冲突」**（根因是它们对同一件事有两套标准）
-2. **没给实际配置**（面试官会问「你项目里怎么配的」）
+框架成立，缺两点：**为什么两者会冲突**、**项目里实际怎么配**。
 
 ### 一句话结论
 
 > **ESLint 管「这段代码有没有问题」，Prettier 管「这段代码长什么样」。**
 >
-> 冲突的根因是：**ESLint 历史上也管格式**，所以两者对「引号用单还是双」有两套互相矛盾的答案。
+> 冲突的根因是 ESLint 早期把格式也当成自己的职责，两者对「引号用单还是双」有两套答案，且默认值相反：Prettier 默认双引号，ESLint 社区的 `quotes: ['error', 'single']` 默认单引号。
 
 ### 职责划分（边界要背准）
 
@@ -47,23 +44,12 @@
 
 ### 「会不会改变行为」是关键区别
 
-这是最能体现理解深度的一点：
+- Prettier 只重排空白和符号，AST 不变：`const a = {b:1}` → `const a = { b: 1 };`
+- ESLint 的 `--fix` 可能改语义：`prefer-const` 把 `var` 换成 `const`；`no-unused-vars` 删变量时可能连带删掉副作用
 
-```
-Prettier：改的是「空白和符号的排列」，语义 100% 等价
-          const a = {b:1}  →  const a = { b: 1 };
-          这两行的 AST 完全一样
+所以顺序是**先 `eslint --fix`（可能改语义），再 Prettier（只改格式）**，反过来会白跑一遍。
 
-ESLint：  --fix 可能真的改语义
-          var a = 1;  →  const a = 1;    （prefer-const）
-          删掉未使用变量 → 副作用可能被删
-```
-
-> **所以顺序很重要**：**先跑 ESLint 的 `--fix`（可能改语义），再跑 Prettier（只改格式）。** 反过来会白跑一遍。
-
-### 实测：冲突到底长什么样
-
-我用 ESLint 10.13.0 + Prettier 3.9.10 做了一组对照。
+### 冲突然例
 
 #### 准备：一个格式和质量都有问题的文件
 
@@ -73,9 +59,7 @@ const b  =  "x";
 if(a==1){console.log(b)}
 ```
 
-#### ① 只用 ESLint（开了格式规则）
-
-配置里同时开了质量规则和格式规则：
+#### ① 只用 ESLint（同时开质量规则和格式规则）
 
 ```js
 rules: {
@@ -93,26 +77,27 @@ rules: {
 2:13  error  Strings must use singlequote         quotes
 3:5   error  Expected '===' and instead saw '=='  eqeqeq
 3:24  error  Missing semicolon                    semi
+
+✖ 4 problems (4 errors, 0 warnings)
+  3 errors and 0 warnings potentially fixable with the `--fix` option.
 ```
 
-**4 个问题，全是「可自动修」。**
+4 个问题里只有 3 个可自动修：`eqeqeq` 需要人判断该改成什么。
 
-#### ② 只用 Prettier
+#### ② 先 Prettier 再 ESLint ← 冲突在这里
+
+Prettier 只报「格式有问题」，不指位置（`--check` 只输出文件名，`--write` 直接覆盖）：
 
 ```
 [warn] src/bad.js
-[warn] Code style issues found in the above file.
+[warn] Code style issues found in the above file. Run Prettier with --write to fix.
 ```
 
-Prettier 说「格式有问题」，但不告诉你具体哪里——**它不报错，它只重写。**
-
-#### ③ 先跑 Prettier，再跑 ESLint ← 冲突在这里
-
-Prettier 格式化后：
+格式化后（Prettier 默认 `singleQuote: false`）：
 
 ```js
 const a = 1;
-const b = "x";          // ← Prettier 默认用双引号！
+const b = "x";          // ← 双引号
 if (a == 1) {
   console.log(b);
 }
@@ -121,19 +106,15 @@ if (a == 1) {
 再跑 ESLint：
 
 ```
-2:11  error  Strings must use singlequote         quotes     ← 冲突！
+2:11  error  Strings must use singlequote         quotes     ← 冲突
 3:7   error  Expected '===' and instead saw '=='  eqeqeq
 ```
 
-**注意第一条**：Prettier 刚把它改成双引号，ESLint 立刻说「必须用单引号」。
+Prettier 刚把它改成双引号，`quotes: single` 立刻要求改回单引号：同一份文件被两个工具来回改。如果 `lint-staged` 里两者都跑，每次提交都会产生反方向的改动。
 
-**这就是两个工具在打架**——如果配了 `lint-staged` 让两者都跑，会陷入「改完又被改回去」的死循环。
+本项目 `.prettierrc.json` 设了 `singleQuote: true`，与 ESLint 单引号一致，所以这条冲突不会出现——**冲突只在两边配置不一致时发生**。
 
-> **冲突的根因**：ESLint 早期把自己定位成「代码质量 + 代码风格」的工具，所以内置了 `quotes`、`semi`、`indent` 这些规则。Prettier 出现后，这些规则变成了重复职责。**而两者的默认风格恰好相反**（Prettier 默认双引号，ESLint 社区默认单引号）。
-
-#### ④ 加 `eslint-config-prettier` 解决
-
-配置：
+#### ③ 加 `eslint-config-prettier` 关闭格式规则
 
 ```js
 import prettierConfig from 'eslint-config-prettier';
@@ -148,7 +129,7 @@ export default [
       // 格式规则全部删掉
     },
   },
-  prettierConfig,   // ← 必须放最后
+  prettierConfig,   // ← 必须放最后，它逐条关掉与 Prettier 冲突的规则
 ];
 ```
 
@@ -158,9 +139,9 @@ export default [
 3:7  error  Expected '===' and instead saw '=='  eqeqeq
 ```
 
-**只剩 1 个错，而且是真正的质量问题。冲突消失了。**
+只剩真正的质量问题，冲突消失。
 
-#### ⑤ 修完质量问题，两边都通过
+#### ④ 修完质量问题，两边都通过
 
 ```
 ESLint: （无输出）
@@ -172,77 +153,82 @@ Prettier: All matched files use Prettier code style!
 | 方案 | 配置 | 优点 | 缺点 | 推荐度 |
 |---|---|---|---|---|
 | **分权**（ESLint 管质量 + Prettier 管格式 + `eslint-config-prettier`） | 两个工具各跑各的 | 职责清晰、各用各的编辑器插件、报错来源明确 | 要跑两个命令 | ⭐⭐⭐⭐⭐ **主流** |
-| **一体化**（`eslint-plugin-prettier`，把 Prettier 当 ESLint 规则） | 只跑 ESLint | 一个命令、一个 IDE 面板 | **慢**（Prettier 在 ESLint 里跑，无法并行）、报错信息是 Prettier 的格式（不好定位）、无法用 Prettier 的 CLI 功能 | ⭐⭐ |
+| **一体化**（`eslint-plugin-prettier`，把 Prettier 当 ESLint 规则） | 只跑 ESLint | 一个命令、一个 IDE 面板 | **慢**（Prettier 在 ESLint 进程里逐文件跑）、报错是 Prettier 的格式差异（难定位）、编辑器里大量波浪线 | ⭐⭐ **本项目在用** |
 | **只 Prettier**（ESLint 完全不管格式） | ESLint 只留质量规则 | 最简单 | 需要自己保证团队都装了 Prettier 插件 | ⭐⭐⭐⭐ |
 
-> **`eslint-plugin-prettier` 为什么不推荐**：
-> 「它的思路是『把 Prettier 的差异变成 ESLint 的 error』。听起来很方便，但代价是**每个文件都要在 ESLint 的进程里跑一遍 Prettier**——大项目里 lint 时间翻倍。而且 ESLint 的报错会变成 `Delete ⏎` 这种格式差异，可读性很差。**官方文档现在也建议不要用它，改用 `eslint-config-prettier` + 分开跑。**」
+`eslint-plugin-prettier` 的代价是具体的：Prettier 在 ESLint 进程内再跑一遍、报错变成 `Delete ⏎` 这类格式差异、多一层可能出问题的间接。Prettier 官方文档把它列为 **generally not recommended**，推荐用 `eslint-config-prettier` 关掉冲突规则后直接跑 `prettier --check .`。
 
-### 实际项目配置（可直接用）
+### 本项目配置（节选）
 
 ```js
-// eslint.config.mjs（ESLint 9+ 的 flat config）
-import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import vue from 'eslint-plugin-vue';
-import prettierConfig from 'eslint-config-prettier';
+// eslint.config.js（ESLint 9+ flat config）
+import js from '@eslint/js'
+import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended'
+import pluginVue from 'eslint-plugin-vue'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
 
-export default [
+export default tseslint.config(
+  { ignores: ['dist/**', 'node_modules/**', 'public/**'] },
+
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  ...vue.configs['flat/recommended'],
+  ...pluginVue.configs['flat/recommended'],
+  // 内含 eslint-config-prettier（关掉格式规则）+ prettier/prettier 规则
+  eslintPluginPrettierRecommended,
 
   {
-    rules: {
-      // 质量：必须开
-      eqeqeq: ['error', 'smart'],
-      'no-var': 'error',
-      'prefer-const': 'error',
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+    files: ['**/*.{js,mjs,cjs,vue}'],
+    languageOptions: { globals: globals.browser },
+  },
 
-      // 框架相关
-      'vue/multi-word-component-names': 'off',   // 允许单词组件名
-
-      // 类型相关
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+  {
+    files: ['**/*.vue'],
+    languageOptions: {
+      parserOptions: { parser: tseslint.parser, extraFileExtensions: ['.vue'] },
     },
   },
 
-  // ① 忽略目录
-  { ignores: ['dist/**', 'node_modules/**', 'coverage/**'] },
-
-  // ② 必须放最后：关闭所有与 Prettier 冲突的规则
-  prettierConfig,
-];
+  {
+    rules: {
+      'vue/multi-word-component-names': 'off',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+)
 ```
 
 ```json
-// .prettierrc
+// .prettierrc.json
 {
-  "semi": true,
+  "semi": false,
   "singleQuote": true,
   "printWidth": 100,
   "tabWidth": 2,
   "trailingComma": "all",
   "arrowParens": "always",
+  "singleAttributePerLine": true,
   "endOfLine": "lf"
 }
 ```
 
-**`endOfLine: "lf"` 这个容易被忽略**——Windows 上 git 默认 `autocrlf` 会转成 CRLF，和 Prettier 的默认 `lf` 冲突，导致「本地全绿、CI 全红」。加 `"endOfLine": "lf"` + `.gitattributes` 一起解决。
+两个配置合起来的实际行为：`npm run lint` 一条命令同时报质量与格式问题（`prettier/prettier` 是 error，`quotes`/`semi`/`indent` 被关成 off），`npm run format:check` 仍用 Prettier CLI 复查。注意本项目 `semi` 是 `false`，与 Prettier 默认的 `true` 相反——**读仓库配置，不要背默认值**。
+
+**`endOfLine: "lf"` 这个容易被忽略**——Windows 上 git 的 `core.autocrlf` 会把换行转成 CRLF，和 Prettier 的默认 `lf` 冲突，导致「本地全绿、CI 全红」。加 `"endOfLine": "lf"` + `.gitattributes` 一起解决。
 
 ### 追问链
 
 | 追问 | 答法 |
 |---|---|
-| 为什么 Prettier 不报具体哪里错？ | 它是「重新打印器」不是「检查器」。它把你的 AST 按自己的规则打印一遍，只是不告诉你差异在哪（`--write` 直接覆盖）。要定位用 `prettier --check` + git diff |
-| ESLint 的 `--fix` 有风险吗？ | 有。`prefer-const`、`no-unused-vars` 这类可能改变行为。**建议 fix 完后 review diff**，尤其别在 CI 里对源码跑 `--fix` |
-| 团队不想装 Prettier 插件怎么办？ | 用 `lint-staged` + husky 在提交时自动格式化。**把「格式」从「人的习惯」变成「流程的保证」** |
-| ESLint 10 还内置格式规则吗？ | **仍然可用**（我实测 `quotes`/`semi`/`indent` 都生效），但官方方向是把格式规则迁到 `@stylistic/eslint-plugin`。**新项目不要再用这内置格式规则** |
-| 为什么 ESLint 要用 flat config？ | 旧版 `.eslintrc` 的 `extends`/`overrides` 组合太复杂，无法静态分析「最终生效的规则」。flat config 是一个数组，**从前往后合并，行为可预测** |
-| 怎么让 lint 只检查改动的文件？ | `lint-staged` 或 `git diff --name-only --diff-filter=ACMR | xargs eslint` |
-| lint 在 CI 里跑多久算合理？ | 中型项目（500 个文件）应该在 30 秒内。超过说明要么规则太多、要么没开缓存。**ESLint 有 `--cache` 参数**，二次跑能快 10 倍 |
+| 为什么 Prettier 不报具体哪里错？ | 它是「重新打印器」不是「检查器」：把 AST 按自己的规则打印一遍，不产出差异位置。要定位用 `prettier --check` + git diff |
+| ESLint 的 `--fix` 有风险吗？ | 有。`prefer-const`、`no-unused-vars` 这类可能改变行为。fix 完后 review diff，尤其别在 CI 里对源码跑 `--fix` |
+| 团队不想装 Prettier 插件怎么办？ | 用 `lint-staged` + husky：本仓库 `.husky/pre-commit` 执行 `npx lint-staged`，`package.json` 里 `*.{js,mjs,cjs,ts,mts,cts,vue}` 走 `eslint`，`*.{json,md,css,html,yml,yaml}` 走 `prettier --check`。**把「格式」从「人的习惯」变成「流程的保证」** |
+| ESLint 9 还内置格式规则吗？ | **还有**：`quotes`/`semi`/`indent` 在 9.39.5 里仍可启用，但已标记 `deprecated`（8.53.0 起，`availableUntil: 11.0.0`），官方方向是把它们迁到 `@stylistic/eslint-plugin`。新项目不要再用内置格式规则 |
+| 为什么 ESLint 要用 flat config？ | 旧 `.eslintrc` 的 `extends`/`overrides` 组合难以静态推导最终规则。flat config 是一个数组，**从前往后合并、后项覆盖前项**，行为可预测 |
+| 怎么让 lint 只检查改动的文件？ | `lint-staged`，或 `git diff --name-only --diff-filter=ACMR \| xargs eslint` |
+| 怎么让 lint 在 CI 里跑得快？ | 开 `--cache`，二次运行只检查改动过的文件；lint 与格式化分开跑，CI 里不对源码执行 `--fix` |
 
 ---
 
@@ -252,7 +238,7 @@ export default [
 
 > 「把源码解析成 AST，遍历 AST 检查规则。ESLint 就是这么做的。」
 
-**一句话说对了 80%**。缺的是：**为什么这样做就不会误判**，以及**AST 里的规则长什么样**。
+方向对，缺两点：**为什么这样做就不会误判**、**AST 里的规则长什么样**。
 
 ### 一句话结论
 
@@ -279,7 +265,7 @@ const s = "if (a == b) {}";
 
 ### AST 长什么样
 
-用 `espree`（ESLint 的默认 parser）解析 `var a = 1 + 2;`：
+用 `espree`（ESLint 的默认 parser）解析 `var a = 1 + 2;`（简化）：
 
 ```js
 {
@@ -308,7 +294,7 @@ const s = "if (a == b) {}";
 2. `operator` / `kind` 这些字段是规则的判断依据
 3. `loc` 提供报错位置（`1:10` 这种行列号就是从这来的）
 
-### 手写一条 Lint 规则（不用 ESLint，40 行）
+### 手写一条 Lint 规则（不用 ESLint）
 
 理解了 AST，「写 Lint 规则」就是「遍历树 + 匹配节点」。
 
@@ -338,7 +324,7 @@ walk(tree, (node) => {
 });
 ```
 
-实测输出：
+输出：
 
 ```
 ✗ 第 1 行：不允许使用 var，请用 let/const
@@ -354,7 +340,7 @@ walk(tree, (n) => {
 });
 ```
 
-**这就是 ESLint 的全部原理。** 它内置的 300 多条规则，本质就是 300 多个这样的「节点匹配 + 报告」。
+ESLint 的每条内置规则都是这个形状：遍历树、匹配节点、报告位置。
 
 ### ESLint 比手写多做了什么
 
@@ -388,7 +374,7 @@ function g() {
 
 ```
 源码
- ↓ @eslint/eslintrc 加载配置
+ ↓ 读取 eslint.config.js，合并成最终生效的规则集
  ↓ parser（默认 espree）解析 → AST
  ↓ eslint-scope 建作用域链
  ↓ SourceCode 包装 AST（提供 getText / getTokenBefore 等工具）
@@ -397,17 +383,17 @@ function g() {
  ↓ 输出格式化
 ```
 
-**注意第 5 步的机制**：ESLint **只遍历一次**，把每个节点分发给所有关心它的规则。所以 300 条规则的耗时不是 300 次遍历。
+**注意第 5 步的机制**：ESLint **只遍历一次**，把每个节点分发给所有关心它的规则。所以规则变多不会成倍增加遍历开销。
 
 ### 追问链
 
 | 追问 | 答法 |
 |---|---|
-| ESLint 用什么 parser？ | 默认 `espree`（基于 acorn）。**TS 项目要换 `@typescript-eslint/parser`**，Vue 要换 `vue-eslint-parser` |
-| parser 换了，规则还能用吗？ | 质量规则能用（因为 TS 的 AST 是 ESTree 的超集）。**但纯 JS 的某些规则在 TS 上会误报**，所以 TS 项目要用 `@typescript-eslint/*` 版本的规则 |
+| ESLint 用什么 parser？ | 默认 `espree`（基于 acorn）。**TS 项目要换 `@typescript-eslint/parser`**，Vue 要换 `vue-eslint-parser`（`<script lang="ts">` 再嵌套 `@typescript-eslint/parser`） |
+| parser 换了，规则还能用吗？ | 大部分质量规则能用，因为 TS 的 AST 保留了 ESTree 的主要节点。**但核心规则直接处理 TS 语法会误报或失效**，所以 TS 项目要用 `@typescript-eslint/*` 对应版本 |
 | 为什么 Lint 不会误报字符串里的代码？ | 因为字符串在 AST 里是 `Literal` 节点，不是 `BinaryExpression`。**它看结构不看字符** |
 | 注释里的代码会被检查吗？ | 默认不会（注释不进 AST）。但 `eslint-plugin-jsdoc` 这类插件会用 `sourceCode.getAllComments()` 单独处理注释 |
-| ESLint 为什么比正则慢？ | 要解析完整 AST + 建作用域。但换来的是**零误报**。**正则只适合「找某个固定模式」，不适合「判断代码结构」** |
+| ESLint 为什么比正则慢？ | 要解析完整 AST + 建作用域，换来的是避免这类结构性误报。**正则只适合「找某个固定模式」，不适合「判断代码结构」** |
 | 那为什么有的工具用正则？ | 因为快，且场景简单。比如 `grep` 搜 `console.log` 是合理需求。**但只要涉及「这个 console.log 是不是在注释里」，正则就不够了** |
 | 自定义规则怎么发布？ | 做成 `eslint-plugin-xxx` 包，用 `RuleTester` 写测试 |
 
@@ -419,17 +405,11 @@ function g() {
 
 > 「Jest + Vue Test Library / React Testing Library。写用例测函数和组件。覆盖率工具 istanbul。」
 
-**工具名对了，但「怎么做」只说了一句「写用例」**。缺的是：
-
-1. **测什么、不测什么**（这是最容易答错的）
-2. **覆盖率为什么不能当 KPI**
-3. **单元测试 / 组件测试 / E2E 的分层**
+工具名对了，缺三件事：**测什么、不测什么**、**覆盖率为什么不能当 KPI**、**单元测试 / 组件测试 / E2E 的分层**。
 
 ### 一句话结论
 
 > 单元测试的价值不是「证明代码对」，是**「让你敢改」**。
-
-> 这句话说出来，面试官会认为你理解测试的意义，而不是完成任务。
 
 ### 测什么（按投入产出排序）
 
@@ -444,7 +424,7 @@ function g() {
 | ❌ | **第三方库的行为** | 你测的是别人的代码 | 不测 |
 | ❌ | **实现细节（内部方法名、私有状态）** | 一重构就红，维护成本极高 | 不测 |
 
-### 不该测什么（这段最能体现经验）
+### 不该测什么
 
 **三个「看起来该测其实不该测」的东西**：
 
@@ -468,7 +448,7 @@ it('点击后按钮显示加载中', async () => {
 });
 ```
 
-**区别**：前者测「怎么实现的」，后者测「用户看到什么」。**前者会阻碍重构，后者不会。**
+前者测「怎么实现的」，后者测「用户看到什么」；前者会阻碍重构。
 
 #### ② 不要为了覆盖率去测 getter / 常量
 
@@ -500,28 +480,23 @@ it('计算价格', () => {
 | 只测 happy path | 100% 行覆盖，但所有错误分支都没测 |
 | 测了但不测断言 | 跑一遍不断言，覆盖率满的 |
 
-**更靠谱的指标**：**Mutation Testing（变异测试）**——工具（Stryker）会故意改动你的源码（比如把 `>` 改成 `>=`），看测试能不能发现。**发现不了说明测试是无效的。**
-
-> 面试时可以说：
-> 「我不把覆盖率当 KPI。覆盖率能告诉『哪些代码完全没测』，但不能告诉『测得对不对』。要验证测试质量，得用变异测试——故意改坏代码，看测试会不会红。**行覆盖率 60% 但有变异测试把关，比行覆盖率 95% 但全是 `toBeDefined` 有价值得多。**」
+覆盖率只说明「哪些代码完全没跑过」，说明不了「测得对不对」。验证测试本身的质量用**变异测试（Mutation Testing）**：Stryker 故意改动源码（比如把 `>` 改成 `>=`），测试仍然全绿就说明断言无效。
 
 ### 测试分层（金字塔 vs 奖杯）
 
-```
-        传统金字塔                    现代奖杯（Kent C. Dodds）
-        /\   E2E 5%                    /\
-       /  \                            /  \   E2E 10%
-      /    \  集成 15%                /----\
-     /      \                        /      \  集成/组件 50%   ← 加厚
-    /        \ 单元 80%             /--------\
-                                  /          \ 单元 40%
-```
+| 层级 | 传统金字塔 | 现代奖杯（Kent C. Dodds） |
+|---|---|---|
+| 单元 | 80% | 40% |
+| 集成 / 组件 | 15% | 50% |
+| E2E | 5% | 10% |
 
-**为什么现代实践把「集成」加厚？**
+**为什么现代实践把「集成」加厚？** 因为**前端的问题大多在「组件之间」**，不在「单个函数里」。一个按钮组件单测 100% 通过，和表单组合起来的交互仍可能是错的。
 
-因为**前端的问题大多在「组件之间」**，不在「单个函数里」。一个按钮组件单测 100% 通过，但和表单组合起来的交互可能是错的。
+分层原则：
 
-> 「我的分层原则是：**纯逻辑单元测，交互组件集成测，关键路径 E2E 测。** 比例大概 4:5:1。E2E 只测三条链路：登录、核心业务、支付。」
+- 纯逻辑单元测，交互组件集成测，关键路径 E2E 测
+- 比例约 4:5:1——单元 40%、集成 50%、E2E 10%
+- E2E 只测三条链路：登录、核心业务、支付
 
 ### 工具选型
 
@@ -534,7 +509,7 @@ it('计算价格', () => {
 | **MSW** | 网络 mock | **拦截真实 fetch**，比 mock 掉 axios 更接近真实 |
 | **Playwright / Cypress** | E2E | Playwright **更快更稳**，Cypress 调试体验好 |
 
-**MSW 这一点值得说**：
+MSW 与 mock 掉 HTTP 库的区别：
 
 ```js
 // ❌ 老做法：mock 掉 axios，测的不是真实链路
@@ -548,9 +523,9 @@ server.use(
 // 组件里真的 fetch('/api/list')，真的走请求流程，只是被拦了
 ```
 
-**区别**：前者测的是「你的代码怎么调 axios」，后者测的是「你的代码处理响应对不对」。**后者不会因为换 HTTP 库就全部报错。**
+前者测的是「你的代码怎么调 axios」，后者测的是「你的代码处理响应对不对」。**后者不会因为换 HTTP 库就全部报错。**
 
-### 一个真实的测试用例（写完能直接跑）
+### 测试用例示例（重点在边界）
 
 ```js
 // src/utils/format.test.js
@@ -583,19 +558,7 @@ describe('formatAmount', () => {
 });
 ```
 
-**注意最后两条**：它们不是「主要功能」，但**线上事故往往出在这些地方**。
-
-### 面试怎么说
-
-> 「我做测试的原则是**测试行为不测实现**。
->
-> 具体分层：**纯函数和工具函数写单元测试**，要求覆盖主要分支和边界；**组件用 Testing Library 做集成测试**，从用户角度断言「看到什么」而不是「内部状态是什么」；**E2E 只测三条关键链路**，因为 E2E 慢且脆。
->
-> 比例大概是 4:5:1——**单元 40%、集成 50%、E2E 10%**。为什么集成比单元多？因为前端的问题大多在组件之间，不在单个函数里。
->
-> 覆盖率我不当 KPI。行覆盖率能说明「哪些代码完全没跑过」，但说明不了「测得对不对」。要验证测试本身的质量，我会用变异测试——故意把 `>` 改成 `>=`，看测试能不能红。
->
-> 还有一个实践：网络请求我用 MSW 而不是 mock axios。因为 MSW 拦的是真实请求，换 HTTP 库不用改测试。」
+最后两条不是主流程，但**线上事故往往出在这些边界**：`-0` 的显示、非法输入的兜底。
 
 ### 追问链
 
@@ -605,8 +568,8 @@ describe('formatAmount', () => {
 | 怎么测异步？ | `await waitFor(() => expect(...))` 或 `findBy*` 查询。**不要用 `setTimeout` 等待** |
 | 怎么测自定义 hook？ | `renderHook`（Testing Library 提供）。**测它的返回值变化，不测内部 state** |
 | 怎么测路由跳转？ | 用 `MemoryRouter` 包一层，断言 `location.pathname`。**不要测 window.location** |
-| 覆盖率多少算合格？ | 看代码性质。**核心业务逻辑 80%+，UI 组件不设硬指标，工具库 90%+**。一刀切 80% 是最差的做法——会逼着人写无意义测试凑数 |
-| CI 里测试跑多久可接受？ | 单元 + 集成应该在 **2 分钟内**。超过就会有人开始跳过测试。E2E 可以更长，但应该并行 |
+| 覆盖率多少算合格？ | 看代码性质。**核心业务逻辑 80%+，UI 组件不设硬指标，工具库 90%+**。一刀切 80% 会逼着人写无意义测试凑数 |
+| CI 里测试要跑多久？ | 单元 + 集成要快到「每次提交都愿意跑」，否则会有人开始跳过测试。E2E 可以更长，但应该并行 |
 | 老项目没测试怎么办？ | **不要一次性补**。从「改 bug 时顺手补一条能复现该 bug 的测试」开始。**这叫「防御性补测」，成本最低收益最高** |
 | 测试写得慢怎么办？ | 三个原因：① 代码耦合太深（该重构）；② 到处 mock（该改依赖注入）；③ 测了太多实现细节（该换成行为断言） |
 
@@ -618,8 +581,8 @@ describe('formatAmount', () => {
 |---|---|
 | ESLint 和 Prettier 一句话分工 | ESLint 管「有没有问题」，Prettier 管「长什么样」 |
 | 它们为什么冲突 | 都管格式，且默认风格相反（Prettier 双引号 vs ESLint 社区单引号） |
-| 怎么解决冲突 | `eslint-config-prettier` 放最后，关掉所有格式规则 |
-| 为什么不推荐 `eslint-plugin-prettier` | 慢（Prettier 在 ESLint 进程里跑）+ 报错信息难读，官方也建议别用 |
+| 怎么解决冲突 | 关掉 ESLint 的格式规则：`eslint-config-prettier` 放最后，或直接用 `eslint-plugin-prettier/recommended`（内含前者） |
+| 为什么不推荐 `eslint-plugin-prettier` | 慢（Prettier 在 ESLint 进程里逐文件跑）+ 报错信息难读，Prettier 官方列为 generally not recommended |
 | `--fix` 和 Prettier 谁先跑 | 先 `eslint --fix`（可能改语义），再 Prettier（只改格式） |
 | Lint 为什么不会误报字符串里的代码 | 看 AST 结构，字符串是 `Literal` 节点不是 `BinaryExpression` |
 | Lint 比手写遍历多什么 | 作用域分析（`no-undef`、`no-shadow` 靠它）、`fixer`、生态 |
@@ -636,20 +599,14 @@ describe('formatAmount', () => {
 
 ```
 【ESLint vs Prettier】
-ESLint：发现问题 / 看语义 / 可能改行为 / 部分能 fix
-Prettier：统一排版 / 看形状 / 不改语义 / 全量重写
-冲突根因：ESLint 历史上也管格式，两者默认风格相反
-解法：eslint-config-prettier 放最后 + 删除所有格式规则
-
-【实测冲突过程】
-Prettier 把 'x' → "x"
-ESLint quotes:['error','single'] 立刻报错
-加 eslint-config-prettier → 只剩 eqeqeq（真问题）
-→ 冲突消失，两边通过
+ESLint：发现问题 / 看语义 / 部分能 fix / 可能改行为
+Prettier：统一排版 / 看形状 / 全量重写 / 不改语义
+冲突根因：ESLint 也管格式，两边默认风格相反（Prettier 双引号 vs quotes: single）
+解法：关掉 ESLint 格式规则（eslint-config-prettier，或 eslint-plugin-prettier/recommended 内含）
 
 【三种方案】
-分权（推荐）：ESLint 质量 + Prettier 格式 + config-prettier
-一体化（不推荐）：eslint-plugin-prettier → 慢 + 报错难读
+分权（主流）：ESLint 质量 + Prettier 格式 + config-prettier
+一体化（本项目采用）：eslint-plugin-prettier → 少一个命令，更慢、报错难读
 只 Prettier：ESLint 去掉所有格式规则
 
 【执行顺序】
@@ -680,12 +637,12 @@ MSW 拦真实请求 > mock axios
 ```
 □ 能用一句话区分 ESLint 和 Prettier 的职责
 □ 能说出「会不会改变行为」这个关键区别
-□ 能复述冲突的实测过程（Prettier 双引号 vs ESLint 单引号）
+□ 能说出冲突的触发条件（ESLint 开着格式规则 + 两边默认风格相反）
 □ 能说出 eslint-config-prettier 的作用和放置位置
 □ 能说出为什么不推荐 eslint-plugin-prettier
 □ 能说出 `--fix` 和 Prettier 的正确执行顺序
 □ 能解释「Lint 为什么不误报字符串里的代码」
-□ 能说出 Lint 看的是 AST 的哪两个字段
+□ 能说出 Lint 依赖 AST 的哪些字段（type / operator / loc）
 □ 能手写出 no-var 和 eqeqeq 两条规则
 □ 能说出 ESLint 相比手写遍历多出的核心能力
 □ 能说出单元测试的真正价值
