@@ -1,7 +1,7 @@
 # 编程 03｜Promise 核心实现
 
-> 覆盖题号：4（手写 Promise）、10（all）、11（race）、18（allSettled）、26、30（finally）、35、37、44、27（retry）、43
-> 去重后：**6 个考点**
+> 覆盖：手写 Promise、all、race、allSettled、any、finally、retry —— **7 个考点**
+> 全部实现都按 `MyPromise` 一个类展开，静态方法写在类内部
 
 ---
 
@@ -30,7 +30,7 @@
 ② 微任务队列：then 的回调必须异步执行，排在当前同步代码之后
 ```
 
-搞清这两点，`then`/`all`/`race`/`finally` 全都能推出来：
+搞清这两点，`then`/`all`/`race`/`any`/`finally`/`retry` 全都能推出来：
 
 | 方法 | 本质 |
 |---|---|
@@ -40,77 +40,57 @@
 | `allSettled` | 注册 n 个回调，都转成 `{status}` 后计数 |
 | `any` | 注册 n 个回调，成功就先赢，全失败返回 `AggregateError` |
 | `finally` | `then` 包一层，回调里不改变值 |
+| `retry` | 失败时递归重试，延迟用 `setTimeout`，全部失败才 reject |
 
 ---
 
 ## 3.1 手写完整 Promise
 
-### ⚠️ 原题单答案有 3 个致命 bug
+### 一句话结论
 
-原答案（Q4）我原样复制跑了一遍，**三个都复现了**：
+> 一个状态机（`pending → fulfilled / rejected`，不可逆）+ 一个回调队列（pending 期间先存着）+ 一条调度规则（回调一律走微任务）。
 
-#### bug 1：已 settled 后 `then`，链直接断
+### 三个最容易写错的地方
+
+这三种写法都能「跑出结果」，却都会在最常见的路径上出错；后面的实现逐个对应修正。
+
+**① 已经 settled 之后再调 `then`，链就断了**
 
 ```js
-// 原答案的关键三行
-this.callbacks.push({ /* ... */ });
-if (this.state === 'fulfilled') onFulfilled && onFulfilled(this.value);
-//                              ↑ 直接调原始回调，没有调用包装好的 handler，也没有 resolve
-if (this.state === 'rejected') onRejected && onRejected(this.value);
+// 错法：settled 分支直接调原始回调，绕过了包装过的 handler
+then(onFulfilled, onRejected) {
+  return new MyPromise((resolve, reject) => {
+    this.handlers.push({ onFulfilled, onRejected, resolve, reject });
+    if (this.state === 'fulfilled') onFulfilled?.(this.value); // ← 没调 resolve
+    if (this.state === 'rejected') onRejected?.(this.value);
+  });
+}
 ```
-
-实测：
 
 ```js
 new MyPromise(r => r(1))
-  .then(v => { log('then1', v); return v + 1; })
-  .then(v => log('then2', v));
-
-// 输出：
-//   then1 收到: 1
-//   （then2 永远不打印）
+  .then(v => log('then1', v))    // 打印 then1 1
+  .then(v => log('then2', v));   // 永远不打印
 ```
 
-**根因**：`if (this.state === 'fulfilled')` 这个分支里，调用的是**原始的 `onFulfilled`**，而不是 `callbacks` 里那个「包了 `try/catch` 和 `resolve` 的 handler」。所以：
+回调执行了（副作用生效），但 `then` 返回的新 Promise 从没被 `resolve`，后面整条链挂死。而 executor 是**同步执行**的，`then()` 被调用时状态已经是 fulfilled——这是主流程，不是边界情况。
 
-- 回调执行了（副作用生效，`then1` 打印了）
-- 但**返回的新 Promise 永远不会 resolve**
-- 后续 `.then` 全部挂死
-
-**而这个分支恰恰是最常见的场景**——`new Promise(r => r(1))` 的 executor 是同步执行的，`then()` 被调用时状态已经是 `fulfilled` 了。
-
-> **这是整份题单最严重的 bug**。不是边界问题，是主流程错的。
-
-#### bug 2：`then` 回调同步执行，违背规范
-
-实测：
+**② 回调同步执行，顺序不可预测**
 
 ```js
 log('before');
-new MyPromise(r => r('x')).then(v => log('  then 回调执行:', v));
+new MyPromise(r => r('x')).then(v => log('then', v));
 log('after');
 
-// 输出：
-//   before
-//     then 回调执行: x
-//   after          ← 在 before 和 after 之间同步打印
+// 错：before → then x → after
+// 对：before → after → then x
 ```
 
-规范要求 `then` 回调**必须**是微任务，正确输出应该是 `before → after → then 回调`。
+规范要求 `then` 回调必须是微任务，为的是**执行顺序可预测**：无论 Promise 同步还是异步 settle，回调时机都一致。否则「有时同步、有时异步」就会写出难查的时序 bug（Zalgo）。
 
-**为什么规范要这样规定？** 保证**执行顺序可预测**：不管 Promise 是同步 resolve 还是异步 resolve，回调的执行时机都一致。否则「有时同步有时异步」会导致难以排查的时序 bug（这就是所谓的 Zalgo 问题）。
+**③ 回调里 `throw` 直接逃逸**
 
-#### bug 3：`then` 里 throw，异常直接逃逸导致进程崩溃
-
-实测直接崩了：
-
-```
-Error: boom
-    at /private/tmp/coding-check/p1.js:64:29
-Node.js v22.22.2
-```
-
-因为同步分支里 `onFulfilled(this.value)` 没有任何 `try/catch` 包裹，异常一路冒到顶层。正确行为应该是被下一个 `catch` 捕获。
+同步分支里调用回调没有 `try/catch`，异常一路冒到顶层把进程打崩；正确行为是转成新 Promise 的 reject，交给下一个 `catch`。
 
 ### 正确实现（八个要素）
 
@@ -216,11 +196,11 @@ class MyPromise {
 }
 ```
 
-### 实测（全部通过）
+### 验证：每条边界都跑一遍
 
 ```
-链式: sync → t1:1 → t2:2 → t3:4        ← sync 在最前，证明 then 是异步
-pending 后 resolve → delayed!
+链式: before → after → t1 1 → t2 2 → t3 4   ← before/after 先于回调，证明 then 是异步
+pending 后 resolve → delayed
 executor 同步抛错 → caught:executor boom
 值穿透 then(null).then(undefined) → 5
 错误穿透 .then().then().catch() → caught:e1
@@ -234,36 +214,26 @@ resolve 自己 → TypeError: Chaining cycle detected
 原生对比   → TypeError: Chaining cycle detected for promise #<Promise>
 ```
 
-### 八个要素逐个解释（这是面试的主战场）
+### 八个要素：不写会怎样
+
+面试追问基本都落在这一列：每个要素都对应一个具体的失败现象。
 
 | # | 要素 | 不写会怎样 |
 |---|---|---|
 | ① | 状态不可逆 | reject 后还能 resolve，状态乱套 |
 | ② | `resolve` 自己 | 死锁（原生抛 TypeError） |
-| ③ | thenable 展开 | `resolve(promise)` 拿不到值，拿到的是 promise 对象 |
-| ④ | `called` 标志 | 恶意 thenable 调两次 resolve，状态被二次修改 |
+| ③ | thenable 展开 | `resolve(promise)` 拿到的是 promise 对象，不是值 |
+| ④ | `called` 标志 | 恶意 thenable 调两次回调，状态被二次修改 |
 | ⑤ | executor try/catch | `new Promise(() => { throw 1 })` 不会 reject，进程崩 |
-| ⑥ | 微任务 | 顺序不可预测（bug 2） |
+| ⑥ | 微任务 | 顺序不可预测（坑 ②） |
 | ⑦ | 值穿透 | `p.then(null).then(fn)` 里 `fn` 收不到值 |
-| ⑧ | 回调抛错转 reject | 异常逃逸（bug 3） |
+| ⑧ | 回调抛错转 reject | 异常逃逸（坑 ③） |
 
-### 面试怎么说
+### 面试口述要点
 
-**接题时（先给结构，别直接写）**：
-
-> 「手写 Promise 我按四块来：**构造函数里的状态机、then 的链式、thenable 展开、静态方法**。构造函数这块最关键的是三件事：状态不可逆、executor 同步执行但抛错要 reject、resolve 一个 thenable 要展开。」
-
-**写的时候**：
-
-> 「先定三个常量。构造函数里存 `state`、`value`、`handlers`。`handlers` 是回调队列——因为 `then` 可能在 Promise 还是 pending 的时候就调用了，回调得先存着。」
-
-**写到 `then` 的同步分支时（这是原答案翻车的地方）**：
-
-> 「这里有个坑：`then` 被调用时 Promise 可能**已经 settled** 了（因为 executor 是同步执行的）。所以不能只 push 到队列就走人，要判断一下状态，已经 settled 就立即 flush。但 flush 里必须用 `queueMicrotask` 包一层——**规范要求 then 回调是微任务**，不能同步调。」
-
-**写完之后（主动补边界）**：
-
-> 「我补几个规范细节：`resolve` 自己会抛 TypeError；thenable 展开要用 `called` 标志防止多次回调；`then` 里非函数参数要做值穿透。另外还有个我没实现的：`resolve` 里如果 `value.then` 是个 getter 且抛错，要转成 reject——这个我写了 try/catch。」
+- **结构分四块**：构造函数里的状态机、`then` 的链式、thenable 展开、静态方法。`handlers` 队列是因为 `then` 可能在还是 pending 时就调用，回调得先存着。
+- **最容易漏的一步**：`then` 被调用时 Promise 可能已经 settled（executor 同步执行），要立即 flush；但 flush 必须用 `queueMicrotask` 包一层。
+- **主动补边界**：`resolve` 自己抛 `TypeError`；thenable 展开用 `called` 标志防多次回调；非函数参数做值穿透；`value.then` 是抛错的 getter 时转成 reject。
 
 ### 追问链
 
@@ -274,11 +244,9 @@ resolve 自己 → TypeError: Chaining cycle detected
 | 为什么 `queueMicrotask` 不用 `setTimeout`？ | `setTimeout` 是宏任务，会晚一轮。**微任务在当前宏任务结束后、下一个宏任务之前清空**，这才是 Promise 的语义 |
 | `then` 里返回 Promise 会怎样？ | 会被「展开」（adopt）。这就是为什么 `h.resolve(cb(...))` 能自动处理——因为 `resolve` 内部会判 thenable |
 | 手写的和原生性能差多少？ | 数量级差距。V8 的 Promise 有大量 C++ 优化和内联缓存；手写版每次 `then` 都新建对象 + 闭包 |
-| 为什么原生 Promise 的 `then` 是 `async`？ | 不是 `async`，是「回调通过微任务调度」。V8 里是 `PromiseReactionJob` 排队到 microtask queue |
+| 原生 Promise 内部的回调是怎么调度的？ | 不是 `async`，而是把回调打包成 `PromiseReactionJob` 排进 microtask queue |
 | 能说出 `Promise.resolve` 和 `new Promise(r=>r(x))` 的区别吗？ | `Promise.resolve(p)` 如果 `p` 已是 Promise 会**直接返回 p**（同一个对象）；`new Promise` 永远新建 |
-| 手写版怎么支持 `async/await`？ | 不需要额外支持。`await` 底层就是 `then`，**只要 `then` 符合规范，`await` 就能用** |
-
-> 最后一条可以现场演示：`await new MyPromise(r => setTimeout(()=>r(42), 10))` 能正常拿到 42。这一步做出来非常有说服力。
+| 手写版怎么支持 `async/await`？ | 不需要额外支持。`await` 底层就是 `then`，**只要 `then` 符合规范，`await` 就能用**——`await new MyPromise(r => setTimeout(() => r(42), 10))` 能拿到 42 |
 
 ---
 
@@ -313,13 +281,13 @@ Promise.myAll = function(promises) {
 3) myAll(new Set([1,2])) → TIMEOUT    ❌ 永久 pending
 ```
 
-#### bug：空数组永久 pending
+#### 问题 1：空数组永久 pending
 
 `[].forEach` 一次都不执行，所以 `++count` 永远不跑，`count === 0` 但没有任何代码去 `resolve`。
 
 **原生 `Promise.all([])` 立刻 resolve 成 `[]`。** 这是面试官**必测**的边界。
 
-#### bug：传 Set 也死锁（更隐蔽）
+#### 问题 2：传 Set 也死锁（更隐蔽）
 
 `Set` 有 `.forEach`，所以能遍历；但 `Set` 没有 `.length`（是 `undefined`）。于是 `++count === undefined` 永远为 `false` → 永久 pending。
 
@@ -330,10 +298,13 @@ Promise.myAll = function(promises) {
 ```js
 static all(iterable) {
   return new MyPromise((resolve, reject) => {
-    let items;
-    try { items = Array.from(iterable); }        // ← 支持任意 iterable
-    catch (e) { return reject(new TypeError('not iterable')); }
+    // 原生 all 接受任意 iterable，非 iterable 直接 reject
+    // 注意 Array.from(1) 返回 [] 而不抛错，所以必须显式检查 Symbol.iterator
+    if (iterable == null || typeof iterable[Symbol.iterator] !== 'function') {
+      return reject(new TypeError('not iterable'));
+    }
 
+    const items = Array.from(iterable);
     const len = items.length;
     const results = new Array(len);
 
@@ -360,14 +331,14 @@ static all(iterable) {
 2) 空数组                                → []          ✅
 3) Set([1,2])                            → [1,2]       ✅
 4) 首个 reject（慢的成功 + 快的失败）     → caught:fast ✅
-5) 非 iterable 'a'                       → TypeError   ✅
+5) all(1)                                → TypeError   ✅
 ```
 
 ### 四个技术点
 
 | 点 | 为什么 |
 |---|---|
-| `Array.from(iterable)` | 原生 `all` 接受任意 iterable，不只是数组 |
+| `Symbol.iterator` 检查 + `Array.from(iterable)` | 原生 `all` 接受任意 iterable；`Array.from(1)` 返回 `[]` 不抛错，所以要先判 `Symbol.iterator` |
 | `results[i] = val` 而不是 `push` | **保证结果顺序**。完成顺序和数组顺序不一定一致 |
 | `if (len === 0) return resolve([])` | 空数组不特判就永远不 resolve |
 | `.then(onFulfilled, onRejected)` 双参 | 用双参而不是 `.then().catch()`——**`.catch` 会连带捕获 onFulfilled 里抛的错**，语义不对 |
@@ -404,7 +375,7 @@ Promise.myRace = function(promises) {
 };
 ```
 
-**基本正确**，两个小问题：不支持非数组 iterable（`Set` 会报 `forEach` 不存在）；`.then(resolve).catch(reject)` 可以简化成双参。
+**基本正确**，两个小问题：只支持带 `forEach` 的对象（数组、`Set`），生成器这类可迭代对象没有 `forEach` 会直接报错；`.then(resolve).catch(reject)` 可以简化成双参。
 
 ### 正确实现
 
@@ -455,7 +426,7 @@ Promise.myAllSettled = function(promises) {
 };
 ```
 
-**这个实现是对的，而且写得很优雅**——把问题转化成「每个都包成永不 reject 的 promise，然后 `all`」。
+**思路是对的，而且写得很优雅**——把问题转化成「每个都包成永不 reject 的 promise，再交给 `all`」。
 
 实测：
 
@@ -465,7 +436,24 @@ Promise.myAllSettled = function(promises) {
 传 Set                  → TypeError: promises.map is not a function
 ```
 
-唯一问题是只支持数组（`Set` 没有 `.map`）。改成 `Array.from(promises).map(...)` 即可。
+两处要修：`Set` 没有 `.map`，要先 `Array.from`；`.then(f).catch(g)` 里的 `g` 会连 `f` 抛的错一起捕获，改成 `.then(f, g)` 双参。
+
+### 正确实现
+
+```js
+static allSettled(iterable) {
+  return MyPromise.all(
+    Array.from(iterable).map(p =>
+      MyPromise.resolve(p).then(
+        value => ({ status: 'fulfilled', value }),
+        reason => ({ status: 'rejected', reason }),
+      ),
+    ),
+  );
+}
+```
+
+`allSettled(new Set([1, 2]))` 现在也能返回两条 `fulfilled`。
 
 ### 为什么这个写法是「优雅」的
 
@@ -489,9 +477,7 @@ static allSettled(iterable) {
 }
 ```
 
-两种都对。**原答案那种「转换 + 复用 all」的思路更值得说**：
-
-> 「`allSettled` 可以看作一个问题变换：**先把每个 promise 的失败『吃掉』，转成一个描述对象，这样失败就不会中断 `all`**。于是直接复用 `all`。」
+两种都对，但**「转换 + 复用 `all`」的思路更值得说**：先把每个 promise 的失败「吃掉」，转成描述对象，`all` 就不会被中断，直接复用。
 
 这种「把新问题转化成已有解」的思维，面试官会记一笔。
 
@@ -508,7 +494,11 @@ static allSettled(iterable) {
 
 ## 3.5 Promise.any
 
-题单里没有这题，但**现在面试经常连着 all/race/allSettled 一起问**，补上。
+### 一句话结论
+
+> 第一个**成功**的就赢；全部失败才 reject，错误汇总成 `AggregateError`。
+
+实现是 `allSettled` 的镜像：成功一个就 `resolve`，失败就按索引收集，计数到 n 才 `reject`。
 
 ```js
 static any(iterable) {
@@ -558,18 +548,20 @@ any([reject('a'), reject('b')])                    → AggregateError | errors: 
 
 > 不管成功失败都执行，**但不改变值**。
 
-### 原题单答案
+### 实现
+
+和 3.1 里的 `finally` 是同一份代码，关键是两个分支都要**把原值原样传下去**：
 
 ```js
-Promise.prototype.myFinally = function(cb) {
+finally(cb) {
   return this.then(
-    val => Promise.resolve(cb()).then(() => val),
-    err => Promise.resolve(cb()).then(() => { throw err; })
+    v => MyPromise.resolve(cb()).then(() => v),
+    e => MyPromise.resolve(cb()).then(() => { throw e; }),
   );
-};
+}
 ```
 
-**这个实现是对的**。实测：
+实测：
 
 ```
 fulfilled: cleanup → then:v
@@ -578,7 +570,7 @@ rejected:  cleanup → catch:e
 
 ### 三个规范细节
 
-#### ① 为什么要 `Promise.resolve(cb())`
+#### ① 为什么要 `MyPromise.resolve(cb())`
 
 如果 `cb` 返回一个 Promise（比如关闭动画），要**等它完成**再继续。`Promise.resolve` 包一层让同步返回值也能 `.then`。
 
@@ -633,13 +625,13 @@ function retry(fn, times, delay) {
 
 ```
 1) retry(flaky, 5) 首次第 3 次成功 → ok@3，实际调用 3 次        ✅
-2) fn 同步抛错 → 「sync」直接逃逸，调用次数 1（没有重试）        ❌
+2) fn 同步抛错 → 首轮直接 reject，调用次数 1（没有重试）        ❌
 3) 全部失败 → 总调用次数 3（times=2 时）                        ⚠️ 语义歧义
 ```
 
 #### 问题 1：`fn` 同步抛错不重试
 
-`fn().then(...)` 里如果 `fn()` 直接 `throw`，异常在 `attempt` 里冒出，整个 `new Promise` 的 executor 崩掉——**而且因为它是在 `attempt` 里抛的，不是在 executor 顶层，所以连 reject 都不会触发**，直接变成未捕获异常。
+`fn().then(...)` 里如果 `fn()` 直接 `throw`，异常会从 `attempt` 冒出来。首轮是在 executor 的同步执行过程中抛的，`new Promise` 会接住并 reject——所以结果是「直接失败，一次都不重试」；如果抛在 `setTimeout` 触发的后续轮次，则连 reject 都没有，直接变成未捕获异常。
 
 #### 问题 2：`times` 的语义歧义
 
@@ -726,9 +718,9 @@ fn 同步抛错                                   → 正常进入重试（不�
 ④ called 标志  ⑤ executor try/catch       ⑥ queueMicrotask
 ⑦ 值/错误穿透  ⑧ 回调抛错转 reject
 
-【原答案三个致命 bug】
+【三个高频错误】
 已 settled 后 then → 直接调原始回调，没 resolve → 链断
-then 同步执行 → 违背规范（before/then/after）
+then 同步执行 → 违背规范（before/after 之间就跑了）
 then 里 throw → 无 try/catch，异常逃逸崩进程
 
 【all】
