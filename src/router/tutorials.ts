@@ -391,6 +391,27 @@ export const tutorials: TutorialEntry[] = categories.flatMap((category) =>
 /** 教程路由路径 */
 export const tutorialPath = (id: string) => `/doc/${id}`
 
+const tutorialById = new Map(tutorials.map((item) => [item.id, item]))
+
+/** 按 id 取清单项（含所属分类目录） */
+export const getTutorialEntry = (id: string) => tutorialById.get(id)
+
+/** 教程所属分类；id 不存在时返回 undefined */
+export const getCategoryOfTutorial = (id: string) => {
+  const entry = tutorialById.get(id)
+  return entry ? categories.find((category) => category.dir === entry.dir) : undefined
+}
+
+/** 按清单顺序取上一篇 / 下一篇，首尾只有单方向 */
+export const getTutorialNeighbors = (id: string) => {
+  const index = tutorials.findIndex((item) => item.id === id)
+  if (index === -1) return { prev: undefined, next: undefined }
+  return {
+    prev: index > 0 ? tutorials[index - 1] : undefined,
+    next: index < tutorials.length - 1 ? tutorials[index + 1] : undefined,
+  }
+}
+
 /** 侧边栏菜单分组：分类 → { title, path } */
 export const tutorialMenus = categories.map((category) => ({
   title: category.title,

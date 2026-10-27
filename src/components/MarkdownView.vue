@@ -31,13 +31,25 @@ import json from 'highlight.js/lib/languages/json'
 import bash from 'highlight.js/lib/languages/bash'
 import xml from 'highlight.js/lib/languages/xml'
 import css from 'highlight.js/lib/languages/css'
+import scss from 'highlight.js/lib/languages/scss'
+import http from 'highlight.js/lib/languages/http'
+import nginx from 'highlight.js/lib/languages/nginx'
+import sql from 'highlight.js/lib/languages/sql'
+import yaml from 'highlight.js/lib/languages/yaml'
+import dockerfile from 'highlight.js/lib/languages/dockerfile'
+import java from 'highlight.js/lib/languages/java'
+import python from 'highlight.js/lib/languages/python'
+import apache from 'highlight.js/lib/languages/apache'
 import markdown from 'highlight.js/lib/languages/markdown'
 
 import ImagePreview from './ImagePreview.vue'
 import { slugify } from '../utils/slugify'
 
+// 语言标记清单同时被 build/doc-check.ts 使用，两边不能各写一份
 hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('js', javascript)
+// highlight.js 没有独立 jsx 语法，javascript 已内置 JSX 规则
+hljs.registerLanguage('jsx', javascript)
 hljs.registerLanguage('typescript', typescript)
 hljs.registerLanguage('ts', typescript)
 hljs.registerLanguage('json', json)
@@ -47,6 +59,17 @@ hljs.registerLanguage('xml', xml)
 hljs.registerLanguage('html', xml)
 hljs.registerLanguage('vue', xml)
 hljs.registerLanguage('css', css)
+hljs.registerLanguage('scss', scss)
+// highlight.js 没有 sass 语法，缩进语法用 scss 近似
+hljs.registerLanguage('sass', scss)
+hljs.registerLanguage('http', http)
+hljs.registerLanguage('nginx', nginx)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('dockerfile', dockerfile)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('apache', apache)
 hljs.registerLanguage('markdown', markdown)
 hljs.registerLanguage('md', markdown)
 
@@ -55,20 +78,35 @@ const props = defineProps<{ content: string }>()
 const escapeHtml = (str: string) =>
   str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-// 返回以 <pre> 开头时，markdown-it 会直接采用该结果，不再额外包装
-const highlight = (code: string, lang: string) => {
-  const value =
-    lang && hljs.getLanguage(lang)
-      ? hljs.highlight(code, { language: lang }).value
-      : escapeHtml(code)
-  return `<pre class="hljs"><code>${value}</code></pre>`
+const normalizeLang = (info: string) => (info.trim().split(/\s+/)[0] ?? '').toLowerCase()
+
+// text / mermaid / 未注册语言都原样输出，至少保证换行与转义正确
+const highlightCode = (code: string, lang: string) => {
+  if (!lang || lang === 'text' || lang === 'mermaid' || !hljs.getLanguage(lang)) {
+    return escapeHtml(code)
+  }
+  return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
 }
 
 const md = new MarkdownIt({
   html: true,
   linkify: true,
-  highlight,
 })
+
+// 自定义代码块结构：语言角标 + 复制按钮 + 高亮内容
+md.renderer.rules.fence = (tokens, idx) => {
+  const token = tokens[idx]
+  const lang = normalizeLang(token.info)
+  const label = lang || 'text'
+  const code = highlightCode(token.content, lang)
+  return [
+    '<div class="code-block">',
+    `<div class="code-head"><span class="code-lang">${escapeHtml(label)}</span>`,
+    '<button type="button" class="code-copy" aria-label="复制代码">复制</button></div>',
+    `<pre class="hljs"><code>${code}</code></pre>`,
+    '</div>',
+  ].join('')
+}
 
 /**
  * 给标题生成 GitHub 风格锚点 id，正文里写的 [目录](#xxx) 才能跳转。
@@ -85,15 +123,58 @@ const html = computed(() => md.render(props.content))
 
 /* ---------- 正文图片点击放大 ---------- */
 
-// 图片是 v-html 动态插入的，挂不上监听器，所以在容器上做事件委托
+// 图片与复制按钮都是 v-html 动态插入的，挂不上监听器，所以在容器上做事件委托
 const previewSrc = ref('')
 const previewAlt = ref('')
 
-const onContentClick = (event: MouseEvent) => {
+// 剪贴板 API 在非 https 环境不可用，保留一次性 textarea 兜底
+const legacyCopy = (text: string) => {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.cssText = 'position: fixed; top: -9999px; opacity: 0;'
+  document.body.appendChild(textarea)
+  textarea.select()
+  textarea.setSelectionRange(0, text.length)
+  const ok = document.execCommand('copy')
+  textarea.remove()
+  return ok
+}
+
+const copyText = async (text: string) => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // 权限被拒时走兜底
+  }
+  return legacyCopy(text)
+}
+
+const onContentClick = async (event: MouseEvent) => {
   const target = event.target
-  if (!(target instanceof HTMLImageElement)) return
-  previewSrc.value = target.currentSrc || target.src
-  previewAlt.value = target.alt
+  if (target instanceof HTMLImageElement) {
+    previewSrc.value = target.currentSrc || target.src
+    previewAlt.value = target.alt
+    return
+  }
+
+  if (!(target instanceof HTMLElement)) return
+  const button = target.closest<HTMLButtonElement>('button.code-copy')
+  if (!button) return
+
+  const text = button.closest('.code-block')?.querySelector('pre code')?.textContent ?? ''
+  const ok = await copyText(text)
+  button.textContent = ok ? '已复制' : '复制失败'
+  button.dataset.state = ok ? 'done' : 'error'
+
+  window.setTimeout(() => {
+    if (!button.isConnected) return
+    button.textContent = '复制'
+    delete button.dataset.state
+  }, 1600)
 }
 
 const closePreview = () => {
@@ -229,6 +310,59 @@ const closePreview = () => {
 }
 
 /* ---------- 代码块 ---------- */
+.markdown-body :deep(.code-block) {
+  margin: 0 0 14px;
+}
+
+/* 语言角标与复制按钮：贴在高亮块的顶部，不占正文宽度 */
+.markdown-body :deep(.code-head) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--code-bg);
+}
+
+.markdown-body :deep(.code-lang) {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.markdown-body :deep(.code-copy) {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.markdown-body :deep(.code-copy:hover) {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.markdown-body :deep(.code-copy[data-state='done']) {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.markdown-body :deep(.code-copy[data-state='error']) {
+  color: #d33;
+}
+
 .markdown-body :deep(pre) {
   margin: 0 0 14px;
   padding: 14px 16px;
@@ -236,6 +370,12 @@ const closePreview = () => {
   border-radius: 8px;
   background: var(--code-bg);
   overflow: auto;
+}
+
+/* 代码块与角标拼在一起时，圆角只保留底部 */
+.markdown-body :deep(.code-block pre) {
+  margin: 0;
+  border-radius: 0 0 8px 8px;
 }
 
 .markdown-body :deep(pre code) {

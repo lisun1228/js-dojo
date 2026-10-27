@@ -58,20 +58,22 @@ VS Code 需安装 `Vue.volar`、`dbaeumer.vscode-eslint`、`esbenp.prettier-vsco
 
 **常用命令**
 
-| 命令                   | 说明                                           |
-| ---------------------- | ---------------------------------------------- |
-| `npm run lint`         | 全量检查代码规范问题（不改文件）               |
-| `npm run lint:fix`     | 全量检查并自动修复可修复的问题                 |
-| `npm run format`       | 用 Prettier 格式化全仓文件                     |
-| `npm run format:check` | 只校验格式，不做修改                           |
-| `npm run check:docs`   | 校验文档标题、目录锚点、教程互链与 public 图片 |
-| `npm run check:graph`  | 校验知识图谱的节点、边来源与未关联文档         |
+| 命令                   | 说明                                                      |
+| ---------------------- | --------------------------------------------------------- |
+| `npm run lint`         | 全量检查代码规范问题（不改文件）                          |
+| `npm run lint:fix`     | 全量检查并自动修复可修复的问题                            |
+| `npm run format`       | 用 Prettier 格式化全仓文件                                |
+| `npm run format:check` | 只校验格式，不做修改                                      |
+| `npm run check:docs`   | 校验文档标题、目录锚点、教程互链、public 图片与代码块语言 |
+| `npm run check:graph`  | 校验知识图谱的节点、边来源与未关联文档                    |
 
 **提交前校验**
 
 自动修复并不能覆盖所有场景，为了保证代码的可靠性，项目还会在代码进行 git 提交时校验代码的正确性：Husky 的 `pre-commit` 钩子会对暂存文件跑一遍 eslint / Prettier 校验，如果存在未修复的代码格式错误，将会导致代码无法进行 git 提交。请手动按照 eslint 错误提示进行修复（或执行 `npm run lint:fix`）后再进行 git 提交。
 
-教程正文或概念词表改动后，先执行 `npm run check:docs` 与 `npm run check:graph`（`npm run build` 也会先跑它们）确认标题、目录锚点、互链与图谱边没有断。
+教程正文或概念词表改动后，先执行 `npm run check:docs` 与 `npm run check:graph`（`npm run build` 也会先跑它们）确认标题、目录锚点、互链、代码块语言与图谱边没有断。
+
+仓库内置 GitHub Actions（[.github/workflows/ci.yml](.github/workflows/ci.yml)），PR 上会依次执行 `lint`、`format:check`、`check:docs`、`check:graph` 与 `build`，不再依赖本地 Husky 自觉执行。
 
 ### 二、Git 提交规范
 
@@ -106,8 +108,10 @@ commitlint 规范参考文档：<https://blog.csdn.net/weixin_41447256/article/d
 ## 目录结构
 
 ```
+.github/
+└── workflows/ci.yml         # PR 校验：lint / format / docs / graph / build
 build/
-├── doc-check.ts             # 构建前校验文档契约（标题 / 目录锚点 / 互链 / 图片）
+├── doc-check.ts             # 构建前校验文档契约（标题 / 目录锚点 / 互链 / 图片 / 代码块语言）
 ├── graph-check.ts           # 校验知识图谱：节点 / 边来源 / 未关联文档
 ├── knowledge-graph.ts       # Vite 插件：构建期生成知识图谱（virtual:knowledge-graph）
 ├── markdown-scan.ts         # 文档结构解析：跳过代码块，抽标题与可见行
@@ -135,9 +139,11 @@ src/
 │   ├── html/                # HTML 57 题
 │   ├── react/               # React 83 题
 ├── components/
-│   ├── MarkdownView.vue     # Markdown 渲染组件（markdown-it + highlight.js）
+│   ├── MarkdownView.vue     # Markdown 渲染（markdown-it + highlight.js + 代码复制）
 │   ├── ImagePreview.vue     # 正文图片点击后的全屏预览遮罩
 │   ├── RelatedKnowledge.vue # 教程页「关联知识」：局部图 + 带原因的关联列表
+│   ├── DocOutline.vue       # 长文右侧常驻大纲，滚动高亮当前小节
+│   ├── DocFooter.vue        # 文末分类归属、已读标记与上一篇 / 下一篇
 │   ├── ThemeSwitcher.vue    # 页头主题色块切换器
 │   ├── BackToTop.vue        # 页面滚动后的回到顶部悬浮按钮
 │   └── demos/               # 各教程的交互演示
@@ -148,16 +154,18 @@ src/
 │   └── useKnowledgeGraph.ts # 图谱数据单次加载，教程页与 /graph 共用
 ├── config/
 │   ├── knowledge.ts         # 知识图谱受控概念词表
-│   └── nav-menus.ts         # 侧边栏与搜索菜单
+│   ├── nav-menus.ts         # 侧边栏与搜索菜单
+│   └── code-languages.ts    # 代码块语言白名单（渲染与 check:docs 共用）
 ├── stores/
-│   └── theme.ts             # 主题清单与当前主题（pinia + 持久化）
+│   ├── theme.ts             # 主题清单与当前主题（pinia + 持久化）
+│   └── progress.ts          # 已读教程 id（localStorage 持久化）
 ├── router/
 │   ├── tutorials.ts         # ★ 教程分类与清单（唯一数据源）
 │   └── index.ts             # 路由表
 ├── views/
 │   ├── GraphView.vue        # 分类知识地图（/graph）
-│   ├── DocView.vue          # 通用教程页：按 /doc/:id 渲染正文 + 演示 + 关联知识
-│   ├── HomeView.vue         # 首页（占位）
+│   ├── DocView.vue          # 教程页：正文 + 演示 + 关联知识 + 大纲与文末导航
+│   ├── HomeView.vue         # 首页：统计、分类速览与演示入口
 │   └── NotFound.vue         # 404 兜底
 ├── App.vue                  # 布局：页头 + 左侧分类导航 + 内容区
 ├── main.ts                  # 入口
@@ -395,7 +403,7 @@ const run = () => push('输出一行日志')
 
 | 路径               | 说明                                           |
 | ------------------ | ---------------------------------------------- |
-| `/`                | 首页（占位）                                   |
+| `/`                | 首页：统计、分类速览与演示入口                 |
 | `/doc/:id`         | 通用教程页，`id` 对应 `src/docs/<dir>/<id>.md` |
 | `/graph`           | 分类知识地图，点击分类查看文档与跨分类关联     |
 | `/:pathMatch(.*)*` | 404 兜底，展示请求的路径                       |
@@ -410,5 +418,9 @@ const run = () => push('输出一行日志')
 - **图片放大**：正文图片是 `v-html` 插入的，挂不上监听器，所以 `MarkdownView` 在容器上做事件委托，点击 `img` 后交给 `ImagePreview` 全屏预览；预览挂到 `body` 上，避免被 `main.content` 的 `overflow` 裁剪或页头层叠遮挡。
 - **代码块换行**：全局 `style.css` 给 `code` 设了 `display: inline-flex`，会把高亮产生的每个 `<span>` 当成 flex item 横排、丢掉换行，因此 `MarkdownView` 里把 `pre code` 重置为 `display: block`。
 - **左侧导航吸附**：`.sidebar-inner` 用 `position: sticky; top: 0`，页头滚出视口后导航停住不再跟随滚动；`.sidebar` 自身保持撑满全高，保证右侧分隔竖线完整。
+- **移动端导航**：≤860px 时侧栏默认收起并改为覆盖式抽屉，开关放大到 44px，点击遮罩或任意条目后自动关闭，正文不再被 240px 侧栏挤压。
+- **长文大纲**：≥1280px 且正文超过 8K 字符时，右侧显示 sticky 大纲；锚点复用 `slugify`，滚动高亮当前小节，点击同步更新 hash。
+- **阅读进度**：文末手动标记已读，侧栏按分类显示「已读 / 总数」，数据存在 `js-dojo-progress`，可一键清除；滚动到 90% 只提示，不自动写入。
+- **代码块语言**：语言白名单统一在 `src/config/code-languages.ts`，`check:docs` 会拦住未登记的语言，避免静默退化为纯文本。
 - **装饰器教程**：`tsconfig.app.json` 开启了 `experimentalDecorators`。
 - **TS 6.0 注意点**：不再允许对普通函数声明使用 `new`（TS7009），示例里改用 `class` 或 `Object.create(X.prototype)`。

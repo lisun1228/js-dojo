@@ -1,8 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { categories, tutorialMenus, tutorials } from './tutorials'
 import { hashTarget } from '../utils/hash'
 
 // 教程分类与清单的唯一数据源在 ./tutorials，这里统一向外导出供侧边栏使用
-export { tutorialMenus } from './tutorials'
+export { tutorialMenus }
 
 const routes = [
   {
@@ -57,6 +58,50 @@ const router = createRouter({
 router.beforeEach((_to, from) => {
   // 只在已经进入过页面的情况下记录，避开初始导航
   if (from.matched.length) scrollPositions.set(from.fullPath, window.scrollY)
+})
+
+const SITE_NAME = 'JS 道场'
+const DEFAULT_DESCRIPTION =
+  '把零散的面试题整理成一张前端知识地图：覆盖 JavaScript、CSS、HTML、Vue、React、工程化与算法，配套可运行演示。'
+
+const docMetaById = new Map(
+  tutorials.map((item) => {
+    const category = categories.find((group) => group.dir === item.dir)?.title ?? SITE_NAME
+    return [item.id, { title: item.title, category }]
+  }),
+)
+
+const setDescription = (description: string) => {
+  document.querySelector('meta[name="description"]')?.setAttribute('content', description)
+}
+
+const applyPageMeta = (title: string, description: string) => {
+  document.title = title
+  setDescription(description)
+}
+
+// 每篇教程有独立标题与描述，分享出去不再全部显示「JS 道场」
+router.afterEach((to) => {
+  if (to.name === 'doc') {
+    const meta = docMetaById.get(String(to.params.id))
+    applyPageMeta(
+      meta ? `${meta.title} · ${SITE_NAME}` : `未找到教程 · ${SITE_NAME}`,
+      meta ? `${meta.category}：${meta.title}，含原理、示例与常见坑。` : DEFAULT_DESCRIPTION,
+    )
+    return
+  }
+
+  if (to.name === 'home') {
+    applyPageMeta(`${SITE_NAME} · 前端知识地图`, DEFAULT_DESCRIPTION)
+    return
+  }
+
+  if (to.name === 'graph') {
+    applyPageMeta(`知识图谱 · ${SITE_NAME}`, '按分类查看教程之间的显式引用与共同考点。')
+    return
+  }
+
+  applyPageMeta(`页面不存在 · ${SITE_NAME}`, DEFAULT_DESCRIPTION)
 })
 
 router.beforeEach(async (to) => {

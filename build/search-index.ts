@@ -7,8 +7,8 @@ import { slugify } from '../src/utils/slugify.ts'
 /**
  * 构建期生成全文检索索引（virtual:search-index）。
  *
- * 以前搜索要动态 import 整个 docs 模块：既包含 146 篇正文，
- * 还带着构建期内联的 Mermaid SVG，首次搜索要解析 6.7MB。
+ * 以前搜索要动态 import 整个 docs 模块：既包含全部正文，
+ * 还带着构建期内联的 Mermaid SVG，首次搜索要解析数 MB。
  * 现在索引只保留「文档 id / 标题 / 小节标题 / 锚点 / 纯正文」，
  * 并且是独立 chunk，只有用户真正输入关键词时才加载。
  *

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isCodeLanguage } from '../src/config/code-languages.ts'
 import { categories } from '../src/router/tutorials.ts'
 import { collectVisibleLines, parseHeadings } from './markdown-scan.ts'
 
@@ -41,6 +42,31 @@ const walk = (dir: string): string[] =>
 
 const rel = (file: string) => relative(ROOT, file).split(sep).join('/')
 const isKebabCase = (value: string) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
+
+/**
+ * 代码块语言必须在 code-languages.ts 里登记。
+ * 否则页面只会输出无配色的纯文本，读者很难发现，只有构建前拦下来才可靠。
+ */
+const checkFenceLanguages = (file: string, lines: string[]) => {
+  let fence: { marker: string; length: number } | undefined
+
+  lines.forEach((text, index) => {
+    const match = /^\s*(`{3,}|~{3,})\s*(\S*)/.exec(text)
+    if (!match) return
+
+    const [, marker, rawLang] = match
+    if (fence) {
+      if (marker[0] === fence.marker && marker.length >= fence.length) fence = undefined
+      return
+    }
+
+    fence = { marker: marker[0], length: marker.length }
+    const lang = rawLang.toLowerCase()
+    if (lang && !isCodeLanguage(lang)) {
+      report(rel(file), `代码块语言未注册：${lang}`, index + 1)
+    }
+  })
+}
 
 /* ---------- 1. 清单与磁盘文件 ---------- */
 
@@ -95,6 +121,7 @@ for (const file of mdFiles) {
 
 for (const file of mdFiles) {
   const lines = readFileSync(file, 'utf8').split('\n')
+  checkFenceLanguages(file, lines)
   const visible = collectVisibleLines(lines)
   const headings = parseHeadings(visible)
 

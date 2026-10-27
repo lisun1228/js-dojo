@@ -337,3 +337,26 @@ code {
     border-right-color: var(--border);
   }
 }
+
+/* 键盘焦点的统一兜底：组件没单独写 focus-visible 时也能看见 */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 尊重系统的「减少动态效果」：过渡、动画与平滑滚动全部关闭 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

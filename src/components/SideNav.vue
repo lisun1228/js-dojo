@@ -1,9 +1,10 @@
 <template>
   <aside
     class="sidebar"
-    :class="{ collapsed: !visible, resizing }"
+    :class="{ collapsed: !visible, resizing, drawer }"
     :style="asideStyle"
     :aria-hidden="!visible"
+    :inert="!visible"
   >
     <div
       class="sidebar-inner"
@@ -23,12 +24,21 @@
             :aria-expanded="isExpanded(entry.title)"
             @click="toggle(entry.title)"
           >
-            <span>{{ entry.title }}</span>
-            <span
-              class="chevron"
-              :class="{ collapsed: !isExpanded(entry.title) }"
-              aria-hidden="true"
-            ></span>
+            <span class="group-name">{{ entry.title }}</span>
+            <span class="group-right">
+              <span
+                v-if="progressOf(entry.title)"
+                class="group-progress"
+                :title="`已读 ${progressOf(entry.title)?.read} / ${progressOf(entry.title)?.total} 篇`"
+              >
+                {{ progressOf(entry.title)?.read }}/{{ progressOf(entry.title)?.total }}
+              </span>
+              <span
+                class="chevron"
+                :class="{ collapsed: !isExpanded(entry.title) }"
+                aria-hidden="true"
+              ></span>
+            </span>
           </button>
           <ul
             v-show="isExpanded(entry.title)"
@@ -58,10 +68,26 @@
           >
         </div>
       </template>
+
+      <!-- 阅读进度：只记已读，不自动打卡 -->
+      <div
+        v-if="progress.readCount > 0"
+        class="progress-foot"
+      >
+        <span>已读 {{ progress.readCount }} 篇</span>
+        <button
+          type="button"
+          class="progress-clear"
+          @click="progress.clear()"
+        >
+          清除进度
+        </button>
+      </div>
     </div>
 
     <!-- 拖拽手柄：左右拖动调整宽度，聚焦后可用左右方向键微调 -->
     <div
+      v-if="!drawer"
       class="resizer"
       role="separator"
       aria-orientation="vertical"
@@ -80,13 +106,15 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { isNavGroup, navMenus } from '../config/nav-menus'
+import { categories } from '../router/tutorials'
+import { useProgressStore } from '../stores/progress'
 
 // 拖拽宽度的上下限，App.vue 初始宽度也落在这个区间内
 const MIN_WIDTH = 160
 const MAX_WIDTH = 480
 const KEYBOARD_STEP = 16
 
-const props = defineProps<{ width: number; visible: boolean }>()
+const props = defineProps<{ width: number; visible: boolean; drawer?: boolean }>()
 const emit = defineEmits<{
   (event: 'update:width', width: number): void
   (event: 'resizing', resizing: boolean): void
@@ -94,6 +122,23 @@ const emit = defineEmits<{
 
 // 左侧导航菜单，按分组构成树状结构；数据同时供顶部搜索使用
 const menus = navMenus
+
+const progress = useProgressStore()
+
+// 分类标题右侧的「已读 / 总数」；非教程分组（首页、图谱）没有这一项
+const progressByCategory = computed(() => {
+  const map = new Map<string, { read: number; total: number }>()
+  for (const category of categories) {
+    const read = category.items.reduce(
+      (count, item) => count + (progress.isRead(item.id) ? 1 : 0),
+      0,
+    )
+    map.set(category.title, { read, total: category.items.length })
+  }
+  return map
+})
+
+const progressOf = (title: string) => progressByCategory.value.get(title)
 
 /* ---------- 分组折叠 ---------- */
 
@@ -128,8 +173,15 @@ watch(
 
 const resizing = ref(false)
 
-// 收起时宽度归零，内容由 overflow-x: clip 裁掉，展开时按记录值恢复
-const asideStyle = computed(() => ({ width: props.visible ? `${props.width}px` : '0px' }))
+// 收起时宽度归零，内容由 overflow-x: clip 裁掉，展开时按记录值恢复；
+// 移动端抽屉把宽度限制在视口 82%，避免占满整屏
+const asideStyle = computed(() => ({
+  width: props.visible
+    ? props.drawer
+      ? `min(${props.width}px, 82vw)`
+      : `${props.width}px`
+    : '0px',
+}))
 
 const clampWidth = (value: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, value))
 
@@ -190,6 +242,21 @@ const onResizeKeydown = (event: KeyboardEvent) => {
   border-right-width: 0;
 }
 
+/* 移动端改为覆盖式抽屉，不再挤压正文 */
+.sidebar.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 30;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.sidebar.drawer .sidebar-inner {
+  max-height: 100svh;
+}
+
 /* 拖拽过程中关掉过渡，否则手柄会跟不上指针 */
 .sidebar.resizing {
   transition: none;
@@ -238,6 +305,56 @@ const onResizeKeydown = (event: KeyboardEvent) => {
 .group-title:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-right {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-progress {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+/* ---------- 阅读进度 ---------- */
+.progress-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 10px 0;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.progress-clear {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.progress-clear:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 /* 折叠箭头：默认朝下，收起时朝右 */

@@ -36,11 +36,18 @@
         aria-label="搜索菜单或笔记内容"
         role="combobox"
         aria-autocomplete="list"
-        aria-controls="doc-search-results"
+        aria-controls="doc-search-panel"
         :aria-expanded="open"
         @focus="open = true"
         @keydown="onKeydown"
       />
+
+      <kbd
+        v-if="!query"
+        class="shortcut"
+        :title="`快捷键 ${shortcutLabel}`"
+        >{{ shortcutLabel }}</kbd
+      >
 
       <button
         v-if="query"
@@ -68,29 +75,90 @@
     <Transition name="search-panel">
       <div
         v-if="open"
-        id="doc-search-results"
+        id="doc-search-panel"
         ref="panelRef"
         class="panel"
-        role="listbox"
-        aria-label="搜索结果"
       >
-        <p
-          v-if="!trimmedQuery"
-          class="hint"
+        <div
+          v-if="trimmedQuery"
+          class="filters"
         >
-          输入关键词，可搜索菜单标题与笔记正文
-        </p>
+          <label
+            class="filter-label"
+            for="doc-search-category"
+            >分类</label
+          >
+          <select
+            id="doc-search-category"
+            v-model="categoryFilter"
+            class="filter-select"
+          >
+            <option value="">全部分类</option>
+            <option
+              v-for="category in categoryOptions"
+              :key="category"
+              :value="category"
+            >
+              {{ category }}
+            </option>
+          </select>
+          <span class="result-count">共 {{ results.length }} 条</span>
+        </div>
 
-        <template v-else>
+        <template v-if="!trimmedQuery">
+          <p class="hint">输入关键词，可搜索菜单标题与笔记正文</p>
+
+          <div
+            v-if="recentSearches.length"
+            class="recent"
+          >
+            <div class="recent-head">
+              <span class="group-title">最近搜索</span>
+              <button
+                type="button"
+                class="recent-clear"
+                @click="clearRecent"
+              >
+                清空
+              </button>
+            </div>
+            <div class="recent-list">
+              <button
+                v-for="keyword in recentSearches"
+                :key="keyword"
+                type="button"
+                class="recent-item"
+                @click="useRecent(keyword)"
+              >
+                {{ keyword }}
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <div
+          v-else
+          id="doc-search-results"
+          class="results"
+          role="listbox"
+          aria-label="搜索结果"
+          :aria-busy="loading"
+        >
           <p
             v-if="results.length === 0"
             class="hint"
+            role="presentation"
           >
             {{ loading ? '正在加载笔记索引…' : `没有找到「${trimmedQuery}」相关内容` }}
           </p>
 
           <template v-if="menuResults.length">
-            <p class="group-title">菜单</p>
+            <p
+              class="group-title"
+              role="presentation"
+            >
+              菜单
+            </p>
             <button
               v-for="(item, index) in menuResults"
               :key="item.key"
@@ -115,7 +183,12 @@
           </template>
 
           <template v-if="contentResults.length">
-            <p class="group-title">笔记内容</p>
+            <p
+              class="group-title"
+              role="presentation"
+            >
+              笔记内容
+            </p>
             <button
               v-for="(item, index) in contentResults"
               :key="item.key"
@@ -142,12 +215,13 @@
           </template>
 
           <p
-            v-else-if="loading"
+            v-if="loading && results.length > 0"
             class="hint"
+            role="presentation"
           >
             正在加载笔记索引…
           </p>
-        </template>
+        </div>
       </div>
     </Transition>
   </div>
@@ -158,6 +232,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { IndexedSection } from 'virtual:search-index'
 import { isNavGroup, navMenus } from '../config/nav-menus'
+import { categories } from '../router/tutorials'
 
 /** 正文按二级标题切成的检索单元 */
 interface Section extends IndexedSection {
@@ -174,13 +249,69 @@ interface SearchResult {
   before: string
   match: string
   after: string
+  /** 标题命中记 2，仅正文命中记 1，用于把更相关的结果排在前面 */
+  score?: number
 }
 
 const MAX_MENU_RESULTS = 5
 const MAX_CONTENT_RESULTS = 8
+const MAX_RECENT = 5
+const RECENT_KEY = 'js-dojo-recent-searches'
 const DEBOUNCE = 180
 
 const router = useRouter()
+
+// 分类筛选与结果归属都直接复用教程清单，不在这里再维护一份分类名
+const categoryOptions = categories.map((category) => category.title)
+const docCategoryById = new Map(
+  categories.flatMap((category) =>
+    category.items.map((item) => [item.id, category.title] as const),
+  ),
+)
+
+const categoryFilter = ref('')
+
+const loadRecent = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')
+    if (!Array.isArray(saved)) return []
+    return saved.filter((item): item is string => typeof item === 'string').slice(0, MAX_RECENT)
+  } catch {
+    // 隐私模式或数据损坏时按空记录处理
+    return []
+  }
+}
+
+const recentSearches = ref<string[]>(loadRecent())
+
+const persistRecent = () => {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recentSearches.value))
+  } catch {
+    // 存储不可用不影响搜索
+  }
+}
+
+const rememberSearch = (keyword: string) => {
+  if (!keyword) return
+  recentSearches.value = [
+    keyword,
+    ...recentSearches.value.filter((item) => item !== keyword),
+  ].slice(0, MAX_RECENT)
+  persistRecent()
+}
+
+const useRecent = (keyword: string) => {
+  query.value = keyword
+  inputRef.value?.focus()
+}
+
+const clearRecent = () => {
+  recentSearches.value = []
+  persistRecent()
+}
+
+const shortcutLabel = /mac/i.test(navigator.platform) ? '⌘ K' : 'Ctrl K'
 
 const containerRef = ref<HTMLElement | null>(null)
 const panelRef = ref<HTMLElement | null>(null)
@@ -206,9 +337,14 @@ const matchMenus = (keyword: string): SearchResult[] => {
       ? entry.items.map((item) => ({ item, group: entry.title }))
       : [{ item: entry, group: '' }],
   )
+
   for (const { item, group } of entries) {
-    const hit = item.title.toLowerCase().includes(keyword) || group.toLowerCase().includes(keyword)
-    if (!hit) continue
+    if (categoryFilter.value && group !== categoryFilter.value) continue
+
+    const titleHit = item.title.toLowerCase().includes(keyword)
+    const groupHit = group.toLowerCase().includes(keyword)
+    if (!titleHit && !groupHit) continue
+
     found.push({
       key: `menu:${item.path}`,
       title: item.title,
@@ -218,10 +354,11 @@ const matchMenus = (keyword: string): SearchResult[] => {
       before: '',
       match: '',
       after: '',
+      score: titleHit ? 2 : 1,
     })
-    if (found.length >= MAX_MENU_RESULTS) return found
   }
-  return found
+
+  return found.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, MAX_MENU_RESULTS)
 }
 
 /* ---------- 正文索引 ---------- */
@@ -263,6 +400,10 @@ const buildSnippet = (section: Section, keyword: string, index: number) => {
 const matchContent = (keyword: string, list: Section[]): SearchResult[] => {
   const found: SearchResult[] = []
   for (const section of list) {
+    if (categoryFilter.value && docCategoryById.get(section.docId) !== categoryFilter.value) {
+      continue
+    }
+
     const index = section.textLower.indexOf(keyword)
     const headingHit = section.heading.toLowerCase().includes(keyword)
     if (index === -1 && !headingHit) continue
@@ -273,13 +414,15 @@ const matchContent = (keyword: string, list: Section[]): SearchResult[] => {
       breadcrumb: section.docTitle,
       path: `/doc/${section.docId}`,
       anchor: section.anchor,
+      score: headingHit ? 2 : 1,
       ...(index === -1
         ? { before: '', match: '', after: '' }
         : buildSnippet(section, keyword, index)),
     })
-    if (found.length >= MAX_CONTENT_RESULTS) break
   }
-  return found
+
+  // 标题命中优先；同分保持文档原顺序（Array.sort 稳定）
+  return found.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, MAX_CONTENT_RESULTS)
 }
 
 /* ---------- 输入联动 ---------- */
@@ -319,6 +462,18 @@ watch(query, (value) => {
   open.value = true
   menuResults.value = matchMenus(keyword)
   timer = setTimeout(() => runSearch(keyword, token), DEBOUNCE)
+})
+
+// 切换分类后立即按当前关键词重算，不等输入变化
+watch(categoryFilter, () => {
+  activeIndex.value = 0
+  const keyword = trimmedQuery.value.toLowerCase()
+  if (!keyword) return
+
+  menuResults.value = matchMenus(keyword)
+  searchToken += 1
+  clearTimeout(timer)
+  void runSearch(keyword, searchToken)
 })
 
 /* ---------- 交互 ---------- */
@@ -362,6 +517,7 @@ const scrollActiveIntoView = async () => {
 
 const go = async (result?: SearchResult) => {
   if (!result) return
+  rememberSearch(trimmedQuery.value)
   open.value = false
   query.value = ''
   contentResults.value = []
@@ -382,10 +538,24 @@ const onPointerDown = (event: PointerEvent) => {
   if (!containerRef.value?.contains(event.target as Node)) open.value = false
 }
 
-onMounted(() => document.addEventListener('pointerdown', onPointerDown))
+// Cmd/Ctrl + K 在任意页面唤起搜索
+const onGlobalKeydown = (event: KeyboardEvent) => {
+  if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
+
+  event.preventDefault()
+  open.value = true
+  inputRef.value?.focus()
+  inputRef.value?.select()
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onPointerDown)
+  document.addEventListener('keydown', onGlobalKeydown)
+})
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onPointerDown)
+  document.removeEventListener('keydown', onGlobalKeydown)
   clearTimeout(timer)
 })
 </script>
@@ -460,6 +630,17 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
+.shortcut {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.65;
+}
+
 /* ---------- 结果面板 ---------- */
 .panel {
   position: absolute;
@@ -484,6 +665,38 @@ onBeforeUnmount(() => {
   opacity: 0.75;
 }
 
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.filter-label {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.filter-select {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+  font-size: 12px;
+}
+
+.result-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.65;
+}
+
 .group-title {
   margin: 6px 0 4px;
   padding: 0 12px;
@@ -491,6 +704,54 @@ onBeforeUnmount(() => {
   letter-spacing: 0.5px;
   color: var(--text);
   opacity: 0.6;
+}
+
+/* ---------- 最近搜索 ---------- */
+.recent {
+  padding: 0 12px 10px;
+}
+
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recent .group-title {
+  margin: 0;
+  padding: 0;
+}
+
+.recent-clear {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.recent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.recent-item {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.recent-item:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 .option {
@@ -555,6 +816,12 @@ onBeforeUnmount(() => {
   background: var(--accent-bg);
   color: var(--accent);
   font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .shortcut {
+    display: none;
+  }
 }
 
 /* 出现 / 消失 */

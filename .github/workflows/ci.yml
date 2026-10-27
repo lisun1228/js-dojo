@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # Mermaid 在构建期用本机 Chrome 渲染，runner 上走系统安装位置
+      CHROME_PATH: /usr/bin/google-chrome
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Ensure Chrome for Mermaid
+        run: |
+          if [ ! -x "$CHROME_PATH" ]; then
+            sudo apt-get update
+            sudo apt-get install -y google-chrome-stable
+          fi
+
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run check:docs
+      - run: npm run check:graph
+      - run: npm run build

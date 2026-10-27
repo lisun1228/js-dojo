@@ -6,8 +6,8 @@ import { tutorials } from '../router/tutorials'
  * 教程内容的装配层：把 router/tutorials.ts 里的清单，
  * 变成「按需加载的正文 + 懒加载演示组件」，供 DocView 渲染。
  *
- * 正文不再用 eager 全量打包（146 篇约 6.7MB），
- * 每篇 md 单独分包，由路由守卫在进入文章前预加载。
+ * 正文不再用 eager 全量打包，每篇 md 单独分包，
+ * 由路由守卫在进入文章前预加载。
  */
 
 /** 正文：src/docs/<分类目录>/<id>.md，按需加载，每篇独立分包 */
@@ -25,6 +25,8 @@ const demoModules = import.meta.glob('../components/demos/*.vue') as Record<
 export interface DocMeta {
   id: string
   title: string
+  /** 所属分类目录，用于取分类名与拼上一篇 / 下一篇 */
+  dir: string
   demoComponent?: Component
 }
 
@@ -47,6 +49,7 @@ for (const tutorial of tutorials) {
   metaMap.set(tutorial.id, {
     id: tutorial.id,
     title: tutorial.title,
+    dir: tutorial.dir,
     demoComponent: loader ? defineAsyncComponent(loader) : undefined,
   })
 }

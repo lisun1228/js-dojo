@@ -3,6 +3,13 @@
     class="layout"
     :class="{ immersive }"
   >
+    <!-- 键盘用户跳过导航直达正文 -->
+    <a
+      class="skip-link"
+      href="#main-content"
+      >跳到正文</a
+    >
+
     <!-- 头部总标题 + 布局控制 + 主题切换；沉浸阅读时整体隐藏 -->
     <header
       v-if="!immersive"
@@ -75,13 +82,22 @@
       </div>
     </header>
 
+    <!-- 移动端抽屉遮罩：点击空白处收起 -->
+    <Transition name="fade">
+      <div
+        v-if="isNarrow && sidebarVisible && !immersive"
+        class="nav-backdrop"
+        @click="sidebarVisible = false"
+      ></div>
+    </Transition>
+
     <!-- 导航显隐开关：固定贴在侧边栏右缘，滚到任意位置都能切换 -->
     <button
       v-if="!immersive"
       type="button"
       class="sidebar-toggle"
-      :class="{ 'no-transition': navResizing }"
-      :style="{ left: `${sidebarVisible ? navWidth : 0}px` }"
+      :class="{ 'no-transition': navResizing, narrow: isNarrow }"
+      :style="{ left: toggleLeft }"
       :aria-expanded="sidebarVisible"
       :title="sidebarVisible ? '隐藏导航' : '显示导航'"
       :aria-label="sidebarVisible ? '隐藏导航' : '显示导航'"
@@ -107,10 +123,15 @@
       <SideNav
         v-model:width="navWidth"
         :visible="sidebarVisible && !immersive"
+        :drawer="isNarrow"
         @resizing="navResizing = $event"
       />
 
-      <main class="content">
+      <main
+        id="main-content"
+        class="content"
+        tabindex="-1"
+      >
         <RouterView />
       </main>
     </div>
@@ -153,8 +174,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { RouterView } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
 import AiSearch from './components/AiSearch.vue'
 import BackToTop from './components/BackToTop.vue'
 import DocSearch from './components/DocSearch.vue'
@@ -162,11 +183,42 @@ import SideNav from './components/SideNav.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import { useImmersiveMode } from './composables/useImmersiveMode'
 
+// 移动端断点与 App.vue 的页头换行保持一致
+const NARROW_QUERY = '(max-width: 860px)'
+
+const route = useRoute()
+const narrowQuery = window.matchMedia(NARROW_QUERY)
+const isNarrow = ref(narrowQuery.matches)
+
 // 侧边栏初始宽度；可拖拽范围（160 ~ 480）在 SideNav 内部约束
 const navWidth = ref(240)
-const sidebarVisible = ref(true)
+// 窄屏默认收起，把宽度让给正文
+const sidebarVisible = ref(!isNarrow.value)
 // 拖拽调宽期间关掉开关的 left 过渡，保证手柄跟手
 const navResizing = ref(false)
+
+// 开关贴着抽屉右缘；抽屉宽度被 SideNav 限制在 82vw
+const toggleLeft = computed(() => {
+  if (!sidebarVisible.value) return '0px'
+  return isNarrow.value ? `min(${navWidth.value}px, 82vw)` : `${navWidth.value}px`
+})
+
+const onNarrowChange = (event: MediaQueryListEvent) => {
+  isNarrow.value = event.matches
+  // 跨断点时跟随新布局，避免桌面收起状态带到手机上
+  sidebarVisible.value = !event.matches
+}
+
+// 抽屉里点任意链接后自动收起，正文立即完整露出
+watch(
+  () => route.fullPath,
+  () => {
+    if (isNarrow.value) sidebarVisible.value = false
+  },
+)
+
+onMounted(() => narrowQuery.addEventListener('change', onNarrowChange))
+onBeforeUnmount(() => narrowQuery.removeEventListener('change', onNarrowChange))
 
 const { immersive, toggle: toggleImmersive } = useImmersiveMode()
 </script>
@@ -231,12 +283,40 @@ const { immersive, toggle: toggleImmersive } = useImmersiveMode()
   outline-offset: 2px;
 }
 
+/* ---------- 跳到正文 ---------- */
+.skip-link {
+  position: fixed;
+  top: -80px;
+  left: 16px;
+  z-index: 100;
+  padding: 8px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 14px;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus-visible {
+  top: 12px;
+}
+
+/* 抽屉遮罩：压在正文上、抽屉下方 */
+.nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.35);
+}
+
 /* ---------- 常驻的导航开关 ---------- */
 /* 固定贴在侧边栏右缘，脱离文档流：滚动位置不受影响，也不会随页头滚走 */
 .sidebar-toggle {
   position: fixed;
   top: 50%;
-  z-index: 20;
+  z-index: 35;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -273,6 +353,13 @@ const { immersive, toggle: toggleImmersive } = useImmersiveMode()
   outline-offset: 2px;
 }
 
+/* 触屏上把开关放大到 44px，避免 16px 手柄点不中 */
+.sidebar-toggle.narrow {
+  width: 44px;
+  height: 44px;
+  border-radius: 0 10px 10px 0;
+}
+
 .container {
   flex: 1;
   display: flex;
@@ -284,7 +371,9 @@ const { immersive, toggle: toggleImmersive } = useImmersiveMode()
   flex: 1;
   min-width: 0;
   padding: 20px 24px;
-  overflow: auto;
+  /* 不能设 overflow: auto：它会让 content 成为滚动容器，
+     长文大纲的 sticky 就以这个不滚动的容器为参照，随页面一起滚出视口 */
+  overflow: visible;
 }
 
 /* 沉浸阅读：没有头部与导航，正文左右留白稍大一点更好读 */
@@ -357,6 +446,11 @@ const { immersive, toggle: toggleImmersive } = useImmersiveMode()
     order: 3;
     flex-basis: 100%;
     max-width: none;
+  }
+
+  .icon-button {
+    width: 44px;
+    height: 44px;
   }
 }
 </style>
