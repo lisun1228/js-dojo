@@ -1,7 +1,7 @@
 # 网络 · 06 HTTP 报文 · 方法 · 状态码 · 头部
 
 > 本册覆盖：状态码、请求方法、报文格式、常用头、重定向 vs 转发
-> 这是**送分题聚集区**，但也是**细节最多**的地方。301 和 302 的区别、304 有没有 body、401 和 403 的区别、307 为什么存在——这些答不准会被认为「只会用不会想」。
+> 高频细节：301 vs 302、304 有没有 body、401 vs 403、307 为何存在。
 
 ---
 
@@ -25,8 +25,7 @@
 ## 6.1 一句话结论
 
 HTTP 报文是**纯文本的「起始行 + 头部 + 空行 + 消息体」**四段结构。
-**方法**表达「要做什么」（语义 + 幂等性），**状态码**表达「结果如何」（五类三位数），**头部**表达「元信息」（内容类型、缓存、认证、跨域）。
-三者的分工是：**方法说意图，状态码说结果，头部说细节。**
+**方法**说意图（语义 + 幂等），**状态码**说结果（五类三位数），**头部**说细节（类型、缓存、认证、跨域）。
 
 ---
 
@@ -39,7 +38,7 @@ POST /api/users?from=web HTTP/1.1          ← 请求行：方法 SP 目标 SP �
 Host: api.example.com                       ← 请求头（每个一行）
 User-Agent: Mozilla/5.0 ...
 Content-Type: application/json
-Content-Length: 27
+Content-Length: 26
 Cookie: sessionid=abc123
                                             ← 空行（CRLF，必须有，标志头部结束）
 {"name":"张三","age":18}                     ← 请求体（可选）
@@ -67,7 +66,7 @@ CONNECT a.com:443 HTTP/1.1          → authority-form（HTTPS 代理隧道）
 ```http
 HTTP/1.1 200 OK                             ← 状态行：版本 SP 状态码 SP 原因短语 CRLF
 Content-Type: application/json; charset=utf-8
-Content-Length: 45
+Content-Length: 42
 Cache-Control: no-cache
 Set-Cookie: token=xyz; HttpOnly; Secure
                                             ← 空行
@@ -88,7 +87,7 @@ Set-Cookie: token=xyz; HttpOnly; Secure
 
 ## 6.3 请求方法
 
-### 6.3.1 八个方法 + 两个属性
+### 6.3.1 九个方法 + 两个属性
 
 | 方法 | 用途 | **安全**（不改状态） | **幂等**（重复执行结果相同） | 有 body |
 |---|---|---|---|---|
@@ -102,14 +101,7 @@ Set-Cookie: token=xyz; HttpOnly; Secure
 | **TRACE** | 回显请求（诊断，**生产应禁用**） | ✅ | ✅ | 无 |
 | **CONNECT** | 建立隧道（HTTPS 代理） | ❌ | ❌ | 无 |
 
-**两个概念的区别（必问）**：
-
-```
-安全（Safe）：不改变服务器状态。GET/HEAD/OPTIONS/TRACE 是安全的
-幂等（Idempotent）：执行 1 次和执行 N 次，服务器状态相同。GET/HEAD/PUT/DELETE/OPTIONS 是幂等的
-```
-
-**为什么幂等重要**：因为网络会重试。**如果一个请求可能被重发（超时重试、网关重试、用户狂点），非幂等的接口就会出问题**。
+**为什么幂等重要**：网络会重试（超时、网关、用户狂点），非幂等接口被重发就会出问题。
 
 ```js
 // ❌ 非幂等 + 自动重试 = 重复下单
@@ -123,7 +115,7 @@ POST /orders  { "sku": "A1", "qty": 1, "requestId": "uuid-xxx" }
 
 **注意**：`PATCH` **不幂等**。因为 `PATCH` 的语义是「应用一个补丁」，比如 `{"op":"increment","field":"count"}`，重复执行会加两次。
 
-### 6.3.2 GET vs POST（最高频的对比题）
+### 6.3.2 GET vs POST
 
 | 维度 | GET | POST |
 |---|---|---|
@@ -135,7 +127,7 @@ POST /orders  { "sku": "A1", "qty": 1, "requestId": "uuid-xxx" }
 | **长度限制** | **协议本身无限制**，受浏览器/服务器限制 | 协议无限制，受服务器配置限制 |
 | **编码** | 只能 URL 编码（`encodeURIComponent`） | 支持任意编码（JSON、二进制、文件流） |
 | **后退/刷新** | 无害 | 可能重复提交（浏览器会提示） |
-| **TCP 包数** | 通常 1 个（头部一次发完） | **也是 1 个**（见下面的辟谣） |
+| **TCP 包数** | 协议不规定 | 协议不规定（不受方法影响） |
 
 **三个必须澄清的常见错误说法**：
 
@@ -143,7 +135,7 @@ POST /orders  { "sku": "A1", "qty": 1, "requestId": "uuid-xxx" }
 |---|---|
 | 「GET 长度限制 2KB / 8KB」 | **HTTP 协议没有限制**。是浏览器（Chrome 地址栏约 2MB）和服务器（Nginx `large_client_header_buffers`、Tomcat `maxHttpHeaderSize` 8KB）在限制 |
 | 「POST 比 GET 安全」 | **都不安全**，都是明文。只有 HTTPS 才安全。POST 的参数在 body 里只是「不那么显眼」，抓包一样能看到 |
-| 「POST 会发两个 TCP 包（先发头、再发体）」 | 这来自很老的浏览器实现（等 100-continue）。**现代浏览器通常一个包发完**。协议层面允许分开发，但不是规定 |
+| 「POST 会发两个 TCP 包（先发头、再发体）」 | 协议不按方法规定包数。「先头后体」来自 `Expect: 100-continue` 的交互，是否分开由客户端实现决定 |
 
 **什么时候必须用 POST 不能用 GET**：
 
@@ -152,23 +144,16 @@ POST /orders  { "sku": "A1", "qty": 1, "requestId": "uuid-xxx" }
 3. **有敏感信息**（密码、token）——虽然都不安全，但至少不进日志和历史
 4. **需要发二进制**（文件上传必须 `multipart/form-data`）
 
-### 6.3.3 语义 vs 实现（一个深刻的问题）
+### 6.3.3 语义 vs 实现
 
-**HTTP 方法只是「语义约定」，服务器完全可以不遵守。**
+**HTTP 方法只是「语义约定」，服务器可以不遵守。**
 
 ```js
-// 完全合法（但语义很差）：用 GET 做删除
+// 语法合法、语义错误：用 GET 做删除
 GET /api/deleteUser?id=1
-// 后果：浏览器预取、爬虫抓取、CDN 缓存预取、链接预览都可能触发它 → 数据被误删
 ```
 
-**所以「用 GET 做写操作」是严重的设计错误**，因为：
-- 浏览器会**预取**（prefetch）链接
-- 爬虫会抓
-- 代理/CDN 可能缓存或预取
-- 用户按后退会重放
-
-> **面试话术**：「方法的核心是『语义契约』。GET 声明自己是安全幂等的，所以浏览器、爬虫、代理都敢预取和缓存。一旦你用 GET 做写操作，就等于把这些基础设施变成了『自动攻击者』。这就是为什么 RESTful 强调方法语义。」
+**用 GET 做写操作会把基础设施变成自动触发源**：浏览器预取、爬虫抓取、代理/CDN 缓存或预取、用户后退重放，都会重放这个请求。
 
 ---
 
@@ -204,16 +189,9 @@ GET /api/deleteUser?id=1
 | **204** | No Content | 成功但**没有响应体** | `DELETE` 成功、`PUT` 成功不需要返回内容 |
 | **206** | Partial Content | **部分内容**（断点续传、分片下载） | 视频拖动进度条、`Range` 请求 |
 
-#### 3xx 重定向（下面单独一节详讲）
+#### 3xx 重定向
 
-| 码 | 名称 | 永久？ | 保持方法？ |
-|---|---|---|---|
-| 301 | Moved Permanently | ✅ 永久 | ❌ 可能变 GET |
-| 302 | Found | ❌ 临时 | ❌ 可能变 GET |
-| 303 | See Other | ❌ 临时 | ❌ **强制变 GET** |
-| 304 | Not Modified | — | — （协商缓存） |
-| 307 | Temporary Redirect | ❌ 临时 | ✅ **严格保持** |
-| 308 | Permanent Redirect | ✅ 永久 | ✅ **严格保持** |
+301/302/303/307/308 的语义与是否保持方法见 6.5.1，304 见 6.5.4。
 
 #### 4xx 客户端错误
 
@@ -247,7 +225,7 @@ GET /api/deleteUser?id=1
 | **504** | **Gateway Timeout** | **网关等上游超时** | 上游慢（不是挂，是慢） |
 | **505** | HTTP Version Not Supported | 版本不支持 | — |
 
-### 6.4.3 三组最容易混淆的状态码
+### 6.4.3 两组最容易混淆的状态码
 
 #### ① 401 vs 403
 
@@ -269,8 +247,6 @@ GET /api/deleteUser?id=1
 | 排查 | 看上游进程是否存活、端口是否对 | 看上游耗时、调大 `proxy_read_timeout` |
 
 **一句话记忆**：**502 是「上游说错了话」，504 是「上游不说话」。**
-
-#### ③ 301 vs 302 vs 303 vs 307 vs 308（下一节详讲）
 
 ---
 
@@ -298,32 +274,23 @@ GET /result   ← body 丢了，方法变了
 
 **这导致了一个经典问题**：如果重定向后的地址只接受 POST，就会失败。
 
-**于是 RFC 7231（2014）补了两个码来「明确语义」**：
+**HTTP/1.1（RFC 2616，1999）用两个码明确语义**：
 
 - **303**：**就是要变 GET**（明确表达「去用 GET 拿那个资源」）→ 用于 **PRG（Post/Redirect/Get）模式**
 - **307**：**就是不变**（严格保持原方法 + body）
 
-**308** 是 2015 年补的（RFC 7538），对应「永久版 307」。
+**308** 是 2015 年补的（RFC 7538），对应「永久版 307」；RFC 7231（2014）只是重写了 303/307 的措辞。
 
 ### 6.5.3 301 和 302 的实际差别
 
 | 维度 | 301 | 302 |
 |---|---|---|
-| **浏览器缓存** | **默认会缓存**（有时缓存很久，甚至永久） | 现代浏览器**默认不缓存**，除非响应带 `Cache-Control` |
+| **浏览器缓存** | **默认会缓存**（有时缓存很久，甚至永久） | 现代浏览器**默认不缓存**，除非响应带 `Cache-Control` / `Expires` |
 | **不可逆性** | ⚠️ **一旦用户访问过，浏览器可能永久记住**，即使你后来改了配置也不生效 | 相对安全 |
 | **SEO** | 权重转移到新地址（推荐用 301 做永久迁移） | 不转移权重 |
 | **误用风险** | **高**（测试时用了 301，上线后改不回来） | 低 |
 
-**⚠️ 一个真实的运维事故**：
-
-```
-给 /old 配了 301 → /new
-后来改成 /old → /newer
-但用户浏览器缓存了 301，永远跳到 /new，改了也没用
-→ 只能让用户清缓存，或者换一个新的路径
-```
-
-> **面试话术**：「301 是永久重定向，浏览器会缓存，所以适合域名迁移、http 跳 https 这种『永远不变』的场景。302 是临时重定向，浏览器默认不缓存，适合登录后跳转这种一次性行为。**但 301 有个坑：一旦用户访问过就被浏览器记住，你后来改配置对他不生效**，所以测试环境千万别用 301。」
+**301 被缓存后不可撤回**：`/old → /new` 已下发 301，再改成 `/old → /newer`，老用户仍按缓存跳到 `/new`，只能清缓存或换路径。
 
 ### 6.5.4 304 Not Modified
 
@@ -331,9 +298,9 @@ GET /result   ← body 丢了，方法变了
 
 **三个关键事实**：
 
-1. **304 响应没有 body**（`Content-Length` 通常也是 0 或不带）
-2. **304 一定是「客户端带了条件请求头」才会返回**（`If-None-Match` 或 `If-Modified-Since`）
-3. **304 仍然是一次完整的网络往返**（省的是带宽，不是 RTT）
+1. **304 没有 body**；`Content-Length` 可缺省，也可写成与 200 响应体等长的字节数（不是 0）
+2. **只有请求带了条件头才会返回 304**（`If-None-Match` 或 `If-Modified-Since`）
+3. **304 仍然是一次完整往返**（省带宽，不省 RTT）
 
 **完整交互**：
 
@@ -357,17 +324,9 @@ GET /result   ← body 丢了，方法变了
      （新的 body）
 ```
 
-**为什么 304 比「重新下载」省不了多少时间？**
+**304 的价值只在带宽和解析**（大文件、JS/CSS 不必重新解析），首屏仍要等一个 RTT。所以性能上的做法是**强缓存 + 内容 hash 文件名**，让请求根本不发出去：`Cache-Control: max-age=31536000, immutable` 配 `app.a1b2c3.js`。
 
-因为**还是要走一次完整往返（RTT）**。所以 304 的价值是：
-- **省带宽**（大文件特别明显）
-- **省解析/执行时间**（JS/CSS 不用重新解析）
-
-**但对首屏来说，304 仍然是一次 RTT 的等待**。所以真正的性能优化是「**强缓存 + 内容 hash 文件名**」，让请求根本不发出去。
-
-> 这就是 `Cache-Control: max-age=31536000, immutable` + `app.a1b2c3.js` 的组合为什么是最佳实践。
-
-### 6.5.5 一个反直觉的点：重定向的成本
+### 6.5.5 重定向的成本
 
 **每一次 3xx 都是一次额外的完整往返**：
 
@@ -406,7 +365,7 @@ curl -IL http://example.com
 | **Accept-Encoding** | 能接受的压缩算法 | `gzip, deflate, br` |
 | **Accept-Language** | 语言偏好 | `zh-CN,zh;q=0.9,en;q=0.8` |
 | **Content-Type** | **请求体的类型** | `application/json` |
-| **Content-Length** | 请求体的字节数 | `27` |
+| **Content-Length** | 请求体的字节数 | `26` |
 | **Cookie** | 携带 cookie | `sessionid=abc; theme=dark` |
 | **Authorization** | 认证凭据 | `Bearer eyJhbGci...` |
 | **Referer** | 从哪个页面来的（可被用于防盗链、统计） | `https://a.com/page` |
@@ -436,7 +395,7 @@ curl -IL http://example.com
 | **Content-Length** | 响应体字节数 | `8234` |
 | **Content-Encoding** | 压缩算法 | `br` / `gzip` |
 | **Content-Disposition** | 是内联显示还是下载 | `attachment; filename="a.pdf"` |
-| **Cache-Control** | 缓存策略（**最强**） | `public, max-age=31536000, immutable` |
+| **Cache-Control** | 缓存策略（**优先级最高**） | `public, max-age=31536000, immutable` |
 | **ETag** | 内容指纹（协商缓存） | `"abc123"` |
 | **Last-Modified** | 最后修改时间 | `Wed, 21 Oct 2026 07:28:00 GMT` |
 | **Expires** | 过期绝对时间（被 Cache-Control 覆盖） | `Thu, 01 Dec 2026 16:00:00 GMT` |
@@ -453,19 +412,19 @@ curl -IL http://example.com
 
 ### 6.7.1 `Content-Type` 的常见值（前端必记）
 
+加粗三项是 CORS 简单请求允许的 `Content-Type`。
+
 | 值 | 用途 |
 |---|---|
 | `application/json` | JSON（现代 API 标准） |
-| `application/x-www-form-urlencoded` | 表单（`a=1&b=2`，**CORS 简单请求允许**） |
-| `multipart/form-data` | 文件上传（**CORS 简单请求允许**） |
-| `text/plain` | 纯文本（**CORS 简单请求允许**） |
+| **`application/x-www-form-urlencoded`** | 表单（`a=1&b=2`） |
+| **`multipart/form-data`** | 文件上传 |
+| **`text/plain`** | 纯文本 |
 | `text/html` | HTML |
 | `application/octet-stream` | 二进制流（下载） |
 | `application/javascript` | JS |
 | `text/css` | CSS |
 | `image/svg+xml` | SVG（**注意：可以内嵌脚本，有 XSS 风险**） |
-
-> **加粗的三个就是 CORS「简单请求」允许的 Content-Type**——这是 10 册的核心考点之一。
 
 ### 6.7.2 `Vary` 为什么重要
 
@@ -475,7 +434,7 @@ curl -IL http://example.com
 Vary: Accept-Encoding
 ```
 
-意思是「gzip 版和 br 版要分别缓存」——如果不写，CDN 可能把 gzip 的内容返回给只支持 br 的客户端（虽然实际是解码失败）。
+意思是「gzip 版和 br 版要分别缓存」——不写，CDN 可能把 gzip 编码的内容返给只声明 br 的客户端，客户端无法解码。
 
 ```http
 Vary: Origin
@@ -487,7 +446,7 @@ Vary: Origin
 
 ## 6.8 重定向 vs 转发
 
-> ⚠️ 这道题原本是 **Java Servlet** 的概念（`response.sendRedirect()` vs `request.getRequestDispatcher().forward()`）。前端面试问它，通常是想确认你理解「**客户端跳转**」和「**服务端内部转发**」的本质区别。所以我给了 Java 版（原题语境）+ 前端版（Nginx/网关语境）。
+> 这对概念来自 **Java Servlet**（`response.sendRedirect()` vs `request.getRequestDispatcher().forward()`），本质区别是**客户端跳转**与**服务端内部转发**；前端对应 Nginx 的 `rewrite` / `proxy_pass`。
 
 ### 6.8.1 Java 语境下的对比
 
@@ -502,12 +461,12 @@ Vary: Origin
 | **状态码** | 302 / 301 | 无（内部行为，客户端无感） |
 | **典型用途** | 登录成功后跳到首页；支付完成跳到结果页 | 控制器转发到视图（MVC 的 `forward` 到 JSP） |
 
-### 6.8.2 前端语境下的三种「跳转」（更实用）
+### 6.8.2 前端语境下的三种「跳转」
 
 | 手段 | 谁发起 | 请求次数 | URL 变化 | 说明 |
 |---|---|---|---|---|
 | **HTTP 重定向（301/302）** | 服务端告诉浏览器 | **2 次** | ✅ 变 | 浏览器会重新发请求，可跨域 |
-| **Nginx `rewrite`（内部重写）** | Nginx | **1 次** | ❌ 不变（浏览器看不到） | 相当于「转发」，常用于 SPA 的 `try_files` |
+| **Nginx 内部重写（`rewrite` / `try_files`）** | Nginx | **1 次** | ❌ 不变（浏览器看不到） | 相当于「转发」，SPA 用 `try_files` 回退到 `index.html` |
 | **Nginx `proxy_pass`（反向代理）** | Nginx | **1 次**（对浏览器而言） | ❌ 不变 | 把请求转给上游服务 |
 
 **一个典型的 SPA 部署配置**：
@@ -538,9 +497,7 @@ location /api/ {
 
 ### 6.8.3 一句话对比
 
-> **重定向是「你去那个地址」，转发是「我替你办」。**
-> 重定向 = 客户端行为，两次请求，URL 变；
-> 转发 = 服务端行为，一次请求，URL 不变。
+> 重定向 = 客户端行为，2 次请求，URL 变，可跨域；转发 = 服务端行为，1 次请求，URL 不变，只能应用内。
 
 ---
 
@@ -578,8 +535,8 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
 |---|---|
 | 说「GET 有 2KB 限制」 | 协议无限制，是浏览器/服务器在限制 |
 | 说「POST 比 GET 安全」 | 都不安全，只有 HTTPS 才安全 |
-| 说「POST 发两个 TCP 包」 | 现代浏览器通常一个包；这是老实现的遗留说法 |
-| 说「302 不缓存」 | 没有 `Cache-Control` 时浏览器**可能**缓存 302；要显式 `no-store` |
+| 说「POST 发两个 TCP 包」 | 协议不按方法规定包数；这是老实现的遗留说法 |
+| 说「302 一定不缓存」 | 302 默认不缓存，但带 `Cache-Control` / `Expires` 时仍会被缓存；要禁缓存就显式 `no-store` |
 | 说「301 可以随时改回来」 | 用户浏览器会缓存 301，**改了不生效** |
 | 说「304 省了一次请求」 | 304 **仍然是一次完整往返**，省的是带宽不是 RTT |
 | 把 401 和 403 说反 | 401 未认证（去登录），403 无权限（登录了也不行） |
@@ -587,7 +544,7 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
 | 说「PUT 和 PATCH 一样」 | PUT 是整体替换（幂等），PATCH 是局部更新（**不幂等**） |
 | 说「DELETE 不幂等」 | DELETE **幂等**（删一次和删多次，结果都是「不存在」） |
 | 说「OPTIONS 没用」 | CORS 预检就是 OPTIONS；也用于查 `Allow` |
-| 说「响应头里的原因短语有用」 | HTTP/2 已取消原因短语，客户端只看状态码 |
+| 说「原因短语有用」 | HTTP/2 已取消原因短语，客户端只看状态码 |
 | 说「`Content-Length` 和 `Transfer-Encoding` 可以共存」 | 共存是**请求走私**攻击面，服务器必须拒绝 |
 
 ---
@@ -601,21 +558,17 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
 
 ### 30 秒版（301 vs 302）
 
-> 301 是永久重定向，浏览器会缓存，适合域名迁移、http 跳 https 这种永远不变的场景；302 是临时重定向，浏览器默认不缓存，适合登录后跳转。
-> 有个坑：**301 一旦被用户浏览器缓存，你后来改配置对他不生效**，所以测试环境千万别用 301。
-> 另外现在还有 303、307、308——303 强制变 GET，用于 POST 后跳转；307 和 308 严格保持方法和 body，是因为早期浏览器把 301/302 实现成了「一律变 GET」，RFC 才补了这两个码来明确语义。
+- 301 永久、可被浏览器缓存，用于域名迁移 / http→https；302 临时、默认不缓存，用于登录后跳转。
+- 301 一旦被缓存，改配置对老用户不生效，测试环境不要用。
+- 303 强制变 GET（POST 后跳转）；307/308 严格保持方法和 body，308 为永久版。
 
-### 2 分钟版（GET vs POST + 状态码 + 头部，串起来讲）
+### 2 分钟版（报文 + 方法 + 状态码 + 头部）
 
-> 我先说报文结构。HTTP 报文是纯文本，四段：起始行、头部、空行、消息体。请求的起始行是「方法 目标 版本」，响应的是「版本 状态码 原因短语」。空行是必须的，用来分隔头和体。
->
-> 方法是「语义契约」。GET 声明自己安全且幂等，所以浏览器敢预取、爬虫敢抓、CDN 敢缓存。POST 是非安全非幂等的，所以不能缓存、不能预取。PUT 是整体替换（幂等），PATCH 是局部更新（不幂等），DELETE 幂等——删一次和删多次结果一样。**幂等性在工程上非常重要**，因为网关和客户端会自动重试，非幂等接口重复执行就会出问题（比如重复下单），所以要用幂等键。
->
-> GET 和 POST 有三个常见误区要澄清：**一是 GET 没有协议层面的长度限制**，2KB/8KB 是浏览器和服务器的限制；**二是 POST 不比 GET 安全**，都是明文，只有 HTTPS 才安全；**三是「POST 发两个 TCP 包」是现代浏览器基本不成立**，那是老实现等 100-continue 的行为。
->
-> 状态码按第一位分五类。3xx 值得展开：301 永久、302 临时，但早期浏览器把两者都实现成「一律变 GET」，所以 RFC 补了 303 强制变 GET（用于 POST 后跳转）、307/308 严格保持方法和 body。还有 **304 是协商缓存命中，响应没有 body，但仍然是一次完整往返**——省的是带宽，不是 RTT，所以真正的最优解是强缓存加内容 hash 文件名。最常混的两组：**401 是未认证、403 是已认证但无权限；502 是上游返回了无效内容、504 是上游超时**。
->
-> 头部我按用途分四类：内容协商（Accept、Content-Type、Accept-Encoding）、缓存（Cache-Control、ETag、Last-Modified）、身份（Cookie、Authorization、Set-Cookie）、跨域（Origin、Access-Control-Allow-Origin、Vary）。其中 **`Vary: Origin` 在 CORS 场景必须写**，否则 CDN 会把 A 站的响应连 CORS 头一起返回给 B 站。
+- 报文四段：起始行、头部、空行、消息体；空行必须有。
+- 方法语义决定基础设施行为：浏览器预取、CDN 缓存、网关重试都按语义行事；非幂等接口重发要用幂等键。
+- 三条常见误区：GET 没有协议层面的长度限制；POST 不比 GET 安全；「POST 必发两个 TCP 包」是旧实现的遗留。
+- 3xx：301 永久 / 302 临时 / 303 强制 GET / 307、308 保持方法；304 没有 body，但仍是一次完整往返。
+- 头部按内容协商、缓存、身份、跨域四类；CORS 场景必须写 `Vary: Origin`。
 
 ### 追问表
 
@@ -624,7 +577,7 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
 | GET 和 POST 的本质区别 | 语义（安全/幂等）不同，不是「参数在 URL 还是 body」 |
 | GET 有长度限制吗 | 协议无，浏览器/服务器有 |
 | POST 比 GET 安全吗 | 都不安全，只有 HTTPS 安全 |
-| 什么是幂等 | 执行 N 次与 1 次结果相同；GET/PUT/DELETE/OPTIONS 幂等，POST/PATCH 不幂等 |
+| 什么是幂等 | 执行 N 次与 1 次结果相同；GET/HEAD/PUT/DELETE/OPTIONS 幂等，POST/PATCH 不幂等 |
 | PUT 和 PATCH 区别 | 整体替换 vs 局部更新；PUT 幂等，PATCH 不一定 |
 | 301 和 302 区别 | 永久 vs 临时；301 会被浏览器缓存且不可撤销 |
 | 307 和 302 区别 | 307 严格保持方法和 body，302 历史上会变 GET |
@@ -637,7 +590,7 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
 | `Vary` 有什么用 | 告诉缓存按哪些头区分版本，CORS 必须 `Vary: Origin` |
 | 101 是什么 | 协议切换，WebSocket 握手成功 |
 | 重定向和转发区别 | 客户端两次请求 URL 变 / 服务端一次请求 URL 不变 |
-| 为什么禁用 TRACE | 会回显请求，配合 XST 攻击可窃取 cookie |
+| 为什么禁用 TRACE | 回显完整请求，可被 XST 利用读取凭据；生产应禁用 |
 
 ---
 
@@ -652,7 +605,7 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
   安全：GET HEAD OPTIONS TRACE
   幂等：GET HEAD PUT DELETE OPTIONS（PATCH 不幂等！）
   GET vs POST 是语义差异，不是「参数位置」
-  三个辟谣：GET 无协议长度限制 / POST 不比 GET 安全 / 不是两个 TCP 包
+  三个辟谣：GET 无协议长度限制 / POST 不比 GET 安全 / 包数不由方法决定
 
 状态码
   1xx 100 Continue、101 切换协议、103 Early Hints

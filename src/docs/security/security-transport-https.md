@@ -2,7 +2,6 @@
 
 > 覆盖题号：**7、18、20、14**
 > 对应原题：《HTTPS 有哪些优点》《网络劫持》《中间人攻击》《静态资源完整性校验》
-> 这四题是一条线：**HTTPS 解决"链路可信"，中间人和网络劫持是"链路不可信"的后果，SRI 是"连 HTTPS 都不完全可信时"的最后一道校验。**
 
 ---
 
@@ -24,19 +23,17 @@
 
 ### 1.1 一句话结论
 
-**HTTPS = HTTP + TLS**。TLS 提供三件事：**机密性（加密，防窃听）、完整性（防篡改）、身份认证（证书，防冒充）**。
+HTTPS = **HTTP + TLS**。TLS 提供三件事：**机密性（对称加密）、完整性（AEAD）、身份认证（证书链）**。
 
-> 面试时先给这三件事，再展开——这是最标准的回答结构。很多人只答"加密"，漏了"认证"，而**认证才是防中间人的关键**。
+只加密不够：攻击者可以和客户端各建一条加密通道，再转发给服务器，双方都以为在直连，这就是中间人攻击（第 2 节）。
 
 ### 1.2 三件事分别解决什么
 
 | 能力 | 手段 | 挡住的攻击 |
 |---|---|---|
-| **机密性** | 对称加密（AES-GCM / ChaCha20） | 窃听（抓包看密码） |
-| **完整性** | AEAD / HMAC | 篡改（注入广告、改转账金额） |
-| **身份认证** | 非对称加密 + X.509 证书 + CA | 冒充（假网站、中间人） |
-
-**为什么需要"认证"**：如果只有加密，攻击者可以和你"各建一条加密通道"——你以为在跟银行通信，其实在跟攻击者通信，他再转发给银行。**这就是中间人攻击**（见第 2 节）。
+| 机密性 | 对称加密：AES-GCM / ChaCha20-Poly1305 | 窃听：抓包读取密码、Cookie |
+| 完整性 | AEAD（GCM 自带 MAC） | 篡改：注入广告/JS、修改转账金额 |
+| 身份认证 | X.509 证书 + CA 签名；握手参数用证书私钥签名 | 冒充：假服务器、DNS/ARP 劫持 |
 
 ### 1.3 TLS 握手（简化版）
 
@@ -45,118 +42,98 @@ sequenceDiagram
   participant C as 客户端
   participant S as 服务器
 
-  C->>S: ClientHello<br/>（支持的版本、加密套件、随机数）
-  S-->>C: ServerHello + 证书 + 密钥交换参数
-  Note over C: ① 用内置的 CA 根证书验证证书链<br/>② 校验域名是否匹配<br/>③ 校验是否过期/被吊销
-  C->>S: 密钥交换完成（生成会话密钥）
-  Note over C,S: 之后用对称加密通信（快）
+  C->>S: ClientHello<br/>（版本、套件、client_random、SNI、ALPN）
+  S-->>C: ServerHello<br/>（套件、server_random）+ 证书链 + ECDHE 参数（证书私钥签名）
+  Note over C: 验证证书链、域名、有效期、吊销<br/>用 ECDHE 算出会话密钥
+  C->>S: ClientKeyExchange（ECDHE 公钥）+ ChangeCipherSpec + Finished
+  Note over C,S: 之后全部用会话密钥对称加密
 ```
 
-**关键设计**：**用非对称加密"协商"出一个对称密钥，之后用对称加密传数据。** 因为非对称加密太慢（比对称慢几百倍），只用来做密钥交换和签名。
+非对称部分只做两件事：证书签名完成身份认证，ECDHE 协商会话密钥；HTTP 数据全程对称加密。
 
-| | 非对称（RSA/ECDHE） | 对称（AES/ChaCha20） |
+| | 非对称（RSA/ECDSA 签名、ECDHE） | 对称（AES-GCM / ChaCha20-Poly1305） |
 |---|---|---|
-| 速度 | 慢 | 快 |
-| 用途 | 密钥交换、签名、证书 | 数据传输 |
-| 密钥 | 公钥/私钥 | 同一个密钥 |
+| 速度 | 慢 3~4 个数量级 | 快，AES-NI 下可达 GB/s 级 |
+| 用途 | 身份认证、密钥协商 | 数据传输 |
+| 密钥 | 公钥/私钥、临时密钥对 | 会话密钥（双方相同） |
 
 ### 1.4 TLS 1.2 vs 1.3
 
 | | TLS 1.2 | TLS 1.3 |
 |---|---|---|
-| 握手 RTT | **2-RTT** | **1-RTT**（会话恢复 0-RTT） |
-| 加密套件 | 多且杂（含不安全选项） | **只保留 AEAD**（AES-GCM / ChaCha20-Poly1305） |
-| 前向保密 | 可选（RSA 密钥交换不支持） | **强制**（只能用 ECDHE） |
-| 已废弃特性 | — | 移除 RSA 密钥交换、压缩、重协商 |
+| 握手 RTT | 完整握手 2-RTT | 完整握手 1-RTT；PSK 恢复 1-RTT，带 early data 才 0-RTT |
+| 加密套件 | 含 CBC / RC4 / SHA-1 等历史算法 | 只保留 AEAD + HKDF-SHA256/384 |
+| 前向保密 | 可选：ECDHE 有，RSA 密钥交换没有 | 完整握手强制 (EC)DHE；0-RTT / 纯 PSK 恢复例外 |
+| 已移除 | — | 静态 RSA 密钥交换、压缩、重协商 |
 
-**前向保密（Forward Secrecy）**：即使服务器的私钥将来泄露，**过去的通信记录也无法解密**。因为每次会话用独立的临时密钥（ECDHE）。
-
-> 面试加分点："TLS 1.3 强制前向保密，这是它比 1.2 更安全的重要一点——1.2 如果用了 RSA 密钥交换，私钥一旦泄露，历史流量全都能解。"
+**前向保密**：服务器长期私钥将来泄露，也解不开之前录下的流量。会话密钥来自 ECDHE 临时密钥对，用完即弃；ECDHE 套件下证书私钥只参与签名。
 
 ### 1.5 证书体系
 
 ```
-根证书（Root CA，内置在操作系统/浏览器）
-  └─ 中间证书（Intermediate CA）
+根 CA（Root CA，预装在系统/浏览器信任库）
+  └─ 中间 CA（Intermediate CA，必须随服务器证书一起下发）
        └─ 服务器证书（Leaf，绑定域名）
 ```
 
-**浏览器验证什么：**
-
-| 检查项 | 失败后果 |
+| 检查项 | 失败结果 |
 |---|---|
-| 证书链能否逐级验签到受信任的根 | `NET::ERR_CERT_AUTHORITY_INVALID` |
-| 域名是否匹配（SAN 字段） | `NET::ERR_CERT_COMMON_NAME_INVALID` |
-| 是否在有效期内 | `NET::ERR_CERT_DATE_INVALID` |
-| 是否被吊销（CRL / OCSP） | 可能被忽略（软失败） |
-| 证书用途是否正确 | — |
+| 证书链逐级验签到受信任根 | `NET::ERR_CERT_AUTHORITY_INVALID` |
+| 域名匹配（SAN） | `NET::ERR_CERT_COMMON_NAME_INVALID` |
+| 有效期 | `NET::ERR_CERT_DATE_INVALID` |
+| 用途 EKU 含 `serverAuth` | 证书不能用于服务器认证 |
+| 吊销状态 CRL / OCSP | 可能软失败；用 OCSP Stapling 降低延迟 |
 
-**证书类型（了解即可）：**
+Chrome 58 起只看 SAN，不再匹配 CN；OpenSSL / Node 在证书完全没有 SAN 时仍会回退到 CN。
 
-| 类型 | 验证什么 | 浏览器显示 |
+| 类型 | 验证内容 | 浏览器显示 |
 |---|---|---|
-| DV（域名验证） | 只验证域名控制权 | 普通锁标 |
-| OV（组织验证） | 验证企业真实存在 | 普通锁标（信息在证书详情里） |
-| EV（扩展验证） | 更严格审核 | **2019 年后 Chrome 取消了绿色地址栏**，与 DV 无异 |
+| DV（域名验证） | 域名控制权 | 普通锁标 |
+| OV（组织验证） | 企业真实存在 | 普通锁标，详情显示组织 |
+| EV（扩展验证） | 更严格审核 | 2019 年后 Chrome 取消绿色地址栏，地址栏与 DV 相同 |
 
-> **EV 证书的"绿色地址栏"已被取消**，这是很多老资料里的过时信息。现在 EV 的唯一价值是证书详情里能看到公司名。
+**证书透明度（CT）**：公开 CA 签发的证书需提交到公开日志；SCT 随证书或握手提供，用于发现错误签发。
 
-**证书透明度（Certificate Transparency, CT）**：所有公开 CA 签发的证书都要记录到公开日志里，任何人可以审计"有没有人给我的域名偷偷签了证书"。这是发现"错误签发"的关键机制。
-
-### 1.6 题 7 完整答法：HTTPS 的优点（不止安全）
-
-> **原答案只讲了 4 条安全相关，其实 HTTPS 还有几个"非安全"的刚需，说出来显得你对工程现实有感知。**
+### 1.6 HTTPS 的优点（不止安全）
 
 | 类别 | 优点 |
 |---|---|
-| **安全** | ① 防窃听（加密）② 防篡改（完整性）③ 防冒充（证书认证）④ 防运营商劫持注入 |
-| **性能** | ⑤ **HTTP/2 在浏览器里实际要求 HTTPS**（否则只能用 HTTP/1.1）⑥ TLS 1.3 只需 1-RTT，会话恢复 0-RTT ⑦ 支持 Brotli（浏览器只在 HTTPS 下接受 br 压缩） |
-| **能力** | ⑧ **很多 Web API 只在 Secure Context 下可用**：Service Worker（PWA 离线）、Geolocation、Clipboard、`getUserMedia`（摄像头）、`crypto.subtle`、WebAuthn（指纹/面容登录）、Notifications |
-| **SEO / 商业** | ⑨ Google 排名轻微加分 ⑩ 浏览器对 HTTP 站点标"不安全"，影响转化率 ⑪ 很多支付/小程序/App 审核强制要求 HTTPS |
-| **合规** | ⑫ 等保、PCI-DSS、GDPR 等合规要求传输加密 |
+| 安全 | 防窃听、防篡改、防冒充；防运营商 HTTP 内容注入 |
+| 性能 | 浏览器只在 HTTPS 下启用 HTTP/2；Brotli 只在 HTTPS 下协商；TLS 1.3 为 1-RTT（early data 为 0-RTT） |
+| 能力 | Secure Context：Service Worker、Geolocation、Clipboard、`getUserMedia`、`crypto.subtle`、WebAuthn、Notifications |
+| SEO / 商业 / 合规 | Google 排名使用 HTTPS 作为信号；HTTP 站点标「不安全」；支付、小程序、App 上架要求 HTTPS；等保、PCI-DSS、GDPR |
 
-**第 ⑧ 条是最容易被忽略的**：很多人想做 PWA，发现 Service Worker 注册不了——因为本地开发用 `localhost` 可以，但线上必须 HTTPS（`localhost` 被视为安全上下文）。
+`localhost` 也被视为 Secure Context，所以本地开发可以注册 Service Worker；线上必须是 HTTPS。
 
 ### 1.7 混合内容（Mixed Content）
 
-**问题**：HTTPS 页面里加载了 HTTP 资源。
-
-| 类型 | 例子 | 浏览器行为 |
+| 类型 | 例子 | Chrome 行为 |
 |---|---|---|
-| **主动混合内容**（Active） | `<script src="http://...">`、`<link rel=stylesheet>`、`<iframe>`、`fetch`、`XHR` | **直接阻止**（因为可以执行代码/改页面） |
-| **被动混合内容**（Passive） | `<img>`、`<audio>`、`<video>` | Chrome 从 2020 起**自动升级为 HTTPS**；失败则阻止（以前只是警告） |
-
-**解决方案：**
+| 主动混合内容 | `<script>`、`<link rel=stylesheet>`、`<iframe>`、`fetch`、XHR | 直接阻止，必须改用 HTTPS |
+| 被动混合内容 | `<img>`、`<audio>`、`<video>` | 自动升级为 HTTPS；升级后失败则阻止 |
 
 ```http
-# ① 让浏览器自动把所有 HTTP 子资源升级为 HTTPS
+# 让浏览器在发起请求前把页面内的 http:// 升级为 https://
 Content-Security-Policy: upgrade-insecure-requests
-
-# ② 或者用 HSTS（见下）
-Strict-Transport-Security: max-age=31536000
 ```
 
 ```html
-<!-- ③ 明确写成 // 或 https:// -->
+<!-- 资源直接写 https:// -->
 <script src="https://cdn.example.com/lib.js"></script>
 ```
 
-> **一个隐蔽的坑**：后端接口返回的富文本/配置里如果硬编码了 `http://` 的图片地址，加了 `upgrade-insecure-requests` 后如果那个域名不支持 HTTPS，图片会直接加载失败。**上线前要扫一遍数据里的 http 链接。**
+`http://localhost` 属于潜在可信来源，不触发混合内容的拦截或升级；验证混合内容行为要用普通域名。上线前还要扫描后端富文本、配置里的 `http://`：升级后目标域不支持 HTTPS 会直接加载失败。
 
 ### 1.8 HTTPS 的性能代价与优化
 
 | 代价 | 优化 |
 |---|---|
-| 握手增加 1~2 RTT | TLS 1.3（1-RTT）、0-RTT 会话恢复、`preconnect` |
-| 加解密消耗 CPU | 现代 CPU 有 AES-NI 指令，开销已很小；用 ECDSA 证书（比 RSA 签名快） |
-| 证书链验证耗时 | 精简证书链、开 OCSP Stapling（服务器代为获取吊销状态，省客户端一次请求） |
-| 首次连接无缓存 | HSTS preload、`preconnect` |
+| 握手增加 1~2 RTT | TLS 1.3、会话复用、`preconnect` |
+| 加解密消耗 CPU | AES-NI 下开销小；ECDSA 证书签名更快、证书更小 |
+| 证书链验证与吊销查询 | 精简证书链、OCSP Stapling |
+| 首次连接无缓存 | HSTS preload（见 2.4）、`preconnect` |
 
-> **现实结论**：在现代硬件上，**HTTPS 的性能代价基本可以忽略**（通常 < 5%），而 HTTP/2 带来的收益远大于 TLS 的开销。**"HTTPS 会拖慢网站"是老观念。**
-
-### 1.9 30 秒版
-
-> "HTTPS 是 HTTP 加 TLS，提供三件事：加密防窃听、完整性防篡改、证书认证防冒充。除了安全，它还有几个刚需：浏览器里 HTTP/2 实际要求 HTTPS，Brotli 也只在 HTTPS 下生效；很多 API 比如 Service Worker、定位、摄像头只在安全上下文可用；还有 SEO 和合规要求。"
+现代硬件上 TLS 计算通常不是瓶颈，主要成本是握手 RTT、证书链验证和首次连接无缓存。
 
 ---
 
@@ -164,7 +141,7 @@ Strict-Transport-Security: max-age=31536000
 
 ### 2.1 一句话结论
 
-**中间人攻击（MITM）= 攻击者插入到通信双方之间，可以窃听、篡改、重放，而双方以为在直接通信。**
+中间人攻击（MITM）：攻击者位于通信双方之间，可窃听、篡改、重放，而双方以为在直接通信。
 
 ```mermaid
 flowchart LR
@@ -172,36 +149,33 @@ flowchart LR
   A <-->|"以为在和客户端通信"| S["服务器"]
 ```
 
-### 2.2 四种典型的 MITM 场景
+### 2.2 典型 MITM 场景
 
 | 场景 | 原理 |
 |---|---|
-| **公共 Wi-Fi 热点** | 攻击者架一个同名热点，用户连上后所有流量都过他 |
-| **ARP 欺骗** | 在局域网内伪造 ARP 响应，把网关 IP 映射到攻击者 MAC，实现"局域网中间人" |
-| **DNS 欺骗 / 投毒** | 篡改 DNS 响应，把 `bank.com` 解析到攻击者 IP |
-| **恶意代理 / 企业网关** | 公司/学校的 SSL 检查代理，用自己的根证书重签所有 HTTPS |
-| **BGP 劫持** | 在国家/运营商层面劫持路由，把流量引到错误的地方（少见但影响巨大） |
+| 公共 Wi-Fi 热点 | 攻击者架同名热点，用户连上后所有流量都经过攻击者 |
+| ARP 欺骗 | 在局域网伪造 ARP 响应，把网关 IP 映射到攻击者 MAC |
+| DNS 欺骗 / 投毒 | 篡改 DNS 响应，把 `bank.com` 解析到攻击者 IP |
+| 恶意代理 / 企业网关 | SSL 检查代理用自己的根证书重签 HTTPS，客户端需信任该根证书 |
+| BGP 劫持 | 在运营商/国家层面劫持路由，把流量引到错误位置 |
 
-### 2.3 SSL 剥离攻击（最经典的 HTTPS 攻击）
-
-> **这是面试最值得讲的一个细节**，因为它解释了"为什么有了 HTTPS 还需要 HSTS"。
+### 2.3 SSL 剥离（降级攻击）
 
 ```mermaid
 sequenceDiagram
-  participant V as 受害者
+  participant V as 用户
   participant A as 攻击者
   participant S as 服务器
 
-  Note over V: 用户输入 example.com（默认 HTTP）
+  Note over V: 输入 example.com，浏览器补全为 http://
   V->>A: GET http://example.com（明文）
-  Note over A: 拦截！
-  A->>S: GET https://example.com（攻击者用 HTTPS 访问服务器）
-  S-->>A: 加密的响应
-  A-->>V: 解密后，用 HTTP 明文返回给受害者
-  Note over V: 用户看到的是 http://example.com<br/>后续所有请求都走 HTTP → 全程可被窃听篡改
+  A->>S: GET https://example.com
+  S-->>A: 加密响应
+  A-->>V: 解密后以 HTTP 明文返回
+  Note over V: 后续请求继续走 HTTP，全程可被窃听、篡改
 ```
 
-**关键**：攻击者**不需要破解 TLS**，他只需要"让用户永远不走 TLS"。因为用户第一次访问用的是 HTTP（或者点了 HTTP 链接），攻击者在这一步就把连接降级了。
+攻击者不需要破解 TLS，只需让用户始终走 HTTP。首次访问使用 `http://` 时存在这个窗口；攻击者以明文返回页面后，页面内的 HTTP 请求继续暴露。
 
 ### 2.4 HSTS：专门对付 SSL 剥离
 
@@ -209,57 +183,40 @@ sequenceDiagram
 Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 ```
 
-**作用**：让浏览器**记住**"这个域必须用 HTTPS"。之后即使用户输入 `http://example.com`，浏览器也会**在本地就把地址改成 `https://`**，根本不会发出那个明文请求。
-
-| 参数 | 作用 |
+| 指令 | 作用 |
 |---|---|
-| `max-age` | 记住多少秒（建议 1 年 = 31536000） |
-| `includeSubDomains` | 所有子域也强制 |
-| `preload` | 申请加入浏览器内置列表 |
+| `max-age=31536000` | 浏览器记住「这个域名只走 HTTPS」，有效期一年 |
+| `includeSubDomains` | 所有子域同样强制 |
+| `preload` | 申请进入浏览器内置列表，首次访问也强制 HTTPS |
 
-**HSTS 的三个关键细节（面试必问）：**
+- 只在 HTTPS 响应里生效；HTTP 响应中的 STS 头会被浏览器忽略。
+- 生效后浏览器在本地把 `http://` 改写为 `https://`（Chrome 内部表现为 307 Internal Redirect），明文请求不会发出。
+- 首次访问还没收到 HSTS 头，仍可能被剥离；`preload` 解决首次访问窗口。
+- 提交 preload 需满足：有效证书、同 host 的 HTTP 全部跳转 HTTPS、所有子域支持 HTTPS、`max-age ≥ 31536000`、`includeSubDomains`、`preload`。
+- preload 撤销无法即时生效，要等浏览器版本更新；`includeSubDomains` 下有子域不支持 HTTPS 会直接不可访问。
 
-| 细节 | 说明 |
-|---|---|
-| **只能在 HTTPS 响应里发** | HTTP 响应里的 HSTS 头会被忽略（否则攻击者可以伪造一个） |
-| **首次访问仍脆弱** | 用户第一次访问（还没收到 HSTS 头）时，仍可能被剥离 → 这就是 `preload` 的意义 |
-| **preload 是不可逆的** | 提交到浏览器内置列表后，要撤销需要等浏览器发版（几个月）；且 `includeSubDomains` 下有子域没 HTTPS 会直接不可访问 |
-
-**preload 的申请条件（严格）：**
-
-```
-① 有有效证书
-② HTTP 请求全部 301 跳转到 HTTPS（同一 host）
-③ 所有子域都支持 HTTPS
-④ max-age ≥ 31536000（1 年）
-⑤ 带 includeSubDomains
-⑥ 带 preload 指令
-```
-
-> 提交地址：`hstspreload.org`。
+上线顺序：先用较短的 `max-age` 验证，再逐步加长，最后加 `includeSubDomains` 和 `preload`。
 
 ### 2.5 其他防御
 
 | 手段 | 说明 |
 |---|---|
-| **HTTPS 全站** | 基础 |
-| **HSTS** | 防降级（核心） |
-| **证书固定（Pinning）** | 只信任特定证书/公钥。**HPKP 已废弃**（容易把自己锁死），现在移动端 App 里用得多 |
-| **证书透明度（CT）监控** | 监控有没有人为你的域名签发证书 |
-| **不忽略证书警告** | 用户点了"继续访问"就前功尽弃；企业内要治理"自签证书"习惯 |
-| **OCSP Stapling** | 服务器代为提供吊销状态，避免客户端查 OCSP 时被劫持 |
+| 全站 HTTPS | 基础 |
+| HSTS | 防降级 |
+| 证书固定（Pinning） | 只信任特定证书/公钥；HPKP 已废弃，移动端 App 仍在使用 |
+| 证书透明度（CT）监控 | 监控有没有人为自己的域名签发证书 |
+| 不忽略证书警告 | 用户点「继续访问」就放弃了证书认证 |
+| OCSP Stapling | 服务器代为提供吊销状态，避免客户端查 OCSP 时被劫持 |
 
-### 2.6 追问：HTTPS 能不能防住所有 MITM
-
-**不能。** 三种例外：
+### 2.6 HTTPS 不能防住的 MITM
 
 | 例外 | 说明 |
 |---|---|
-| **用户主动信任了攻击者的根证书** | 企业 SSL 检查代理、抓包工具（Charles/Fiddler）就是这样工作的 |
-| **攻击者能控制 CA** | 错误签发、CA 被攻陷（历史上发生过多次） |
-| **客户端本身被控** | 设备被装了恶意根证书或恶意软件 |
+| 客户端信任了攻击者的根证书 | 企业 SSL 检查代理、Charles/Fiddler 抓包就是这样工作的 |
+| CA 被攻陷或错误签发 | CT 日志能在事后发现错误签发；已记录到日志的证书不会被 CT 单独拦截 |
+| 客户端本身被控 | 设备被安装恶意根证书或恶意软件 |
 
-> **这就是为什么"前端不能假设传输层绝对安全"**：SRI、CSP、端到端加密在特定场景下仍有价值。
+HTTPS 只保证传输层；SRI、CSP、端到端加密在特定场景下仍有价值。
 
 ---
 
@@ -267,61 +224,58 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
 ### 3.1 一句话结论
 
-**网络劫持 = 攻击者（通常是运营商、恶意路由器、恶意软件）在传输路径上篡改流量。** 它是 MITM 的一种"大规模、非定向"形式。
+网络劫持：攻击者在传输路径上篡改流量，通常是运营商、恶意路由器或恶意软件发起的大规模 MITM。
 
 ### 3.2 四种常见形式
 
 | 形式 | 表现 | 原理 |
 |---|---|---|
-| **DNS 劫持** | 访问 A 站跳到 B 站；或弹出运营商广告页 | 篡改 DNS 响应，返回错误 IP |
-| **HTTP 内容注入** | 页面底部多了一个浮动广告、多了一段 `<script>` | 运营商在 HTTP 响应体里插入内容（明文可改） |
-| **HTTP 重定向劫持** | 第一次访问被跳到导航站 | 篡改 302 响应 |
-| **流量劫持（弹窗/跳转）** | 手机上打开网页自动跳应用商店 | 注入 JS 或改响应 |
+| DNS 劫持 | 访问 A 站跳到 B 站，或弹出运营商广告页 | 篡改 DNS 响应，返回错误 IP |
+| HTTP 内容注入 | 页面多出浮动广告或 `<script>` | 运营商在明文响应体里插入内容 |
+| HTTP 重定向劫持 | 第一次访问被跳到导航站 | 篡改 302 响应 |
+| 流量劫持（弹窗/跳转） | 手机上打开网页自动跳应用商店 | 注入 JS 或改响应 |
 
-> **一个现实细节**：这类劫持在国内尤其常见于**中小运营商的移动网络**，且**只影响 HTTP**。全站 HTTPS 后基本消失——这也是国内推动 HTTPS 的最直接动力之一（不是"怕被黑客攻击"，而是"怕被运营商插广告"）。
+内容注入与重定向劫持只影响明文 HTTP，全站 HTTPS + HSTS 后这两类失效；DNS 劫持仍可把域名解析到错误 IP，但 HTTPS 通常会因证书不匹配而连接失败。
 
-### 3.3 防御：后端/运维为主，前端只能兜底
+### 3.3 防御手段与责任划分
 
 | 手段 | 谁来做 | 效果 |
 |---|---|---|
-| **全站 HTTPS** | 运维 | **根治**（明文不可改） |
-| **HSTS + preload** | 运维 | 防降级 |
-| **HTTP 301 跳 HTTPS** | 运维 | 减少明文窗口 |
-| **CSP `upgrade-insecure-requests`** | 前端 | 防子资源被降级 |
-| **SRI** | 前端 | 静态资源被篡改时拒绝加载 |
-| **关键接口加签名** | 前后端 | 即使被改也能发现 |
-| **前端异常监控** | 前端 | 发现"页面里多了不认识的脚本" |
+| 全站 HTTPS | 运维 | 根治，明文不可改 |
+| HSTS + preload | 运维 | 防降级 |
+| HTTP 301 跳 HTTPS | 运维 | 减少明文窗口 |
+| CSP `upgrade-insecure-requests` | 前端 | 防子资源被降级 |
+| SRI | 前端 | 静态资源被篡改时拒绝加载 |
+| 关键接口加签名 | 前后端 | 即使被改也能发现 |
+| 前端异常监控 | 前端 | 发现页面里多出不认识的脚本 |
 
-### 3.4 一个实用的检测手段
+### 3.4 非预期脚本检测
 
 ```js
-// 检测页面是否被注入了非预期的脚本（粗略但有用）
 const knownScripts = new Set([
-  '/app.js', '/vendor.js',
+  new URL('/app.js', location.origin).href,
+  new URL('/vendor.js', location.origin).href,
   'https://cdn.example.com/analytics.js',
 ])
 
 new MutationObserver((mutations) => {
   for (const m of mutations) {
     for (const node of m.addedNodes) {
-      if (node.tagName === 'SCRIPT' && !knownScripts.has(node.src)) {
-        // 上报：可能是运营商注入或 XSS
-        navigator.sendBeacon?.('/api/unexpected-script', JSON.stringify({
+      if (node.tagName !== 'SCRIPT' || knownScripts.has(node.src)) continue
+      navigator.sendBeacon?.(
+        '/api/unexpected-script',
+        JSON.stringify({
           src: node.src,
           inline: !node.src,
           html: node.src ? '' : node.textContent.slice(0, 200),
-        }))
-      }
+        }),
+      )
     }
   }
 }).observe(document.documentElement, { childList: true, subtree: true })
 ```
 
-> **注意**：这个检测只能发现"事后注入"，不能阻止。真正的防线还是 HTTPS + CSP（CSP 会直接阻止未授权脚本执行）。
-
-### 3.5 30 秒版
-
-> "网络劫持常见四种：DNS 劫持把域名解析到错误 IP、HTTP 内容注入（运营商插广告）、HTTP 重定向劫持、移动端流量劫持跳应用商店。共同点是**只影响明文 HTTP**。防御主要靠运维：全站 HTTPS + HSTS + 301 跳转；前端能做的是 CSP 的 `upgrade-insecure-requests` 防子资源降级、SRI 防静态资源被篡改、以及监控页面里有没有出现非预期脚本。"
+只能发现注册之后插入的脚本；内联脚本会一律上报，需要按业务白名单过滤。发现不等于阻止，拦截依赖 HTTPS + CSP。
 
 ---
 
@@ -329,7 +283,7 @@ new MutationObserver((mutations) => {
 
 ### 4.1 一句话结论
 
-**SRI（Subresource Integrity）= 给 `<script>` / `<link>` 加一个内容哈希，浏览器下载后自己算一遍，不一致就拒绝执行。** 它防的是"**资源在传输/存储环节被篡改**"——比如 CDN 被攻陷、DNS 劫持到假 CDN、运营商注入。
+SRI（Subresource Integrity）：给 `<script>` / `<link>` 加内容哈希，浏览器下载后自己算一遍，不一致就拒绝执行。防的是资源在传输或存储环节被篡改：CDN 被攻陷、DNS 劫持到假 CDN、运营商注入。
 
 ### 4.2 基本用法
 
@@ -348,53 +302,29 @@ new MutationObserver((mutations) => {
 >
 ```
 
-### 4.3 三个必须知道的细节
+### 4.3 三个细节
 
-**细节一：`crossorigin` 不能省**
+**`crossorigin` 不能省**
 
-```html
-<!-- ❌ 跨域资源不加 crossorigin → 浏览器拿不到响应体做校验 → SRI 直接失败 -->
-<script src="https://cdn.example.com/lib.js" integrity="sha384-..."></script>
+- 跨域资源必须加 `crossorigin="anonymous"`，CDN 必须返回 `Access-Control-Allow-Origin`；否则浏览器拿不到响应体做哈希，资源加载失败。
+- 同源资源不需要 `crossorigin`。
 
-<!-- ✅ 必须加 -->
-<script src="https://cdn.example.com/lib.js" integrity="sha384-..." crossorigin="anonymous"></script>
-```
+**可以写多个哈希**
 
-**为什么**：SRI 需要读取完整的响应内容算哈希，而跨域读取需要 CORS 授权。`crossorigin="anonymous"` 会发起一个带 `Origin` 头的 CORS 请求；**CDN 必须返回 `Access-Control-Allow-Origin: *`**，否则资源加载失败。
+- `integrity="sha256-xxx sha384-yyy sha512-zzz"`，浏览器选择自己支持的最强算法，便于未来算法迁移。
 
-> 这是 SRI 最常见的坑：**加了 integrity 但没加 crossorigin，或者 CDN 没配 CORS，结果资源直接加载不出来。**
+**算法选择**
 
-**细节二：可以写多个哈希**
-
-```html
-integrity="sha256-xxx sha384-yyy sha512-zzz"
-```
-
-浏览器会选**它支持的最强算法**校验。用途：为未来算法迁移做准备。
-
-**细节三：算法选择**
-
-| 算法 | 建议 |
-|---|---|
-| `sha256` | 可用 |
-| **`sha384`** | **推荐**（CDN 厂商默认） |
-| `sha512` | 更安全但更长 |
-
-**不要用 `md5` / `sha1`**（已不安全，浏览器也不支持用于 SRI）。
+- 推荐 `sha384`；`sha256` 可用；`sha512` 更长。
+- `md5` / `sha1` 不能用于 SRI。
 
 ### 4.4 生成 hash
 
 ```bash
-# 命令行
 cat lib.js | openssl dgst -sha384 -binary | openssl base64 -A
-# 输出：oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC
-
-# 拼成 integrity 值
-# integrity="sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC"
 ```
 
 ```js
-// 构建时自动生成（Node）
 import { createHash } from 'crypto'
 import { readFileSync } from 'fs'
 
@@ -403,54 +333,46 @@ function sri(filePath, algorithm = 'sha384') {
   const hash = createHash(algorithm).update(buf).digest('base64')
   return `${algorithm}-${hash}`
 }
-
-// 用 webpack 插件自动注入：webpack-subresource-integrity
-// 或在 html-webpack-plugin 的模板里算
 ```
 
-### 4.5 SRI 的四个局限（说出来才完整）
+构建时用 `webpack-subresource-integrity` 等插件自动注入，不手动维护。
+
+### 4.5 SRI 的四个局限
 
 | 局限 | 说明 | 替代 |
 |---|---|---|
-| **只能校验静态 `<script>` / `<link>`** | 动态 `import()`、`fetch` 加载的 JS **不受保护** | 用 webpack 的 `output.crossOriginLoading` + SRI 插件；或自行校验 |
-| **JSONP 无法用 SRI** | JSONP 的内容是动态的（callback 参数不同），hash 不固定 | 用 CORS 替代 JSONP |
-| **CSS 内部的 `url()` 不受保护** | `@import` 或 `background: url()` 加载的资源不走 SRI | 靠 CSP + HTTPS |
-| **每次发版都要更新 hash** | 内容变 → hash 变 → 需要重新构建注入 | 用构建插件自动化（否则必然忘记） |
+| 只能校验静态 `<script>` / `<link>` | 动态 `import()`、`fetch` 加载的 JS 不受保护 | 自行校验内容哈希 |
+| JSONP 无法使用 SRI | 内容随 callback 参数变化，hash 不固定 | 用 CORS 替代 JSONP |
+| CSS 内部的 `url()` 不受保护 | `@import`、`background: url()` 加载的资源不走 SRI | 靠 CSP + HTTPS |
+| 每次发版都要更新 hash | 内容变则 hash 变，需要重新构建注入 | 用构建插件自动化 |
 
-> **第 4 条是实践中最致命的**：如果手动维护 hash，几乎一定会忘了更新，导致**上线后资源全部加载失败**。**必须自动化。**
-
-### 4.6 SRI 在什么场景下真正有价值
+### 4.6 SRI 的适用场景
 
 | 场景 | 价值 |
 |---|---|
-| 从**公共 CDN**（如 unpkg、jsdelivr、cdnjs）加载库 | **高**——你无法控制那个 CDN |
-| 从**自己完全可控的 CDN** 加载 | 中——主要防"CDN 被攻陷"和"中间人" |
+| 从公共 CDN（unpkg、jsdelivr、cdnjs）加载库 | 高：无法控制该 CDN |
+| 从自己完全可控的 CDN 加载 | 中：防 CDN 被攻陷和中间人 |
 | 内网 / 离线部署 | 低 |
-| 已经全站 HTTPS + HSTS + CSP | 低（多层防御，边际收益小） |
+| 已全站 HTTPS + HSTS + CSP | 低：多层防御下边际收益小 |
 
-> **一个务实的判断**（面试可以这么说）："如果第三方脚本是从公共 CDN 加载的，SRI 是必须的；如果是自己的 CDN 且已经全站 HTTPS + HSTS，SRI 的边际收益不大，但成本很低（一个构建插件），我会加上。"
-
-### 4.7 30 秒版
-
-> "SRI 是给 `<script>` 或 `<link>` 加 `integrity` 属性，写内容的 sha384 哈希，浏览器下载后自己算一遍，不一致就拒绝执行。它防的是 CDN 被攻陷、DNS 劫持到假 CDN、运营商注入这类'资源被篡改'的问题。两个关键点：跨域资源必须加 `crossorigin`，而且 CDN 要返回 CORS 头，否则资源直接加载失败；另外 hash 必须用构建插件自动生成，手动维护一定会忘。"
+从公共 CDN 加载第三方脚本时应使用 SRI；自有 CDN 且已全站 HTTPS + HSTS 时边际收益小，但构建插件成本低。
 
 ---
 
 ## 5. 前端在传输层能做什么（一张总结表）
 
-> 传输层的主体责任在运维/后端，但**前端并非无能为力**。这张表可以帮你回答"那你们前端在安全上做了什么"。
+传输层的主体责任在运维/后端；前端可落地的措施如下。
 
 | 手段 | 前端能做的 | 局限 |
 |---|---|---|
-| **混合内容** | 检查代码/数据里有没有 `http://` 硬编码；确保所有资源用 `https://` 或协议相对 | — |
-| **CSP `upgrade-insecure-requests`** | 配合后端加上 | 目标域不支持 HTTPS 时会加载失败 |
-| **SRI** | 给第三方脚本加 `integrity` + `crossorigin`；构建时自动生成 | 只管静态资源 |
-| **`preconnect` + HSTS** | 前端提需求给运维 | 需要运维配合 |
-| **`Referrer-Policy`** | 防止 URL 里的敏感信息随 Referer 泄露到第三方 | — |
-| **异常脚本监控** | `MutationObserver` 检测非预期脚本注入 | 只能发现，不能阻止 |
-| **关键请求加签名** | 配合后端做请求签名 | 需要密钥管理（不能放前端！） |
-| **不信任任何外部资源** | 所有第三方脚本都视为潜在风险 | — |
-| **敏感页面 `Cache-Control: no-store`** | 防"后退键看到上一个用户的页面" | 需要后端配合 |
+| 混合内容 | 检查代码/数据里有没有 `http://`，资源统一用 `https://` | — |
+| CSP `upgrade-insecure-requests` | 配合后端下发 | 目标域不支持 HTTPS 时会加载失败 |
+| SRI | 给第三方脚本加 `integrity` + `crossorigin`，构建时生成 | 只管静态资源 |
+| `preconnect` + HSTS | 向运维提需求 | 需要运维配合 |
+| `Referrer-Policy` | 防止 URL 里的敏感信息随 Referer 泄露 | — |
+| 异常脚本监控 | `MutationObserver` 检测非预期脚本注入 | 只能发现，不能阻止 |
+| 关键请求加签名 | 配合后端做请求签名 | 密钥不能放前端 |
+| 敏感页面 `Cache-Control: no-store` | 防后退键看到上一个用户的页面 | 需要后端配合 |
 
 ---
 
@@ -458,116 +380,83 @@ function sri(filePath, algorithm = 'sha384') {
 
 | # | 坑 | 纠正 |
 |---|---|---|
-| 1 | 认为 HTTPS 只提供"加密" | 还有完整性和**身份认证**（认证才是防 MITM 的关键） |
-| 2 | 认为 HTTPS 会明显拖慢网站 | 现代硬件开销 < 5%，HTTP/2 收益远大于开销 |
-| 3 | 只在登录页用 HTTPS | 必须全站，否则会话 Cookie 会在 HTTP 请求里明文暴露 |
-| 4 | HSTS 写在 HTTP 响应里 | 会被忽略；只能在 HTTPS 响应里发 |
-| 5 | HSTS 一上来就 `preload` + `includeSubDomains` | 不可逆；先短 `max-age` 观察，确认所有子域都支持 HTTPS |
-| 6 | 以为 `EV 证书`有绿色地址栏 | 2019 年后 Chrome 已取消 |
-| 7 | SRI 加了 `integrity` 没加 `crossorigin` | 跨域资源会导致加载失败 |
-| 8 | CDN 没配 `Access-Control-Allow-Origin` | SRI 校验拿不到内容，资源加载失败 |
-| 9 | SRI hash 手动维护 | 发版必忘，必须构建时自动生成 |
-| 10 | 以为 SRI 能保护动态 `import()` | 不能，只管静态标签 |
-| 11 | 用 JSONP 还想加 SRI | JSONP 内容动态，无法固定 hash；改用 CORS |
-| 12 | 认为 HTTPS 能防所有 MITM | 用户信任了恶意根证书（抓包工具、企业代理）时无效 |
-| 13 | 忽略证书警告继续访问 | 等于放弃全部保护 |
-| 14 | 富文本/配置里有 `http://` 图片 | 加 `upgrade-insecure-requests` 后会加载失败，要扫数据 |
+| 1 | 只在登录页用 HTTPS | 必须全站，否则会话 Cookie 会在 HTTP 请求里明文暴露 |
+| 2 | 忽略证书警告继续访问 | 等于放弃证书认证，中间人可以接管连接 |
+| 3 | 富文本/配置里硬编码 `http://` 图片 | 加 `upgrade-insecure-requests` 后目标域不支持 HTTPS 会加载失败，上线前要扫描数据 |
+| 4 | HSTS 头写在 HTTP 响应里 | 会被忽略，只能在 HTTPS 响应里发 |
+| 5 | 首次上线直接 `preload` + `includeSubDomains` | 撤销慢；子域没有 HTTPS 会直接不可访问 |
 
 ---
 
 ## 7. 答题模板
 
-### 7.1 「HTTPS 有哪些优点」——30 秒
+### 7.1 HTTPS
 
-> "三件事：加密防窃听、完整性防篡改、证书认证防冒充。除了安全还有几个刚需：浏览器里 HTTP/2 实际要求 HTTPS，Brotli 也只在 HTTPS 下生效；很多 API 比如 Service Worker、定位、摄像头、`crypto.subtle` 只在安全上下文可用；另外还有 SEO 轻微加分、浏览器标'不安全'影响转化、合规要求。"
+- HTTPS = HTTP + TLS：机密性靠对称加密，完整性靠 AEAD，身份认证靠证书链。
+- 非对称只用于证书认证与 ECDHE 协商，数据全程对称加密；非对称慢 3~4 个数量级。
+- 证书验证：SAN、有效期、EKU、逐级验签、吊销、CT。
+- 非安全刚需：HTTP/2、Brotli、Secure Context（Service Worker、定位、摄像头、`crypto.subtle`）、SEO 与合规。
 
-### 7.2 「HTTPS 有哪些优点」——2 分钟
+### 7.2 中间人与网络劫持
 
-> "我分三层讲：安全、性能与能力、商业与合规。
->
-> **安全层**是核心三件事：机密性靠对称加密，完整性靠 AEAD，身份认证靠证书链。这里要说清一点——**很多人只强调加密，但真正防中间人的是认证**。如果只有加密，攻击者可以和你各建一条加密通道，你以为在跟银行通信，实际在跟他通信。
->
-> **性能层**是反直觉的：HTTPS 在现代硬件上开销不到 5%，而它带来的收益更大——浏览器里 HTTP/2 实际要求 HTTPS，多路复用省下的时间远超 TLS 握手；Brotli 压缩也只在 HTTPS 下被浏览器接受；TLS 1.3 把握手从 2-RTT 降到 1-RTT，会话恢复可以 0-RTT。
->
-> **能力层**最容易被忽略：Service Worker、Geolocation、剪贴板、`getUserMedia`、`crypto.subtle`、WebAuthn 这些 API 都要求 **Secure Context**。很多人想做 PWA 发现 Service Worker 注册不了，就是因为站点还是 HTTP。
->
-> 最后还有 SEO 和商业因素：Google 排名是轻微加分，但浏览器给 HTTP 站点标'不安全'对转化率影响更直接；支付、小程序、App 上架基本都强制 HTTPS。"
+- MITM：攻击者插入双方之间，可窃听、篡改、重放；场景有公共 Wi-Fi、ARP/DNS 欺骗、恶意代理、BGP 劫持。
+- SSL 剥离：攻击者不破解 TLS，只让用户全程走 HTTP；首次 `http://` 访问是窗口。
+- 防御：全站 HTTPS + HSTS + preload + 不忽略证书警告 + CT 监控；网络劫持再加 CSP `upgrade-insecure-requests`、SRI、异常脚本监控。
 
-### 7.3 「中间人攻击」——30 秒
+### 7.3 SRI
 
-> "中间人攻击是攻击者插在通信双方之间，可以窃听、篡改、重放，双方以为在直连。典型场景有公共 Wi-Fi 热点、ARP 欺骗、DNS 欺骗、恶意代理。最经典的手法是 **SSL 剥离**——用户第一次用 HTTP 访问，攻击者拦截后用 HTTPS 访问服务器，再把内容以明文返回给用户，于是全程可被窃听。防御是 HTTPS + HSTS，HSTS 让浏览器记住必须用 HTTPS，直接从本地就把 http 改成 https。"
-
-### 7.4 「静态资源完整性校验」——30 秒
-
-> "就是 SRI。给 `<script>` 或 `<link>` 加 `integrity` 属性写内容的 sha384 哈希，浏览器下载后自己算一遍，不一致就拒绝执行。防的是 CDN 被攻陷、DNS 劫持到假 CDN、运营商注入这类篡改。两个关键点：跨域资源必须加 `crossorigin` 且 CDN 要返回 CORS 头，否则资源直接加载失败；hash 必须构建时自动生成，手动维护一定会忘。"
+- 给 `<script>` / `<link>` 加 `integrity` 哈希，浏览器重算，不一致就拒绝执行。
+- 防 CDN 被攻陷、DNS 劫持到假 CDN、运营商注入。
+- 跨域必须加 `crossorigin` 且 CDN 返回 ACAO；hash 必须构建时自动生成。
+- 局限：只管静态 `script` / `link`；动态 `import()`、JSONP、CSS `url()` 不受保护。
 
 ---
 
 ## 8. 追问表
 
-| # | 追问 | 要点 |
-|---|---|---|
-| 1 | HTTPS 保证哪三件事？ | 机密性、完整性、身份认证 |
-| 2 | 为什么需要认证，光加密不够？ | 否则可与攻击者各建一条加密通道（MITM） |
-| 3 | 为什么用非对称协商再转对称？ | 非对称太慢，只用于密钥交换和签名 |
-| 4 | TLS 1.3 比 1.2 好在哪？ | 1-RTT、只留 AEAD、强制前向保密 |
-| 5 | 什么是前向保密？ | 私钥泄露也无法解历史流量（ECDHE 临时密钥） |
-| 6 | 中间人怎么防？ | HTTPS + HSTS（防降级）+ 不忽略证书警告 + CT 监控 |
-| 7 | SSL 剥离是什么？ | 攻击者让用户全程走 HTTP，自己用 HTTPS 连服务器 |
-| 8 | HSTS 为什么能防 SSL 剥离？ | 浏览器本地就把 http 改 https，不发明文请求 |
-| 9 | HSTS 首次访问为什么脆弱？ | 还没收到 HSTS 头；所以需要 preload |
-| 10 | HSTS preload 有什么风险？ | 不可逆，撤出要等浏览器发版 |
-| 11 | HSTS 头能写在 HTTP 响应里吗？ | 不能，会被忽略 |
-| 12 | EV 证书还有绿色地址栏吗？ | 没有，Chrome 2019 已取消 |
-| 13 | 什么是 CT？ | 证书透明度，所有证书记入公开日志可审计 |
-| 14 | 混合内容怎么处理？ | 主动内容直接阻止；用 `upgrade-insecure-requests` 或全改 HTTPS |
-| 15 | 网络劫持怎么防？ | 全站 HTTPS + HSTS，前端用 CSP upgrade + SRI 兜底 |
-| 16 | SRI 为什么必须加 crossorigin？ | 跨域读响应内容需要 CORS 授权 |
-| 17 | SRI 能保护动态导入吗？ | 不能，只保护静态 script/link |
-| 18 | SRI 对 JSONP 有效吗？ | 无效，内容随 callback 变化 |
-| 19 | SRI 的 hash 怎么维护？ | 构建插件自动生成（webpack-subresource-integrity） |
-| 20 | 有 HTTPS 了还需要 SRI 吗？ | 加载公共 CDN 时需要（CDN 自身可能被攻陷） |
-| 21 | HTTPS 能防所有 MITM 吗？ | 不能，用户信任恶意根证书时无效 |
-| 22 | 为什么抓包工具能看到 HTTPS？ | 它让你安装了它的根证书 |
+| 追问 | 要点 |
+|---|---|
+| 为什么用混合加密？ | 对称密钥无法安全分发；非对称慢 3~4 个数量级，RSA-2048 单块最多 245 字节（PKCS#1 v1.5） |
+| 为什么 ECDHE 参数要签名？ | 证明服务器持有证书私钥；没有私钥就签不出可验证的参数 |
+| 证书私钥用来加密数据吗？ | ECDHE 套件下只用于签名；RSA 密钥交换套件还用于解密 pre-master，TLS 1.3 已删除 |
+| 证书验证哪几步？ | SAN → 有效期 → EKU → 逐级验签 → 吊销 → CT |
+| HSTS 首次访问为什么脆弱？ | 还没收到 HSTS 头；需要 preload 覆盖首次访问 |
+| HSTS preload 有什么风险？ | 撤销慢；`includeSubDomains` 下子域没有 HTTPS 会不可访问 |
+| HSTS 能写在 HTTP 响应里吗？ | 不能，会被忽略 |
+| SRI 为什么必须加 `crossorigin`？ | 跨域读取响应体需要 CORS 授权；CDN 必须返回 ACAO |
+| SRI 能保护动态 `import()` 吗？ | 不能，只保护静态 `script` / `link` |
+| 抓包工具为什么能看到 HTTPS？ | 客户端安装了它的根证书，它用该根证书重签了站点证书 |
 
 ---
 
 ## 9. 速记卡
 
 ```
-【HTTPS 三件事】
-机密性（对称加密）+ 完整性（AEAD）+ 身份认证（证书链）
-认证才是防 MITM 的关键 → 否则攻击者可各建一条加密通道
+【HTTPS】
+HTTP + TLS；机密性（对称）/ 完整性（AEAD）/ 身份认证（证书链）
+非对称只做认证与 ECDHE 协商；数据对称加密（非对称慢 3~4 个数量级）
 
-【TLS 1.3】
-1-RTT（1.2 是 2-RTT）、只留 AEAD、强制前向保密（ECDHE）
-用非对称协商密钥 → 转对称传数据（因为非对称慢几百倍）
+【TLS】
+1.2 为 2-RTT；1.3 为 1-RTT（PSK 恢复 1-RTT，early data 才 0-RTT）
+1.3 只留 AEAD；完整握手强制 (EC)DHE；删除静态 RSA / CBC / RC4 / SHA-1
+前向保密：ECDHE 临时密钥；长期私钥泄露不影响历史流量
 
-【HTTPS 的非安全优点（高分点）】
-HTTP/2 在浏览器里要求 HTTPS ｜ Brotli 只在 HTTPS 生效
-Service Worker / 定位 / 摄像头 / crypto.subtle 需要 Secure Context
-SEO 轻微加分 ｜ 浏览器标"不安全" ｜ 合规要求
+【证书】
+根 CA（预装）→ 中间 CA（必须下发）→ 服务器证书
+验证：SAN / 有效期 / EKU / 逐级验签 / 吊销 / CT
+Chrome 58+ 忽略 CN；无 SAN 时 Node/OpenSSL 回退 CN
 
-【MITM】
-场景：公共 Wi-Fi / ARP 欺骗 / DNS 欺骗 / 恶意代理 / BGP 劫持
-杀招：SSL 剥离（不破解 TLS，只让用户永远走 HTTP）
-防御：HTTPS + HSTS + preload + 不忽略证书警告 + CT 监控
+【HSTS】
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+只在 HTTPS 响应生效；防 SSL 剥离；首次访问靠 preload
+preload 撤销慢；includeSubDomains 下子域无 HTTPS 会不可访问
 
-【HSTS 三要点】
-只能在 HTTPS 响应里发（HTTP 里的会被忽略）
-首次访问仍脆弱 → 需要 preload
-preload 不可逆，includeSubDomains 下子域没 HTTPS 会直接不可访问
-申请条件：max-age ≥ 31536000 + includeSubDomains + preload + 全站 301
-
-【网络劫持】
-DNS 劫持 / HTTP 内容注入（运营商插广告）/ 重定向劫持 / 移动端跳商店
-共同点：只影响明文 HTTP → 全站 HTTPS 后基本消失
-前端兜底：CSP upgrade-insecure-requests + SRI + 异常脚本监控
+【混合内容】
+主动（script/link/iframe/fetch）→ 阻止；被动（img/audio/video）→ 自动升级，失败阻止
+CSP: upgrade-insecure-requests；扫描数据中的 http://
 
 【SRI】
-integrity="sha384-..." + crossorigin="anonymous"（缺一不可）
-CDN 必须返回 ACAO，否则资源加载不出来
-sha384 推荐；可写多个；不用 md5/sha1
-局限：只管静态 script/link；动态 import 和 JSONP 无效
-hash 必须构建时自动生成（手动必忘）
+integrity="sha384-..." + crossorigin="anonymous"；CDN 必须返回 ACAO
+只管静态 script/link；动态 import / JSONP / CSS url() 不受保护
+hash 构建时自动生成
 ```

@@ -1,8 +1,8 @@
 # 网络 · 10 跨域与 CORS
 
-> 本册覆盖：跨域的产生与解决、简单请求与非简单请求、为什么触发预检
-> **这是本题单重复第二多的知识点（11 次）**，因为它是日常开发里最高频的坑。
-> 题单的答案有一处**关键错误**：「只有 XHR/fetch 受限制，img/script/link 不受限」——**不准确**。本册 10.2 会讲清真正的边界。
+> 覆盖：同源判定、简单请求与预检、credentials、暴露响应头、五种方案
+> `ACAO` 指 `Access-Control-Allow-Origin`，`ACAC` 指 `Access-Control-Allow-Credentials`
+> 简单请求、预检、credentials、`Expose-Headers` 的行为均在 Chrome 154 下用两个本地端口实测：`127.0.0.1:7001` 为页面源，`127.0.0.1:7002` 为接口
 
 ---
 
@@ -26,8 +26,8 @@
 ## 10.1 一句话结论
 
 **同源策略限制的是「读取响应」，不是「发送请求」。**
-跨域请求（简单请求）**已经发出去了、服务器也处理了**，只是浏览器不让 JS 读响应内容。
-解决方案的核心只有两条路：**让服务器明确授权（CORS）**，或者**让请求变成同源（代理）**。
+简单请求已经发出、服务端也已经处理，只是浏览器不把响应交给 JS。
+解法只有两条路：**服务端明确授权（CORS）**，或者**让请求变成同源（代理）**。
 
 ---
 
@@ -35,9 +35,7 @@
 
 ### 10.2.1 什么叫「同源」
 
-**协议 + 域名 + 端口**，三者**完全相同**才是同源。
-
-以 `https://www.example.com:443/page` 为基准：
+**协议 + 域名 + 端口**三者**完全相同**才是同源。以 `https://www.example.com:443/page` 为基准：
 
 | URL | 是否同源 | 差异 |
 |---|---|---|
@@ -48,19 +46,12 @@
 | `https://www.example.com:8080/page` | ❌ | **端口不同** |
 | `https://example.com/page` | ❌ | **域名不同**（有无 www 算不同） |
 
-**三个容易踩的细节**：
+- 默认端口等价：`https://a.com` 与 `https://a.com:443` 同源，`http://a.com` 与 `http://a.com:80` 同理
+- 子域、有无 `www`、IP 与域名都算不同源：`a.example.com` / `b.example.com`、`127.0.0.1` / `localhost`
 
-1. **端口要显式比较**：`https://a.com` 和 `https://a.com:443` 是同源（默认端口等价），但 `http://a.com` 和 `http://a.com:80` 也是。
-2. **子域名算跨域**：`a.example.com` 和 `b.example.com` 跨域。
-3. **IP 和域名算跨域**：`http://127.0.0.1` 和 `http://localhost` 跨域（虽然后者在某些浏览器有特例）。
+### 10.2.2 不是「img/script/link 不受限」
 
-### 10.2.2 题单的错误：不是「img/script/link 不受限」
-
-**题单原文**：「只有 XHR/fetch 请求受限制，img/script/link 不受限。」
-
-**这句话错在把「能不能发」和「能不能读」混为一谈。**
-
-**准确的说法**：
+把「能不能发」和「能不能读」分开：
 
 | 方式 | 能否**发出**跨域请求 | 能否**读取响应内容** |
 |---|---|---|
@@ -72,40 +63,16 @@
 | `<video>` / `<audio>` | ✅ 能 | ❌ 不能读媒体数据（`crossorigin` 影响 canvas 能否读） |
 | `<form action>` | ✅ 能（会跳转） | ❌ 不能读结果 |
 
-**所以真正的表述是**：
+这些标签只需要浏览器加载、执行或应用，内容不必交给 JS；`fetch`/`XHR` 要把响应体交给 JS，所以受读取限制。
 
-> **同源策略限制的是「跨源读取」，不是「跨源加载/发送」。**
-> `img`、`script`、`link` 之所以「看起来不受限」，是因为它们**只需要加载，不需要 JS 读取内容**——图片渲染、脚本执行、样式应用，都是浏览器内部行为，不需要把内容交给 JS。
-
-**为什么 `<script>` 能执行跨域脚本**：这是**历史设计**（CDN 加载 JS 必须支持跨域）。但这带来一个严重后果：**一个恶意脚本可以完全控制你的页面**。所以现代有 **SRI（Subresource Integrity）** 来校验脚本完整性。
-
-**为什么 `img` 不能读像素**：如果 JS 能读跨域图片的像素，就可以用 canvas 把用户在其他网站的截图读出来（比如把 `<img src="https://bank.com/avatar">` 画到 canvas 上读取）。
+- **`<script>` 能执行跨域脚本**是历史设计（CDN 分发），代价是脚本拥有页面的全部权限，因此有 SRI（Subresource Integrity）校验完整性
+- **`<img>` 不能读像素**：否则 canvas 可以把用户在其他站点的图片读出来
 
 ### 10.2.3 同源策略到底保护什么
 
-**保护的是「用户的登录态」。**
+保护的是**用户的登录态**。访问 `evil.com` 后，它的 JS 请求 `bank.com/transfer`，浏览器会自动带上 `bank.com` 的 Cookie；同源策略阻止的是 `evil.com` 读到响应，而不是阻止请求执行。
 
-```
-你登录了 bank.com（浏览器里有 bank.com 的 cookie）
-    ↓
-你访问了 evil.com
-    ↓
-evil.com 的 JS 发一个请求到 bank.com/transfer
-    ↓
-★ 关键：浏览器会自动带上 bank.com 的 cookie！
-    ↓
-如果没有同源策略：
-  evil.com 的 JS 能读到响应 → 知道你余额多少、能伪造转账确认
-    ↓
-有了同源策略：
-  请求还是会发出去（cookie 也带上了）
-  但 evil.com 读不到响应 → 拿不到数据
-```
-
-**所以同源策略的第一个关键认知**：**它不能阻止请求发出，只能阻止读取。**
-**这就是 CSRF 攻击的基础**——攻击者不需要读响应，只要「请求被执行」就够了（转账、改密码这类操作不需要读结果）。
-
-> 这也是为什么**防 CSRF 不能靠同源策略**，要靠 CSRF Token、SameSite Cookie、Origin 校验。（详见「前端安全」分册）
+因此 CSRF 不需要读响应，只要「请求被执行」就够（转账、改密码不需要看结果），**防 CSRF 不能靠同源策略**，要靠 CSRF Token、`SameSite` Cookie、Origin 校验（详见「前端安全」分册）。
 
 ### 10.2.4 受同源策略限制的 API
 
@@ -117,23 +84,11 @@ evil.com 的 JS 发一个请求到 bank.com/transfer
 | **Cookie / localStorage / sessionStorage / IndexedDB** | **按源隔离**，不同源完全不同 |
 | **iframe 的 DOM** | 跨域不能读（`contentWindow.document` 抛错） |
 | **Canvas 的 `getImageData`** | 画了跨域图片后 canvas 被「污染」，读像素抛错 |
-| **Web Font（`@font-face`）** | 需要 CORS（字体是跨域加载的典型坑） |
-| **CSS `@import`** | 同源策略影响（部分） |
+| **Web Font（`@font-face`）** | 需要 CORS（字体按跨域资源处理） |
+| **跨域样式表的 `cssRules`** | 读取规则抛 `SecurityError` |
 | **`window.opener` 访问** | 跨域受限（需 `postMessage`） |
 
-**一个真实案例**：字体文件跨域。
-
-```
-CSS 里 @font-face 引用了 CDN 上的字体
-    ↓ 字体加载需要 CORS（因为字体被视为「可执行资源」）
-CDN 没返回 Access-Control-Allow-Origin
-    ↓
-控制台报错，字体静默回退到系统字体
-    ↓
-表现：设计稿对不上，但不报明显错误
-```
-
-**解决**：CDN 给字体文件加 `Access-Control-Allow-Origin: *`。
+字体是典型场景：`@font-face` 指向 CDN，CDN 没返回 `ACAO` 时字体静默回退到系统字体，只在控制台留一条 CORS 报错，页面本身不报错。解决方式是给字体文件加 `Access-Control-Allow-Origin`。
 
 ---
 
@@ -148,18 +103,15 @@ CDN 没返回 Access-Control-Allow-Origin
 | **浏览器插件 / `--disable-web-security`** | 可以绕过，但**只用于开发排查**，不能作为方案 |
 | **`postMessage`** | 跨域通信的**官方通道**，需要校验 `event.origin` |
 
-**重点说 WebSocket**：
+WebSocket 握手就是一个 HTTP 请求：
 
 ```
-WebSocket 握手是一个 HTTP 请求：
-  GET /chat HTTP/1.1
-  Upgrade: websocket
-  Origin: https://evil.com        ← 浏览器会带，但不会阻止请求发出
+GET /chat HTTP/1.1
+Upgrade: websocket
+Origin: https://evil.com        ← 浏览器会带，但不会因此阻止连接
 ```
 
-**所以**：浏览器**不会**因为跨域而阻止 WebSocket 连接。**服务端必须自己检查 `Origin` 头**，否则任何人都能连你的 WebSocket（这就是 **CSWSH，跨站 WebSocket 劫持**）。
-
-**这也说明一个道理**：**同源策略是「浏览器保护用户」的机制，不是「服务端保护自己」的机制**。服务端的安全必须自己做。
+浏览器不会因为跨域拒绝 WebSocket 连接，所以**服务端不校验 `Origin` 就等于允许任意站点连接（CSWSH，跨站 WebSocket 劫持）**。同源策略保护的是用户，不是服务端。
 
 ---
 
@@ -167,27 +119,21 @@ WebSocket 握手是一个 HTTP 请求：
 
 ### 10.4.1 三个条件（必须**同时**满足）
 
-**题单只写了「GET/POST + 简单头」，不完整。完整的三条**：
+1. **方法**：`GET` / `HEAD` / `POST`
+2. **请求头**：只能是 CORS 安全列表头，不能有自定义头
+3. **请求体**：不能是 `ReadableStream`
 
-#### 条件 1：方法只能是三种
-
-```
-GET  /  HEAD  /  POST
-```
-
-#### 条件 2：只能有「CORS 安全列表请求头」
-
-允许的头（**只能是这些，不能有自定义头**）：
+安全列表请求头：
 
 | 头 | 允许的值 |
 |---|---|
-| `Accept` | 任意（但某些字符受限） |
+| `Accept` | 任意（不含 CORS 不安全的字节） |
 | `Accept-Language` | 任意 |
 | `Content-Language` | 任意 |
 | `Content-Type` | **只能是下面三个值之一** |
 | `Range` | 只能是简单 range（如 `bytes=0-99`） |
 
-**⚠️ 关键：`Content-Type` 只能是这三种**
+**`Content-Type` 只有三种**：
 
 ```
 application/x-www-form-urlencoded
@@ -195,13 +141,11 @@ multipart/form-data
 text/plain
 ```
 
-**这就解释了一个经典现象**：
-
 ```js
-// ❌ 触发预检
+// ❌ 触发预检：application/json 不在白名单里
 fetch('https://api.com/data', {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },   // ← 不在白名单里！
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ a: 1 }),
 });
 
@@ -213,35 +157,26 @@ fetch('https://api.com/data', {
 });
 ```
 
-**「用 `application/json` 就会发 OPTIONS 预检」——这是前端最常遇到的现象，根因就在这里。**
-
-#### 条件 3：不能使用 `ReadableStream` 作为请求体
-
-（Fetch API 的 `body` 如果是 `ReadableStream`，会强制预检。）
+实测：`text/plain` 与 `application/x-www-form-urlencoded` 的 POST 只有一次请求；`application/json` 的 POST 先收到 `OPTIONS`，通过后才收到 `POST`。
 
 ### 10.4.2 简单请求的完整流程
 
 ```
-① 浏览器发出请求，自动加 Origin 头
+① 浏览器发出请求，自动加 Origin 头（JS 改不了）
    GET /data HTTP/1.1
-   Origin: https://a.com          ← 浏览器自动加，JS 改不了
+   Origin: https://a.com
 
 ② 服务器返回，必须带 CORS 头
    HTTP/1.1 200 OK
    Access-Control-Allow-Origin: https://a.com
 
 ③ 浏览器检查
-   · 如果 ACAO 匹配（或为 *）→ 把响应交给 JS
-   · 如果不匹配/缺失 → 【拦截响应】，JS 收到 TypeError
+   · ACAO 匹配（或为 *）→ 把响应交给 JS
+   · 不匹配/缺失 → 【拦截响应】
 ```
 
-**⚠️ 三个关键认知**：
-
-1. **请求是真的发出去了，服务器也真的处理了**（可能已经写库了）
-2. **拦截发生在「响应返回之后」**，JS 只是拿不到内容
-3. **JS 拿到的错误是 `TypeError: Failed to fetch`，看不到具体原因**（出于安全考虑，浏览器不告诉 JS 详情）——**真正的原因只在控制台里**
-
-**第 3 点很重要**：很多新手以为「代码写错了」，其实是 CORS 被拦，只是 JS 层看不到。
+- **请求真的发出去了，服务器也真的处理了**（可能已经写库）
+- **拦截发生在响应返回之后**，JS 拿到的是 `TypeError: Failed to fetch`，具体原因只在控制台里（出于安全考虑，浏览器不告诉 JS 详情）
 
 ---
 
@@ -254,13 +189,11 @@ fetch('https://api.com/data', {
 | 触发条件 | 例子 |
 |---|---|
 | **方法不是 GET/HEAD/POST** | `PUT`、`DELETE`、`PATCH` |
-| **有自定义请求头** | `X-Token`、`Authorization`（注意：`Authorization` 不是安全列表头，会触发预检） |
+| **有自定义请求头** | `X-Token`、`Authorization`（`Authorization` 不是安全列表头） |
 | **`Content-Type` 不是那三种** | `application/json`、`text/xml` |
 | **`ReadableStream` 作为 body** | — |
 
-**注意 `Authorization` 也会触发预检**——这是很多人不知道的（以为只有 `Content-Type` 会）。
-
-**更隐蔽的**：**`fetch` 默认带的一些头不会触发**（`Accept`、`Accept-Language`），但**如果你手动设置了 `User-Agent`、`Referer` 这类「禁止修改的头」，浏览器会忽略你的设置，也不会触发预检**。
+**禁止修改的请求头不触发预检**：手动设置 `Referer`、`User-Agent` 这类头会被浏览器直接忽略，实测请求里仍是浏览器自己的值，也没有多发 `OPTIONS`。
 
 ### 10.5.2 预检的完整交互
 
@@ -268,75 +201,64 @@ fetch('https://api.com/data', {
 ① 预检请求（OPTIONS，不带 body）
    OPTIONS /api/data HTTP/1.1
    Origin: https://a.com
-   Access-Control-Request-Method: PUT                    ← 我接下来要用的方法
-   Access-Control-Request-Headers: content-type,x-token  ← 我接下来要用的自定义头
+   Access-Control-Request-Method: PUT                    ← 接下来要用的方法
+   Access-Control-Request-Headers: content-type,x-token  ← 小写、逗号分隔
 
 ② 预检响应
    HTTP/1.1 204 No Content
    Access-Control-Allow-Origin: https://a.com
    Access-Control-Allow-Methods: GET, POST, PUT, DELETE
    Access-Control-Allow-Headers: Content-Type, X-Token
-   Access-Control-Max-Age: 86400                          ← 缓存 24 小时，期间不再预检
+   Access-Control-Max-Age: 86400                          ← 期间不再预检
    Access-Control-Allow-Credentials: true                 ← 如果带 cookie
 
 ③ 预检通过 → 浏览器发真正的请求（带 Origin）
    PUT /api/data HTTP/1.1
    Origin: https://a.com
    Content-Type: application/json
-   ...
 
 ④ 真实响应也要带 CORS 头
    HTTP/1.1 200 OK
    Access-Control-Allow-Origin: https://a.com
 ```
 
-**⚠️ 预检本身也是一次完整的网络往返**！所以：
+实测：`X-Token` 触发的预检里，`Access-Control-Request-Headers` 为 `x-token`；`PUT` 触发的预检里，`Access-Control-Request-Method` 为 `PUT`。
 
 | 请求数 | 成本 |
 |---|---|
 | 无预检（简单请求） | 1 RTT |
-| 有预检（每次） | **2 RTT**（OPTIONS + 真实请求） |
+| 有预检（未缓存） | **2 RTT**（OPTIONS + 真实请求） |
 | 有预检 + `Max-Age` 缓存 | 首次 2 RTT，之后 1 RTT |
 
-**这就是为什么「减少预检」是前端性能优化的一环**（详见下面 10.5.3）。
+实测：`Max-Age: 60` 时，同一 URL 的第二次 JSON POST 没有再发 `OPTIONS`。
 
 ### 10.5.3 怎么减少预检
 
 | 手段 | 说明 |
 |---|---|
-| **`Access-Control-Max-Age` 设大** | 浏览器缓存预检结果（Chrome 上限 2 小时 = 7200 秒；Firefox 上限 24 小时） |
+| **`Access-Control-Max-Age` 设大** | 浏览器缓存预检结果，时长受上限约束 |
 | **改用简单请求** | 比如用 `application/x-www-form-urlencoded` 代替 JSON（但服务端要能解析） |
 | **同域代理** | 走 `devServer.proxy` 或 Nginx 反向代理，根本不跨域 → 无预检 |
-| **合并接口** | 减少请求数 = 减少预检数 |
-| **BFF 层（Backend For Frontend）** | 前端只跟同源的 BFF 通信 |
+| **合并接口 / BFF** | 减少请求数，前端只跟同源的 BFF 通信 |
 
-**注意**：`Access-Control-Max-Age` 有浏览器上限，**你写再大也没用**：
+`Max-Age` 的取值规则：
 
-| 浏览器 | 上限 |
-|---|---|
-| **Chrome / Edge（v76+）** | **7200 秒（2 小时）** |
-| Chrome（v76 之前） | 600 秒（10 分钟） |
-| **Firefox** | 86400 秒（24 小时） |
-| Safari | 上限更低（按 10 分钟量级保守估计） |
-
-**另外两个细节**：
-- **默认值是 5 秒**（不写这个头时）
-- **写 `-1` 表示禁用预检缓存**，每次都要重新预检
-
-**所以你写 `Access-Control-Max-Age: 86400`，在 Chrome 里也只生效 2 小时。**
+- **不写该头时默认 5 秒**
+- **写负数（如 `-1`）表示不缓存**，每次都要重新预检
+- 各浏览器会把值截断到自己的上限，写更大也不保证生效（Chrome 7200 秒，Firefox 86400 秒）
 
 ---
 
 ## 10.6 带 Cookie 的跨域请求（credentials）
 
-**这是最容易出错的一块**，因为有三个必须同时满足的条件。
+Cookie 能不能带上，取决于**前端 credentials 模式、CORS 响应头、Cookie 的 `SameSite`** 三方同时满足。
 
 ### 10.6.1 前端
 
 ```js
-// fetch
+// fetch：默认 'same-origin'，跨域不带 Cookie
 fetch('https://api.com/data', {
-  credentials: 'include',      // 'omit'（默认，不带）| 'same-origin' | 'include'（跨域也带）
+  credentials: 'include',      // 'omit' | 'same-origin'（默认）| 'include'
 });
 
 // XHR
@@ -346,38 +268,28 @@ xhr.withCredentials = true;
 axios.get('/data', { withCredentials: true });
 ```
 
-### 10.6.2 服务端（三条规定，缺一不可）
+实测：同一页面不传 `credentials` 时服务端收不到 Cookie，传 `include` 才收到。
+
+### 10.6.2 服务端（三条规定）
 
 ```http
 Access-Control-Allow-Origin: https://a.com        ← ① 必须是具体 origin，不能是 *
 Access-Control-Allow-Credentials: true            ← ② 必须显式声明
-Vary: Origin                                      ← ③ 必须加，防止缓存串版本
+Vary: Origin                                      ← ③ 有 CDN/缓存层时必须加，否则会串响应
 ```
+
+①② 缺任一条浏览器就拒绝交出响应；③ 决定响应能否被缓存复用，不写时缓存层可能把 A 站的响应返给 B 站。
 
 ### 10.6.3 为什么 `Access-Control-Allow-Origin: *` 不能配 credentials
 
-**这是必问的追问。**
-
-```
-假设允许 * + credentials：
-    ↓
-任何网站（包括 evil.com）都可以带着用户的 cookie 请求 api.com
-    ↓
-并且能读到响应
-    ↓
-→ 同源策略完全失效，等于没有
-```
-
-**规范直接禁止这个组合**：如果请求带了 credentials，而响应是 `ACAO: *`，浏览器会**报错并且不交出响应**。
-
-**报错信息**：
+`*` + credentials 等于允许任意站点（包括 `evil.com`）带着用户的 Cookie 请求并读到响应，同源策略完全失效。规范直接禁止这个组合，浏览器报错并丢弃响应：
 
 ```
 The value of the 'Access-Control-Allow-Origin' header in the response
 must not be the wildcard '*' when the request's credentials mode is 'include'.
 ```
 
-**所以带 cookie 时必须「动态回显 Origin」**：
+实测 console 原样输出该信息，`fetch` 侧只得到 `TypeError: Failed to fetch`。所以带 cookie 时必须**动态回显 Origin**：
 
 ```js
 // 服务端（Express 示例）
@@ -389,7 +301,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);   // 动态回显
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
-  res.setHeader('Vary', 'Origin');                          // ★ 必须
+  res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
@@ -400,9 +312,11 @@ app.use((req, res, next) => {
 });
 ```
 
-### 10.6.4 `SameSite` 的影响（重要，常被漏掉）
+只开 `ACAC` 而 `ACAO` 仍是 `*`，或 `ACAO` 正确但少了 `ACAC`，浏览器都会拦截；后者实测报 `The value of the 'Access-Control-Allow-Credentials' header in the response is '' which must be 'true' when the request's credentials mode is 'include'`。
 
-**即使 CORS 配对了，Cookie 也可能带不上**，因为 Cookie 还有自己的 `SameSite` 限制：
+### 10.6.4 `SameSite` 的影响
+
+CORS 配对了，Cookie 也可能带不上，因为 Cookie 自身还有 `SameSite`：
 
 | `SameSite` 值 | 跨站请求会带 cookie 吗 |
 |---|---|
@@ -410,21 +324,13 @@ app.use((req, res, next) => {
 | `Lax`（现代浏览器默认） | ⚠️ **只对顶层导航的 GET 带**，`fetch`/`XHR`/`POST` 都不带 |
 | `None` | ✅ 带（但**必须同时有 `Secure`**，即只能 HTTPS） |
 
-**所以跨域带 cookie 的完整要求是**：
-
-```
-① CORS：ACAO 具体 origin + ACAC: true + Vary: Origin
-② Cookie：SameSite=None; Secure
-③ 协议：必须 HTTPS（因为 Secure）
-```
-
-> **这是「跨域登录失败」最常见的三重坑**——很多人只配了 CORS，忘了 `SameSite=None`。
+CORS 三条（10.6.2）加 `SameSite=None; Secure`，缺任一条跨域登录就失败，且报错各不相同。
 
 ---
 
 ## 10.7 暴露自定义响应头
 
-**JS 默认只能读 6 个「简单响应头」**：
+**JS 默认只能读 7 个「CORS 安全列表响应头」**：
 
 ```
 Cache-Control
@@ -436,13 +342,13 @@ Last-Modified
 Pragma
 ```
 
-**其他头（比如 `X-Total-Count`、`Authorization`）默认读不到**，要服务端显式暴露：
+**其他头（比如 `X-Total-Count`、`X-Request-Id`）默认读不到**，要服务端显式暴露：
 
 ```http
 Access-Control-Expose-Headers: X-Total-Count, X-Request-Id
 ```
 
-**这个坑很隐蔽**：`response.headers.get('X-Total-Count')` 返回 `null`，但 Network 面板里明明有——**因为是 CORS 没暴露，不是没返回**。
+实测同一份响应：加 `Expose-Headers` 后 `headers.get('X-Total-Count')` 拿到值，未暴露的 `X-Secret` 和未声明的 `X-Request-Id` 都是 `null`。Network 面板里这些头照常显示，读不到是 CORS 过滤，不是没返回。
 
 ---
 
@@ -450,22 +356,19 @@ Access-Control-Expose-Headers: X-Total-Count, X-Request-Id
 
 ### 10.8.1 总表
 
-| 方案 | 原理 | 前端改动 | 服务端改动 | 支持 cookie | 支持方法 | 评价 |
-|---|---|---|---|---|---|---|
-| **① CORS** | 服务端返回授权头 | 带 `credentials` | 加 `ACAO` 等头 | ✅ | 全部 | **标准方案** |
-| **② 代理（devServer / Nginx）** | 同源服务器转发，浏览器看不到跨域 | 改请求路径 | ✅ 配 proxy | ✅（同源自动带） | 全部 | **开发环境标配** |
-| **③ JSONP** | `<script>` 不受 SOP 限制 | 动态插 script | 返回 `cb(data)` | ⚠️ 靠 cookie 自动带 | **只 GET** | 老旧，有 XSS 风险 |
-| **④ postMessage** | 跨域窗口通信 | 监听 `message` | 对端页面配合 | — | — | iframe 嵌入场景 |
-| **⑤ WebSocket** | 握手不受 SOP 限制 | 建 WS 连接 | 校验 `Origin` | — | — | 实时场景 |
-| ~~⑥ document.domain~~ | 主域相同则互通 | 双方都设 | — | — | — | **已废弃**（Chrome 115 移除） |
-| ~~⑦ 关闭浏览器安全策略~~ | `--disable-web-security` | — | — | — | — | **只能本地排查**，不能上线 |
+| 方案 | 原理 | 前端改动 | 服务端改动 | 支持 cookie | 支持方法 |
+|---|---|---|---|---|---|
+| **① CORS** | 服务端返回授权头 | 带 `credentials` | 加 `ACAO` 等头 | ✅ | 全部 |
+| **② 代理（devServer / Nginx）** | 同源服务器转发，浏览器看不到跨域 | 改请求路径 | 配 proxy | ✅（同源自动带） | 全部 |
+| **③ JSONP** | `<script>` 不受 SOP 限制 | 动态插 script | 返回 `cb(data)` | ⚠️ 浏览器自动带 | **只 GET** |
+| **④ postMessage** | 跨域窗口通信 | 监听 `message` | 对端页面配合 | — | — |
+| **⑤ WebSocket** | 握手不受 SOP 限制 | 建 WS 连接 | 校验 `Origin` | — | — |
+| ~~⑥ document.domain~~ | 主域相同则互通 | 双方都设 | — | — | **已废弃**（Chrome 115 移除） |
+| ~~⑦ 关闭浏览器安全策略~~ | `--disable-web-security` | — | — | — | **只能本地排查** |
 
 ### 10.8.2 方案一：CORS（生产标准）
 
-**优点**：标准、灵活、支持所有方法和自定义头。
-**缺点**：需要服务端配合；带 cookie 时配置复杂；每次非简单请求多一次预检。
-
-**Nginx 配置模板**：
+优点：标准、支持所有方法和自定义头。缺点：需要服务端配合；带 cookie 时配置复杂；非简单请求多一次预检。
 
 ```nginx
 location /api/ {
@@ -488,21 +391,18 @@ location /api/ {
 }
 ```
 
-**⚠️ 注意 `always`**：Nginx 的 `add_header` 默认只在 2xx/3xx 时生效，**4xx/5xx 不会加**！所以错误响应会丢 CORS 头，前端看到的是 CORS 错误而不是真正的 500。**必须加 `always`**。
-
-**这是一个非常经典的坑**：后端报 500，前端却报 CORS 错误，根因就是 Nginx 没加 `always`。
+**`always` 不能省**：Nginx 的 `add_header` 默认只在 2xx/3xx 生效，4xx/5xx 响应会丢 CORS 头，前端看到的是 CORS 错误而不是真正的 500。
 
 ### 10.8.3 方案二：代理（开发环境标配）
 
-**原理**：让请求「看起来是同源」的，浏览器根本不认为跨域。
+让请求「看起来是同源」，浏览器根本不认为跨域：
 
 ```
-开发环境（webpack-dev-server / vite）：
-  浏览器请求 http://localhost:3000/api/user     ← 同源！
-      ↓ devServer 转发
-  实际请求 http://backend:8080/api/user
-      ↓
-  响应原样返回给浏览器
+浏览器请求 http://localhost:3000/api/user     ← 同源
+    ↓ devServer 转发
+实际请求 http://backend:8080/api/user
+    ↓
+响应原样返回给浏览器
 ```
 
 ```js
@@ -533,19 +433,9 @@ devServer: {
 }
 ```
 
-**⚠️ `changeOrigin` 的作用**（常被问）：
+`changeOrigin` 控制转发时的 Host 头：`false`（默认）仍是 `localhost:3000`，后端按 Host 区分站点时会 404/403；`true` 改成 `backend:8080`，后端正常处理。
 
-```
-changeOrigin: false（默认）
-  转发时 Host 头还是 localhost:3000
-  → 后端如果是虚拟主机（靠 Host 区分站点），会找不到对应站点 → 404 或 403
-
-changeOrigin: true
-  转发时 Host 头改成 backend:8080
-  → 后端正常处理
-```
-
-**生产环境用 Nginx 做同样的事**：
+生产环境用 Nginx 做同样的事：
 
 ```nginx
 location /api/ {
@@ -557,7 +447,7 @@ location /api/ {
 }
 ```
 
-**`proxy_pass` 末尾斜杠的坑**（再强调一次）：
+`proxy_pass` 末尾斜杠决定是否保留前缀：
 
 ```nginx
 proxy_pass http://backend:8080;    # /api/user → /api/user  （保留前缀）
@@ -566,7 +456,7 @@ proxy_pass http://backend:8080/;   # /api/user → /user      （去掉前缀）
 
 ### 10.8.4 方案三：JSONP（了解即可，别再用）
 
-**原理**：`<script src>` 不受同源策略限制，所以让服务端返回一段可执行的 JS。
+原理：`<script src>` 不受同源策略限制，让服务端返回一段可执行的 JS。
 
 ```js
 function jsonp(url, callbackName = 'callback') {
@@ -587,26 +477,25 @@ function jsonp(url, callbackName = 'callback') {
 // 服务端返回：__jsonp_123456({ "code": 0, "data": [...] })
 ```
 
-**三个致命缺陷**：
+**四个缺陷**：
 
 | 缺陷 | 说明 |
 |---|---|
 | **只支持 GET** | 因为是 `<script>` 加载，不能发 POST |
 | **无法处理错误** | HTTP 500 时 script 加载成功但执行报错，拿不到错误码 |
-| **XSS 风险** | 服务端返回的内容会被**当代码执行**。如果服务端被注入了恶意 JS，直接在你页面执行 |
+| **XSS 风险** | 服务端返回的内容会被**当代码执行** |
 | **无法设置超时/取消** | 只能靠清理 script 标签 |
 
-**为什么现在不用了**：CORS 全面支持（IE10+），JSONP 没有存在必要。
+CORS 已全面支持，JSONP 只适合极老浏览器或无法改服务端的 GET 场景。
 
 ### 10.8.5 方案四：postMessage（iframe 通信）
 
 ```js
 // 父页面（https://a.com）
-iframe.contentWindow.postMessage({ type: 'ping' }, 'https://b.com');   // ★ 必须指定目标 origin
+iframe.contentWindow.postMessage({ type: 'ping' }, 'https://b.com');   // 必须指定目标 origin
 
 window.addEventListener('message', (e) => {
-  // ★ 必须校验 origin！否则任何页面都能给你发消息
-  if (e.origin !== 'https://b.com') return;
+  if (e.origin !== 'https://b.com') return;   // 必须校验 origin
   console.log(e.data);
 });
 
@@ -617,18 +506,16 @@ window.addEventListener('message', (e) => {
 });
 ```
 
-**两个必须做的校验**：
+两个必须做的校验：
 
-1. **`postMessage` 的第二个参数必须指定具体 origin**（不能是 `*`，否则消息可能被恶意页面截获）
-2. **接收时必须校验 `e.origin`**（否则任何页面都能给你发消息）
+1. **发送时第二个参数指定具体 origin**（不能是 `*`，否则消息可能被恶意页面截获）
+2. **接收时校验 `e.origin`**（否则任何页面都能给你发消息）
 
-**用途**：微前端、嵌入第三方 widget（支付、地图、客服）、OAuth 弹窗回调。
+用途：微前端、嵌入第三方 widget（支付、地图、客服）、OAuth 弹窗回调。
 
 ### 10.8.6 方案五：WebSocket
 
-**握手不受同源策略限制**，所以可以直接连跨域的 WS。
-
-**但服务端必须校验 `Origin`**（否则就是 CSWSH 漏洞）。详见 11 册。
+握手不受同源策略限制，可以直接连跨域 WS；**服务端必须校验 `Origin`**，否则就是 CSWSH 漏洞（详见 11 册）。
 
 ### 10.8.7 怎么选
 
@@ -650,47 +537,24 @@ window.addEventListener('message', (e) => {
 
 | 报错 | 原因 | 修复 |
 |---|---|---|
-| `No 'Access-Control-Allow-Origin' header is present on the requested resource` | 服务端没返回 ACAO 头 | 加 CORS 配置；检查是否被 Nginx 的 `add_header` 覆盖 |
+| `No 'Access-Control-Allow-Origin' header is present on the requested resource` | 服务端没返回 ACAO 头 | 加 CORS 配置 |
 | `The 'Access-Control-Allow-Origin' header has a value 'https://x.com' that is not equal to the supplied origin` | ACAO 的值和 `Origin` 不匹配 | 检查是否写死了错误的域名 |
 | `The value of the 'Access-Control-Allow-Credentials' header in the response is '' which must be 'true' when the request's credentials mode is 'include'` | 前端带了 cookie，服务端没开 ACAC | 加 `Access-Control-Allow-Credentials: true` |
-| `Response to preflight request doesn't pass access control check` | **预检失败**（OPTIONS 请求没被正确处理） | 服务端/网关要处理 OPTIONS，返回 204 + CORS 头 |
+| `Response to preflight request doesn't pass access control check` | **预检失败**（OPTIONS 没被正确处理） | 服务端/网关处理 OPTIONS，返回 204 + CORS 头 |
 | `Request header field x-token is not allowed by Access-Control-Allow-Headers` | 自定义头没在允许列表 | 加 `Access-Control-Allow-Headers: X-Token` |
 | `The 'Access-Control-Allow-Origin' header contains multiple values 'a, b', but only one is allowed` | **重复设置**（Nginx 和后端都加了 ACAO） | 只在一处设置 |
 
-**第五条特别值得说**（Nginx 的经典坑）：
-
-```nginx
-# Nginx 加了
-add_header Access-Control-Allow-Origin https://a.com;
-# 后端也加了
-res.setHeader('Access-Control-Allow-Origin', 'https://a.com');
-
-# 结果：响应里有两个 ACAO 头
-Access-Control-Allow-Origin: https://a.com
-Access-Control-Allow-Origin: https://a.com
-# → 浏览器报 "contains multiple values"，直接失败
-```
-
-**解决**：只在一层设置。通常建议**在网关/Nginx 统一处理 CORS**，后端不再加。
+排查顺序：先看 Network 里 `OPTIONS` 的响应头（预检问题都出在这里），再看真实响应的 CORS 头；前五条都是服务端缺头，最后一条是两层都设置了头。
 
 ---
 
 ## 10.10 常见坑
 
-| 坑 | 正确说法 |
+| 说法 | 事实 |
 |---|---|
-| **说「跨域就是请求发不出去」** | 请求**发出去了**，服务器也处理了，只是 JS **读不到**响应 |
-| **说「img/script/link 不受同源策略限制」** | 它们可以跨域**加载**，但**不能读内容**；SOP 限制「读」不限制「发」 |
-| 说「CORS 是前端要配的」 | CORS 是**服务端**返回头，前端只能带 `credentials` |
-| 说「设置 `Access-Control-Allow-Origin` 在请求头里」 | ACAO 是**响应头**，不是请求头 |
-| 说「带 cookie 时 ACAO 可以写 `*`」 | **规范禁止**，必须具体 origin |
-| 忘加 `Vary: Origin` | CDN/代理会把 A 站的响应返给 B 站 |
-| 忘配 `SameSite=None; Secure` | CORS 配对了 cookie 也带不上 |
-| 说「`Content-Type: application/json` 是简单请求」 | **不是**，只有 urlencoded / form-data / text/plain 三种 |
-| 说「`Authorization` 不触发预检」 | **会触发**（不在安全列表头里） |
-| 以为预检结果永久缓存 | 受浏览器上限限制（Chrome 7200 秒） |
-| Nginx `add_header` 没加 `always` | 4xx/5xx 响应会丢 CORS 头，前端看到假 CORS 错误 |
-| Nginx 和后端都设 ACAO | 响应有多个值，直接失败 |
+| 说「CORS 是前端要配的」 | CORS 是**服务端**返回头，前端只能决定带不带 `credentials` |
+| 说「把 `Access-Control-Allow-Origin` 加在请求头里」 | ACAO 是**响应头**，不是请求头 |
+| 以为预检结果永久缓存 | 受 `Access-Control-Max-Age` 和浏览器上限约束 |
 | 说「`document.domain` 可以解决跨域」 | **已废弃**（Chrome 115 移除） |
 | 说「用 `--disable-web-security` 能解决」 | 只能本地排查，上线无效 |
 | JSONP 用于 POST | **只支持 GET** |
@@ -702,24 +566,16 @@ Access-Control-Allow-Origin: https://a.com
 ### 30 秒版
 
 > 跨域是因为浏览器的**同源策略**——协议、域名、端口三者有一个不同就是跨域。
-> 但要注意，**同源策略限制的是「读取响应」，不是「发送请求」**。简单请求其实已经发出去了、服务器也处理了，只是浏览器不让 JS 读响应内容。
-> 解决方式主要两种：服务端返回 CORS 头授权，或者用代理让请求变成同源。另外 JSONP、postMessage、WebSocket 也能解决特定场景。
+> 但同源策略限制的是**读取响应**，不是发送请求：简单请求已经发出、服务器也处理了，只是浏览器不让 JS 读响应内容。
+> 解决方式两种主路：服务端返回 CORS 头授权，或者用代理让请求变成同源；JSONP、postMessage、WebSocket 只覆盖特定场景。
 
 ### 2 分钟版（完整版，含预检和 cookie）
 
-> 我分四块讲：为什么会跨域、同源策略到底限制什么、CORS 的两种请求、以及带 cookie 的坑。
->
-> **第一，跨域的判定**。协议、域名、端口三者完全相同才叫同源。注意子域名也算跨域，`a.example.com` 和 `b.example.com` 是跨域的。
->
-> **第二，同源策略限制的是「读」不是「发」**。这点很多人说错。比如 `img`、`script`、`link` 可以跨域加载，因为浏览器只需要渲染/执行/应用，不需要把内容交给 JS。但你要用 `fetch` 读内容就不行。这也解释了 CSRF——攻击者不需要读响应，只要请求被执行就够了，所以防 CSRF 不能靠同源策略。
->
-> **第三，CORS 分两种请求**。**简单请求**要同时满足三个条件：方法是 GET/HEAD/POST；头部只能是安全列表里的（Accept、Accept-Language、Content-Language、Content-Type、Range）；**Content-Type 只能是 urlencoded、form-data、text/plain 三种**。这就是为什么用 `application/json` 一定会触发预检。**非简单请求**先发一个 OPTIONS 预检，带 `Access-Control-Request-Method` 和 `Access-Control-Request-Headers`，服务端回 `Allow-Methods`、`Allow-Headers` 和 `Max-Age`，通过了才发真实请求。所以一个非简单请求是 2 个 RTT，优化手段是配大 `Max-Age`（Chrome 上限 2 小时）。
->
-> **第四，带 cookie 的跨域有三个坑**。一是 `Access-Control-Allow-Origin` **不能是 `*`**，必须动态回显具体的 origin——否则任何网站都能带用户 cookie 读你的接口，等于没有同源策略。二是必须加 `Access-Control-Allow-Credentials: true` 和 `Vary: Origin`。三是**Cookie 本身还要 `SameSite=None; Secure`**，因为现代浏览器默认 `Lax`，跨站的 fetch/XHR 根本不带 cookie。这三个缺一个就失败，而且报错信息各不相同，很难排查。
->
-> 最后说解决方案选型：开发环境用 devServer proxy 最省事；生产环境首选 CORS；不能改服务端但有网关就用反向代理；iframe 嵌入用 postMessage，记得双向校验 origin；实时场景用 WebSocket，但服务端必须自己校验 Origin。
->
-> 还有一个运维坑值得提：Nginx 的 `add_header` 默认只在 2xx/3xx 生效，**不加 `always` 的话 4xx/5xx 响应会丢 CORS 头**，前端看到的是 CORS 错误而不是真正的 500，排查会被带偏。
+- **判定**：协议、域名、端口三者完全相同才同源；子域、有无 `www`、IP 与域名都算跨域。
+- **限制的是「读」不是「发」**：`img`/`script`/`link` 能跨域加载，因为浏览器只需渲染、执行或应用，不必把内容交给 JS；`fetch` 读响应体就必须有 CORS 授权。CSRF 正是利用了「请求会执行」这一点，所以防 CSRF 不能靠同源策略。
+- **两种请求**：简单请求要同时满足方法为 `GET`/`HEAD`/`POST`、只用安全列表头、`Content-Type` 为 urlencoded/form-data/text-plain；其余先发 `OPTIONS` 预检，带 `Access-Control-Request-Method` 和 `Request-Headers`，服务端回 `Allow-Methods`/`Allow-Headers`/`Max-Age`，通过后才发真实请求（2 RTT）。
+- **带 cookie 三件套**：`ACAO` 回显具体 origin（不能是 `*`）、`Access-Control-Allow-Credentials: true`、`Vary: Origin`；此外 Cookie 自身要 `SameSite=None; Secure`，否则现代浏览器默认的 `Lax` 不会在跨站 `fetch` 里带 Cookie。
+- **选型**：开发环境用 devServer proxy；生产首选 CORS；不能改服务端就反向代理；iframe 嵌入用 postMessage 并双向校验 origin；实时场景用 WebSocket，服务端校验 `Origin`。
 
 ### 追问表
 
@@ -727,22 +583,19 @@ Access-Control-Allow-Origin: https://a.com
 |---|---|
 | 同源策略限制什么 | 限制**读取**跨源响应，不限制发送 |
 | img/script/link 为什么能跨域 | 它们只需加载/执行/应用，不需要 JS 读内容 |
-| 简单请求的三个条件 | 方法三种 + 安全列表头 + Content-Type 三种 |
-| 为什么 JSON 会触发预检 | `application/json` 不在简单 Content-Type 白名单 |
+| 简单请求的三个条件 | 方法三种 + 安全列表头 + `Content-Type` 三种 |
+| 为什么 JSON 会触发预检 | `application/json` 不在简单 `Content-Type` 白名单 |
 | `Authorization` 会触发预检吗 | 会，不在安全列表头里 |
-| 预检请求长什么样 | OPTIONS + `Request-Method` + `Request-Headers` |
-| 预检能缓存吗 | 能，`Access-Control-Max-Age`；Chrome 上限 7200 秒 |
+| 预检请求长什么样 | `OPTIONS` + `Request-Method` + `Request-Headers` |
+| 预检能缓存吗 | 能，`Access-Control-Max-Age`，受浏览器上限约束 |
 | 带 cookie 为什么要具体 origin | `*` + credentials 等于取消同源策略，规范禁止 |
-| 为什么还要 `SameSite=None` | Cookie 自身限制，`Lax` 下跨站 fetch 不带 |
-| 为什么加 `Vary: Origin` | 防止 CDN 把 A 站的响应（含 CORS 头）返给 B 站 |
+| 为什么还要 `SameSite=None` | Cookie 自身限制，`Lax` 下跨站 `fetch` 不带 |
+| 为什么加 `Vary: Origin` | 防止缓存层把 A 站的响应（含 CORS 头）返给 B 站 |
 | 自定义响应头读不到怎么办 | `Access-Control-Expose-Headers` |
 | JSONP 有什么问题 | 只支持 GET、拿不到错误码、XSS 风险 |
 | `changeOrigin` 有什么用 | 改转发时的 Host 头，虚拟主机必需 |
 | WebSocket 受同源限制吗 | 不受，但服务端必须校验 Origin（防 CSWSH） |
-| `document.domain` 还能用吗 | 已废弃，Chrome 115 移除 |
 | 生产环境推荐哪个方案 | CORS；有网关就反向代理 |
-| Nginx 加 CORS 头为什么有时不生效 | `add_header` 默认不加到 4xx/5xx，必须加 `always` |
-| 报「contains multiple values」怎么办 | Nginx 和后端都设了 ACAO，只留一处 |
 
 ---
 
@@ -750,38 +603,36 @@ Access-Control-Allow-Origin: https://a.com
 
 ```
 同源 = 协议 + 域名 + 端口 三者全同
-  ★ SOP 限制「读响应」，不限制「发请求」
-  ★ img/script/link 能跨域加载，但不能读内容
-  ★ 所以 CSRF 防不住靠 SOP（攻击者不需要读）
+  SOP 限制「读响应」，不限制「发请求」
+  img/script/link 能跨域加载，但不能读内容
+  CSRF 防不住 SOP（攻击者不需要读）
 
 简单请求三条件（缺一就预检）
   ① 方法 GET / HEAD / POST
   ② 头只能是安全列表（Accept / Accept-Language / Content-Language / Content-Type / Range）
   ③ Content-Type 只能是 urlencoded / form-data / text/plain
-  ★ application/json 和 Authorization 都会触发预检
+  application/json、Authorization 都会触发预检
 
 预检
   OPTIONS + Access-Control-Request-Method + -Request-Headers
   响应 Allow-Methods / Allow-Headers / Max-Age
-  成本：2 RTT；Max-Age 缓存（Chrome 上限 7200s）
+  成本 2 RTT；Max-Age 缓存后 1 RTT
 
-带 cookie 三件套（缺一失败）
-  ① ACAO 具体 origin（不能 *）
-  ② Access-Control-Allow-Credentials: true
-  ③ Vary: Origin
-  + Cookie 自身：SameSite=None; Secure（必须 HTTPS）
+带 cookie（缺一失败）
+  ACAO 具体 origin（不能 *）+ ACAC: true + Vary: Origin
+  Cookie 自身：SameSite=None; Secure（HTTPS）
 
 其他
-  自定义响应头要 Access-Control-Expose-Headers
-  默认只能读 6 个简单响应头
+  自定义响应头要 Access-Control-Expose-Headers（默认只能读 7 个安全列表头）
+  fetch 的 credentials 默认 'same-origin'，跨域要显式 'include'
 
 五个方案
-  CORS（标准）/ 代理（开发标配，changeOrigin 改 Host）/ JSONP（只 GET，已淘汰）
-  / postMessage（iframe，双向校验 origin）/ WebSocket（服务端校验 Origin）
+  CORS（标准）/ 代理（devServer、changeOrigin 改 Host）/ JSONP（只 GET）
+  / postMessage（双向校验 origin）/ WebSocket（服务端校验 Origin）
   document.domain 已废弃
 
-三个量产坑
-  Nginx add_header 不加 always → 4xx/5xx 丢 CORS 头（假 CORS 错误）
-  Nginx + 后端都设 ACAO → 多个值直接失败
+运维坑
+  Nginx add_header 不加 always → 4xx/5xx 丢 CORS 头
+  Nginx 和后端都设 ACAO → 多个值直接失败
   proxy_pass 末尾斜杠 → 决定是否保留路径前缀
 ```

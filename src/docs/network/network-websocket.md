@@ -1,9 +1,9 @@
 # 网络 · 11 WebSocket 与实时通信
 
-> 本册覆盖：WebSocket 是什么、怎么应用、状态码 101
-> 题单只写了「同 HTML 文档第 23 题」和「101 是协议切换」。
-> 本册把「握手 → 帧协议 → 四种实时方案对比 → 工程实践（心跳/重连/鉴权）→ 安全（CSWSH）」一次讲清。
-> **这部分最容易被问成「你做过实时功能吗」——所以工程实践那节比协议细节更重要。**
+> 覆盖：WebSocket 是什么、怎么应用、状态码 101
+> 主线：握手 → 帧协议 → 四种实时方案对比 → 工程实践（心跳/重连/鉴权/部署）→ 安全（CSWSH）
+>
+> 文中「实测」均来自本地 Node `http` + `ws` 服务：Accept 计算、掩码校验、分片重组、ping/pong、关闭码。
 
 ---
 
@@ -24,7 +24,7 @@
 ## 11.1 一句话结论
 
 WebSocket 是**在单个 TCP 连接上的全双工协议**，通过一次 **HTTP Upgrade 握手（返回 101）**从 HTTP 升级而来，之后双方可以**任意方向、任意时刻**发消息。
-它解决了 HTTP「只能客户端主动请求」的根本限制，代价是**要自己处理心跳、重连、鉴权、负载均衡**。
+它解决了 HTTP「只能客户端主动请求」的限制，代价是**要自己处理心跳、重连、鉴权、负载均衡**。
 
 ---
 
@@ -39,7 +39,7 @@ Host: example.com
 Upgrade: websocket                    ← 我要升级协议
 Connection: Upgrade                   ← 配合 Upgrade 使用
 Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==      ← 16 字节随机数的 base64
-Sec-WebSocket-Version: 13             ← 协议版本（13 是目前的唯一版本）
+Sec-WebSocket-Version: 13             ← 协议版本（RFC 6455 规定为 13）
 Origin: https://example.com           ← 浏览器自动带（服务端应校验）
 ```
 
@@ -63,7 +63,7 @@ Sec-WebSocket-Accept = base64( SHA1( Sec-WebSocket-Key + "258EAFA5-E914-47DA-95C
                                                     这是一个固定的「魔法字符串」（RFC 6455 规定）
 ```
 
-**手算验证**（RFC 里的例子）：
+RFC 6455 的示例，本地用 `crypto` 复算一致：
 
 ```
 Key    = "dGhlIHNhbXBsZSBub25jZQ=="
@@ -72,7 +72,7 @@ SHA1   = 0xb3 7a 4f 2c c0 62 4f 16 90 f6 46 06 cf 38 59 45 b2 be c4 ea
 base64 = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 ```
 
-**服务端实现（Node.js）**：
+服务端实现（Node.js）：
 
 ```js
 const crypto = require('node:crypto');
@@ -83,17 +83,17 @@ function acceptKey(clientKey) {
 }
 ```
 
-### 11.2.3 为什么要这个「魔法字符串」（高频追问）
+### 11.2.3 为什么要这个「魔法字符串」
 
-**不是为了加密，也不是为了认证**。三个目的：
+**不是为了加密，也不是为了认证**。作用只有一个：证明对端真的按 RFC 6455 算出了 Accept。
 
-| 目的 | 说明 |
+| 能防住什么 | 说明 |
 |---|---|
-| **① 防止普通 HTTP 服务器误判** | 一个只知道「回显请求头」的普通服务器（比如某些代理）不会算出正确的 `Accept`，于是握手失败，不会把连接误当成 WebSocket |
-| **② 防止缓存污染** | 让响应不可预测，避免中间缓存把 101 响应缓存下来复用 |
-| **③ 确认对方真的理解 WebSocket 协议** | 只有实现了 RFC 6455 的服务器才能算出正确的值 |
+| 普通 HTTP 服务器误判 | 只会回显请求头的服务器算不出 Accept，握手失败，不会把连接误当成 WebSocket |
+| 非 WebSocket 客户端误连 | 只有实现了帧协议、握手规则的一端才会做这套计算 |
 
-> **注意**：`Sec-WebSocket-Key` **不是认证凭据**，它只是随机数。**任何人都能算 Accept**，所以它**不提供任何安全性**。真正的安全靠 **TLS（wss://）+ 服务端校验 Origin + 应用层鉴权**。
+> `Sec-WebSocket-Key` **不是认证凭据**，只是随机数。**任何人都能算 Accept**，所以它**不提供任何安全性**。真正的安全靠 **TLS（wss://）+ 服务端校验 Origin + 应用层鉴权**。
+> 防代理缓存投毒靠的是**客户端掩码**（见 11.3.3），与这个 GUID 无关。
 
 ### 11.2.4 握手失败会怎样
 
@@ -104,7 +104,7 @@ function acceptKey(clientKey) {
 | 代理不支持 Upgrade | 连接被断开，或返回 400 |
 | 服务端没校验 Origin | 握手成功（**这就是 CSWSH 漏洞**） |
 
-**⚠️ 一个实际痛点**：WebSocket 握手失败时，**浏览器出于安全考虑不把 HTTP 状态码暴露给 JS**（`onerror` 只给一个 `Event`）。所以**排查握手失败只能看 Network 面板或服务端日志**——这是开发 WebSocket 时最烦的事之一。
+**排查限制**：浏览器不把握手失败时的 HTTP 状态码暴露给 JS（`onerror` 只给一个 `Event`），只能看 Network 面板或服务端日志。
 
 ---
 
@@ -135,8 +135,8 @@ function acceptKey(clientKey) {
 |---|---|
 | **FIN**（1 位） | 是否是消息的最后一帧（支持**分片**） |
 | **opcode**（4 位） | 帧类型（见下表） |
-| **MASK**（1 位） | 客户端发出的帧**必须为 1**（加掩码） |
-| **Payload len**（7/7+16/7+64 位） | **数据长度** ← **这就是「没有粘包」的根本原因** |
+| **MASK**（1 位） | 客户端发出的帧**必须为 1**（加掩码），服务端帧为 0 |
+| **Payload len**（7/7+16/7+64 位） | **数据长度**，接收方据此切帧 |
 
 **opcode 表**：
 
@@ -151,21 +151,11 @@ function acceptKey(clientKey) {
 
 ### 11.3.2 为什么没有粘包
 
-**因为每一帧都有明确的 `Payload len`**。
+**因为每一帧都有明确的 `Payload len`**：接收方按帧头长度精确切分，帧与帧天然有边界；FIN 加 opcode `0x0` 再把多帧拼成一条消息。
 
-```
-TCP 字节流：[帧头1][数据1][帧头2][数据2][帧头3]...
-                ↓
-接收方按帧头里的长度字段精确切分
-                ↓
-每个帧独立，天然有边界
-```
+对比裸 TCP：没有长度前缀就只能靠分隔符或定长约定，于是有了「粘包」这个应用层问题。WebSocket 把长度字段和分片标志放进了协议层，**应用层每条 `message` 事件就是一条完整消息**。
 
-**对比 TCP 上的自定义协议**：如果不用长度前缀，就没法知道「数据到哪结束」，所以有「粘包」（详见 04 册 4.5）。
-
-**WebSocket 已经帮你做了这件事**：协议层自带长度字段 + FIN 标志（支持消息分片），所以**应用层拿到的每一条 `message` 事件就是一条完整消息**。
-
-> **面试话术**：「WebSocket 没有粘包问题，因为它有自己的帧协议——每帧头部有 7/16/64 位的 payload 长度字段，还有 FIN 标志表示消息是否结束。所以应用层收到的每一条 message 就是一个完整消息。而裸 TCP 是纯字节流，没有长度信息，所以要应用层自己做长度前缀。」
+本地实测（`ws` 服务端）：依次发 `frag-` / `ment` / `ed` 三帧（FIN=0,0,1，opcode=1,0,0），服务端 `message` 事件只触发一次，内容为 `frag-mented`。
 
 ### 11.3.3 为什么要 MASK（掩码）
 
@@ -184,13 +174,9 @@ function mask(payload, maskKey) {
 }
 ```
 
-**为什么要掩码**（RFC 6455 给的官方理由）：
+**为什么要掩码**（RFC 6455 §10.3）：历史上存在代理缓存投毒攻击——攻击者让受害者浏览器发出「看起来像 HTTP 请求」的字节流，骗代理缓存下来，再让后续用户命中。WebSocket 允许客户端发任意字节，不加掩码就能构造出形状固定的「伪 HTTP 请求」。**掩码用随机数把 payload 打散，攻击者无法预测线上字节**。
 
-历史上曾有**缓存投毒攻击**：攻击者控制一个网页，让它向某个代理服务器发起「看起来像 HTTP 请求」的 TCP 流量。如果代理缓存了这个「响应」，后续正常用户访问时就会拿到攻击者构造的内容。
-
-WebSocket 让客户端能发任意字节，如果不加掩码，恶意客户端就能构造出「看起来像 HTTP 请求」的 WebSocket 帧。**加掩码后，帧内容被随机化，攻击者无法构造出可预测的字节序列**。
-
-> 这个细节答出来很加分，但面试很少问到。
+本地实测（`ws` 服务端）：发一个 `MASK=0` 的文本帧，服务端回 `Close` 帧，payload `03ea` 即关闭码 **1002**（协议错误），同时报 `WS_ERR_EXPECTED_MASK`；正常掩码帧的回包 `MASK=0`（服务端帧不加掩码）。
 
 ---
 
@@ -215,12 +201,10 @@ setInterval(async () => {
 }, 3000);
 ```
 
-**问题**：
-- **实时性差**：最多延迟一个间隔
-- **大量无效请求**：没数据也发
+- **实时性差**：最多延迟一个轮询间隔
+- **无效请求多**：没数据也发
 - **服务端压力大**：QPS = 用户数 / 间隔
-
-**唯一优点**：实现最简单，兼容性最好，**穿过任何代理和防火墙**。
+- 优点：实现最简单，纯 HTTP，穿代理和防火墙的兼容性最好
 
 ### 11.4.3 长轮询
 
@@ -240,15 +224,12 @@ async function longPoll() {
 
 **服务端**：请求到达后**不立即返回**，挂起（比如 30 秒），有数据就返回，超时返回空。
 
-**优点**：实时性好（有数据立即返回），兼容性好（纯 HTTP）。
-**缺点**：
-- **每个客户端占一个连接**（服务端连接数 = 在线用户数，且是「挂起」的）
-- 每次返回后要重新发请求（一次数据 = 两次请求）
-- 代理/网关的超时配置要调（`proxy_read_timeout`）
+- 优点：有数据立即返回，兼容纯 HTTP
+- 代价：每个在线用户占一个挂起连接；一次数据要两次请求；代理/网关超时要调（`proxy_read_timeout`）
 
 ### 11.4.4 SSE（Server-Sent Events）
 
-**很多人不知道这个方案，但它非常适合「只需要服务端推」的场景。**
+只需要服务端推时，SSE 比 WebSocket 简单：
 
 ```js
 const es = new EventSource('/api/stream');
@@ -284,26 +265,16 @@ data: 断线后 3 秒重连\n
 | `id:` | 消息 ID，断线重连时浏览器会带 `Last-Event-ID` 头 |
 | `retry:` | 重连间隔（毫秒） |
 
-**SSE 的四个优势**（相比 WebSocket）：
-
-| 优势 | 说明 |
+| 维度 | SSE |
 |---|---|
-| **自动重连** | 浏览器内置，还能带 `Last-Event-ID` **断点续传** |
-| **纯 HTTP** | 不用 Upgrade，穿过所有代理和防火墙 |
-| **实现简单** | 服务端就是一个不结束的 `text/event-stream` 响应 |
-| **HTTP/2 友好** | 在 HTTP/2 下可以多路复用，不受「同域 6 连接」限制 |
+| 重连 | 浏览器内置，带 `Last-Event-ID` **断点续传** |
+| 传输 | 纯 HTTP，不用 Upgrade，穿代理和防火墙 |
+| 版本 | HTTP/2 下可多路复用，不受同域 6 连接限制 |
+| 方向 | **单向**，只能服务端 → 客户端，客户端发消息得另发 HTTP |
+| 数据 | **只文本**，二进制要 base64（体积 +33%） |
+| 兼容 | IE 不支持 |
 
-**SSE 的三个限制**：
-
-| 限制 | 说明 |
-|---|---|
-| **单向** | 只能服务端 → 客户端。客户端要发消息得另外发 HTTP 请求 |
-| **只支持文本** | 二进制要 base64（有 33% 开销） |
-| **老浏览器不支持** | IE 完全不支持（但可以用 polyfill） |
-
-**典型适用**：ChatGPT 的打字机效果（就是 SSE）、构建进度、股票行情（只读）、日志流、通知。
-
-> **面试时如果被问「除了 WebSocket 还有什么实时方案」，答 SSE 并说清「ChatGPT 的打字机效果就是 SSE」——这个例子非常有说服力。**
+**典型适用**：大模型逐字返回的流式输出、构建进度、只读行情、日志流、通知。
 
 ### 11.4.5 四者怎么选
 
@@ -320,8 +291,6 @@ data: 断线后 3 秒重连\n
 
 ## 11.5 工程实践（比协议细节更重要）
 
-**面试官问「你做过实时功能吗」，就是在等这一节。**
-
 ### 11.5.1 心跳：为什么必须有
 
 **问题**：中间的 NAT、代理、负载均衡会在「连接空闲一段时间」后**静默断开**，而两端都不知道。
@@ -329,13 +298,13 @@ data: 断线后 3 秒重连\n
 | 中间设备 | 典型空闲超时 |
 |---|---|
 | Nginx `proxy_read_timeout` | **默认 60 秒** |
-| 云厂商 SLB / ALB | 60~900 秒 |
+| 云厂商 SLB / ALB | 分钟级，按产品配置 |
 | 家用路由器 NAT | 几分钟到几十分钟 |
 | 移动网络（4G/5G） | 可能很快（基站切换） |
 
 **断了但双方都不知道** = 消息发出去石沉大海，用户以为连着。
 
-**解法：应用层心跳**
+**解法：心跳保活（应用层消息或协议层 ping/pong）**
 
 ```js
 // 客户端
@@ -353,32 +322,29 @@ function startHeartbeat(ws) {
 ```
 
 ```js
-// 服务端：收到 ping 回 pong，同时检测「多久没收到消息」
-const ALIVE_TIMEOUT = 90000;   // 3 个心跳周期
-ws.isAlive = true;
-ws.on('pong', () => { ws.isAlive = true; });
+// 服务端：每轮发协议层 ping，上一轮没回 pong 就断开
+wss.on('connection', (ws) => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+});
 
-const timer = setInterval(() => {
-  ws.clients.forEach((client) => {
-    if (!client.isAlive) return client.terminate();   // 上一轮没回，直接断
+setInterval(() => {
+  wss.clients.forEach((client) => {
+    if (!client.isAlive) return client.terminate();
     client.isAlive = false;
-    client.ping();                                    // 协议层 ping（opcode 0x9）
+    client.ping();                                    // opcode 0x9
   });
-}, 30000);
+}, HEARTBEAT_INTERVAL);
 ```
-
-**两种心跳**：
 
 | 层级 | 方式 | 优点 | 缺点 |
 |---|---|---|---|
-| **协议层** | `ping` / `pong` 帧（opcode 0x9 / 0xA） | 标准、开销小（2 字节） | 浏览器 JS **不能主动发 ping**（只能由服务端发，浏览器自动回 pong） |
-| **应用层** | 自己发 `{"type":"ping"}` | 浏览器可控、可以带业务信息（如在线状态） | 开销略大 |
+| **协议层** | `ping` / `pong` 帧（opcode 0x9 / 0xA） | 标准；空 payload 时只有 2 字节帧头 | 浏览器 JS **不能主动发 ping**，只能服务端发、浏览器自动回 pong |
+| **应用层** | 自己发 `{"type":"ping"}` | 浏览器可控、可以带业务信息（如在线状态） | 多一条业务消息 |
 
-**⚠️ 关键限制**：**浏览器 JS 没有 API 主动发协议层 ping 帧**。所以：
-- 如果服务端发 ping，浏览器会**自动回 pong**（这个不用你写）
-- 如果想让客户端主动探测，只能用**应用层心跳**
+**限制**：浏览器 WebSocket API 没有发 ping 帧的方法；想让客户端主动探测，只能走应用层心跳。
 
-**心跳间隔怎么定**：**小于中间设备的最小超时**。Nginx 默认 60 秒，所以心跳设 **30 秒**比较安全（留一半余量）。
+**心跳间隔**：取小于中间设备最小空闲超时的一半，所以 Nginx 默认 60 秒时常用 30 秒。
 
 ### 11.5.2 重连：指数退避 + 抖动
 
@@ -410,7 +376,7 @@ class ReconnectingWS {
   scheduleReconnect() {
     if (this.retry >= this.maxRetry) return;
 
-    // 指数退避 + 随机抖动（防止惊群）
+    // 指数退避 + 随机抖动
     const base = Math.min(30000, 1000 * 2 ** this.retry);
     const jitter = Math.random() * 1000;
     const delay = base + jitter;
@@ -421,26 +387,16 @@ class ReconnectingWS {
 }
 ```
 
-**为什么必须加抖动（jitter）**：
-
-```
-服务端重启，10 万个客户端同时断线
-    ↓ 没有抖动
-10 万个客户端在同一毫秒重连 → 服务端瞬间被打爆 → 又挂 → 循环
-    ↓ 有抖动
-重连时间被分散到几秒内 → 服务端平滑恢复
-```
-
-**这就是「惊群效应（thundering herd）」**，加随机抖动是标准解法。
+**抖动防的是惊群（thundering herd）**：服务端重启时所有客户端同时断线，退避时间相同就会在同一时刻重连，把刚恢复的服务再打垮；随机抖动把重连时间摊开。
 
 ### 11.5.3 鉴权：握手时怎么带 token
 
-**WebSocket 的 JS API 不支持自定义请求头**（只能 `new WebSocket(url, protocols)`）。所以有四种做法：
+**WebSocket 的 JS API 不支持自定义请求头**（只能 `new WebSocket(url, protocols)`），所以有四种做法：
 
 | 方式 | 做法 | 优点 | 缺点 |
 |---|---|---|---|
-| **① Query 参数** | `wss://api.com/ws?token=xxx` | 最简单 | **token 会进 Nginx access log、浏览器历史** ⚠️ |
-| **② 子协议（protocols）** | `new WebSocket(url, ['bearer', token])` | 不进 URL | 语义滥用、长度受限 |
+| **① Query 参数** | `wss://api.com/ws?token=xxx` | 最简单 | **token 会进访问日志、监控系统** ⚠️ |
+| **② 子协议（protocols）** | `new WebSocket(url, ['bearer', token])` | 不进 URL | 子协议本用于协商消息格式，放 token 属于语义滥用 |
 | **③ Cookie** | 依赖同站 cookie 自动带 | 无需改代码 | **跨站需要 `SameSite=None`；且会带来 CSWSH 风险** |
 | **④ 先 HTTP 换 ticket** | 先 `POST /ws-ticket` 拿一次性 ticket，再 `wss://...?ticket=xxx` | **最安全**（一次性、短有效期、不进长期日志） | 多一次请求 |
 
@@ -457,16 +413,14 @@ const { ticket } = await fetch('/api/ws-ticket', {
 const ws = new WebSocket(`wss://api.com/ws?ticket=${ticket}`);
 ```
 
-**为什么不能只在握手时校验一次就完事**：
-
-因为 **WebSocket 连接可能活几小时**。如果 token 15 分钟过期，连接不会自动断。所以还需要：
+**握手时校验一次不够**：WebSocket 连接可能活几小时，token 15 分钟过期后连接不会自动断。服务端要定时检查：
 
 ```js
 // 服务端定时检查连接绑定的 token 是否还有效
 setInterval(() => {
   for (const [ws, meta] of connections) {
     if (Date.now() > meta.tokenExpireAt) {
-      ws.close(4001, 'token expired');    // 自定义关闭码
+      ws.close(4001, 'token expired');    // 私有区间关闭码
     }
   }
 }, 60000);
@@ -508,7 +462,7 @@ sub.on('message', (channel, msg) => {
 pub.publish('ws:broadcast', JSON.stringify({ userId, payload }));
 ```
 
-**还有一个部署细节**：**Nginx 必须配 `proxy_http_version 1.1` 和 `Upgrade` 头**，否则 WebSocket 握手过不去。
+**部署细节**：**Nginx 必须配 `proxy_http_version 1.1` 和 `Upgrade` 头**，否则 WebSocket 握手过不去。
 
 ```nginx
 location /ws {
@@ -517,12 +471,10 @@ location /ws {
     proxy_set_header Upgrade $http_upgrade;          # ★
     proxy_set_header Connection "upgrade";           # ★
     proxy_set_header Host $host;
-    proxy_read_timeout 3600s;                        # 长连接，别 60 秒就断
+    proxy_read_timeout 3600s;                        # 长连接，别用默认 60 秒
     proxy_send_timeout 3600s;
 }
 ```
-
-**`proxy_read_timeout` 默认 60 秒** —— 如果不改，**WebSocket 连接会在 60 秒后被 Nginx 断开**。这是最常见的「WebSocket 老是断」的原因之一。
 
 ### 11.5.5 断线重连后的消息补偿
 
@@ -535,16 +487,14 @@ location /ws {
 const ws = new WebSocket(`wss://api.com/ws?lastSeq=${lastSeq}`);
 
 // 服务端：从 lastSeq 之后开始补发
-ws.on('connection', (socket, req) => {
+wss.on('connection', async (socket, req) => {
   const lastSeq = Number(new URL(req.url, 'http://x').searchParams.get('lastSeq') || 0);
   const missed = await db.messages.find({ seq: { $gt: lastSeq } }).limit(1000);
   missed.forEach((m) => socket.send(JSON.stringify(m)));
 });
 ```
 
-**如果缺太多**（比如离线一小时），就别补了，直接让客户端**拉一次全量快照**。
-
-> 这个设计思路叫「**快照 + 增量**」，和 Git、数据库复制、CRDT 都是一脉相承的。
+**缺口太大**（比如离线一小时）就不要补增量，直接让客户端拉一次全量快照，再按 seq 续增量。
 
 ---
 
@@ -565,9 +515,7 @@ ws.on('connection', (socket, req) => {
 ⑥ ★ 关键：evil.com 的 JS 能【读】WebSocket 的消息！
 ```
 
-**这就是 CSWSH（Cross-Site WebSocket Hijacking）**。
-
-**和 CSRF 的区别**：
+这就是 **CSWSH（Cross-Site WebSocket Hijacking）**。
 
 | | CSRF | CSWSH |
 |---|---|---|
@@ -576,7 +524,7 @@ ws.on('connection', (socket, req) => {
 
 ### 11.6.2 防御
 
-**唯一有效的防御：服务端校验 `Origin` 头。**
+**核心防御：服务端校验 `Origin` 头。**
 
 ```js
 const ALLOWED_ORIGINS = new Set([
@@ -587,7 +535,7 @@ const ALLOWED_ORIGINS = new Set([
 wss.on('connection', (ws, req) => {
   const origin = req.headers.origin;
 
-  // ★ 必须校验！Origin 缺失也要拒绝（非浏览器客户端可能没有）
+  // ★ 必须校验！Origin 缺失也要拒绝
   if (!origin || !ALLOWED_ORIGINS.has(origin)) {
     ws.close(1008, 'origin not allowed');
     return;
@@ -596,13 +544,9 @@ wss.on('connection', (ws, req) => {
 });
 ```
 
-**注意三个点**：
-
-1. **`Origin` 是浏览器控制的，JS 改不了**，所以可信。
-2. **`Origin` 缺失时要拒绝**（有些非浏览器客户端不带，但你不应该允许）。
-3. **不要只靠 Cookie 鉴权**——Cookie 会自动带，等于把身份送给了攻击者。**要额外用 token（放在 URL 的 ticket 或子协议里）**。
-
-> **面试话术**：「WebSocket 有个容易被忽略的安全问题叫 CSWSH——握手不受同源策略限制，而且会带 Cookie，所以攻击者页面能连上你的 WebSocket 并**读取消息**（比 CSRF 更严重，CSRF 读不到响应）。防御手段是服务端必须校验 `Origin` 头，并且不要只靠 Cookie 鉴权，要用额外的 token。」
+1. **`Origin` 由浏览器写入，页面 JS 改不了**，所以可信。
+2. **`Origin` 缺失时不能放行**：非浏览器客户端可以自己伪造，业务只服务浏览器时缺失即视为不可信。
+3. **不要只靠 Cookie 鉴权**——Cookie 会自动带，等于把身份送给了攻击者；要额外用一次性 ticket 或子协议里的 token。
 
 ---
 
@@ -614,17 +558,17 @@ wss.on('connection', (ws, req) => {
 | 说「`Sec-WebSocket-Key` 是认证用的」 | 不是，只是随机数，**提供零安全性** |
 | 说「WebSocket 有粘包」 | 没有，帧头有 payload 长度和 FIN 标志 |
 | 说「WebSocket 不受同源策略限制所以很安全」 | 恰恰相反，**这是安全隐患**（CSWSH） |
-| 忘了配 `proxy_read_timeout` | Nginx 默认 60 秒断开，表现为「WebSocket 老断」 |
+| 忘了配 `proxy_read_timeout` | 默认 60 秒断开，表现为「WebSocket 老断」 |
 | 忘了 `proxy_http_version 1.1` | 握手直接失败 |
 | 心跳设 60 秒以上 | 中间设备可能已经断了，心跳没意义 |
 | 重连不加抖动 | 服务端重启时惊群 |
 | 只在握手时校验 token | 连接活几小时，token 过期了也不会断 |
-| 用 query 传长期 token | 会进 Nginx 日志和浏览器历史，应用一次性 ticket |
-| 用 `ws.send` 不判断 `readyState` | 连接未打开时会抛错或丢消息 |
+| 用 query 传长期 token | 会进访问日志和监控，应用一次性 ticket |
+| 用 `ws.send` 不判断 `readyState` | `CONNECTING` 时抛 `InvalidStateError`，`CLOSING`/`CLOSED` 时静默丢弃 |
 | 以为 SSE 需要 WebSocket | SSE 是纯 HTTP，更简单，还自带重连 |
 | 单机部署不考虑负载均衡 | 多节点时必须用 Redis Pub/Sub 或粘性会话 |
 
-**一个补充：`readyState` 的四个值**
+**`readyState` 的四个值**
 
 | 值 | 常量 | 含义 |
 |---|---|---|
@@ -651,23 +595,17 @@ function safeSend(ws, data) {
 
 ### 30 秒版
 
-> WebSocket 是在单个 TCP 连接上的全双工协议。它通过一次 HTTP Upgrade 握手从 HTTP 升级上来，服务端返回 **101 Switching Protocols**，之后就改用 WebSocket 的帧协议通信，双方可以任意方向、任意时刻发消息。
-> 它解决了 HTTP「只能客户端主动请求」的限制，适合聊天、协作、行情这类双向高频场景。
-> 代价是要自己处理心跳、重连、鉴权和负载均衡。
+- WebSocket 是单条 TCP 连接上的全双工协议，靠一次 HTTP Upgrade 握手（101）建立，之后双方任意时刻都能发消息。
+- 它补上了 HTTP 只能客户端主动请求的短板，适合聊天、协作、行情这类双向高频场景。
+- 代价是要自己处理心跳、重连、鉴权和负载均衡。
 
-### 2 分钟版（完整版）
+### 2 分钟版
 
-> 我分四块讲：握手、帧协议、方案对比、工程实践。
->
-> **第一，握手**。客户端发一个标准 HTTP 请求，带 `Upgrade: websocket`、`Connection: Upgrade`、`Sec-WebSocket-Key` 和一个版本号 13。服务端如果同意，返回 **101**，并带 `Sec-WebSocket-Accept`，它的值是 `base64(sha1(key + 固定GUID))`。这个魔法 GUID 不是为了加密，主要是防止普通 HTTP 服务器误判、以及防止缓存污染。**`Sec-WebSocket-Key` 本身不提供任何安全性**，安全靠 wss + Origin 校验 + 应用层鉴权。
->
-> **第二，帧协议**。每个帧有 FIN 标志（表示消息是否结束，支持分片）、opcode（text/binary/close/ping/pong）、payload 长度字段（7/16/64 位）。**这就是 WebSocket 没有粘包的原因**——有明确长度，天然有边界，应用层收到的每一条 message 就是完整消息。另外客户端发的帧必须加掩码，是为了防止历史上的代理缓存投毒攻击。
->
-> **第三，方案对比**。短轮询实时性差、无效请求多；长轮询实时性好但每客户端占一个挂起连接；**SSE 是纯 HTTP 的单向推送，自带自动重连和 `Last-Event-ID` 断点续传，ChatGPT 的打字机效果就是 SSE**；WebSocket 是双向、实时性最好，但要自己做重连。选型上，只需要服务端推就用 SSE，需要双向频繁通信才上 WebSocket。
->
-> **第四，工程实践**，这部分是实际做过的分水岭。**心跳必须有**，因为 Nginx 默认 60 秒、云 SLB 也有空闲超时，连接会被静默断开而两端不知道，所以心跳设 30 秒留余量。注意浏览器 JS **不能主动发协议层 ping**，只能由服务端发、浏览器自动回 pong，想主动探测只能用应用层心跳。**重连要指数退避加随机抖动**，否则服务端重启时十万客户端同时重连会惊群。**鉴权**建议先用 HTTP 换一个一次性 ticket，再用 ticket 建连——直接放 query 里的长期 token 会进 Nginx 日志和浏览器历史。另外连接可能活几小时，所以服务端要定时检查 token 是否过期。**负载均衡**是有状态连接的难题，主流方案是 Redis Pub/Sub 广播给所有节点。最后 Nginx 必须配 `proxy_http_version 1.1` + `Upgrade` 头 + 调大 `proxy_read_timeout`，默认 60 秒会断。
->
-> 最后补一个安全问题：**WebSocket 握手不受同源策略限制，而且会带 Cookie**，所以有 CSWSH——攻击者页面能连上你的 WebSocket 并且**能读消息**，比 CSRF 更严重。防御是服务端必须校验 Origin，并且不要只靠 Cookie 鉴权。
+- **握手**：标准 HTTP 请求带 `Upgrade: websocket`、`Connection: Upgrade`、`Sec-WebSocket-Key`、`Sec-WebSocket-Version: 13`；服务端回 101 + `Sec-WebSocket-Accept = base64(sha1(key + 固定 GUID))`。Key 不是凭据，不提供安全性。
+- **帧**：FIN 表示消息是否结束（支持分片），opcode 区分 text/binary/close/ping/pong，payload 长度字段 7/16/64 位，因此没有粘包；客户端帧必须加掩码，服务端帧不加。
+- **选型**：短轮询最简单但实时性差；长轮询实时性好但每客户端挂一个连接；SSE 纯 HTTP 单向推送、自带重连和 `Last-Event-ID`；需要双向高频才上 WebSocket。
+- **工程**：心跳小于中间设备空闲超时，浏览器不能主动发 ping 帧；重连指数退避 + 抖动；鉴权用一次性 ticket；多节点用 Redis Pub/Sub 广播；Nginx 要 `proxy_http_version 1.1` + `Upgrade` + 调大 `proxy_read_timeout`。
+- **安全**：握手不受同源策略限制且会带 Cookie，存在 CSWSH（攻击者能读消息），防御是服务端校验 Origin，并且不只靠 Cookie 鉴权。
 
 ### 追问表
 
@@ -675,7 +613,7 @@ function safeSend(ws, data) {
 |---|---|
 | 101 是什么 | Switching Protocols，WebSocket 握手成功 |
 | `Sec-WebSocket-Key` 有什么用 | 只是随机数，配合 GUID 算 Accept，**不提供安全性** |
-| 为什么要那个魔法 GUID | 防普通服务器误判 + 防缓存污染 + 确认对方实现了协议 |
+| 为什么要那个魔法 GUID | 证明对端按 RFC 6455 算出 Accept，普通 HTTP 服务器或回显式代理算不出来 |
 | WebSocket 有粘包吗 | 没有，帧头有 payload 长度 + FIN |
 | 为什么客户端帧要加掩码 | 防代理缓存投毒（历史攻击） |
 | WebSocket 受同源限制吗 | **不受**，所以有 CSWSH 风险 |
@@ -699,24 +637,24 @@ function safeSend(ws, data) {
   GET + Upgrade: websocket + Connection: Upgrade + Sec-WebSocket-Key + Version: 13
   ← 101 Switching Protocols + Sec-WebSocket-Accept
   Accept = base64(sha1(Key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
-  Key 不是认证凭据，零安全性；GUID 是防误判 + 防缓存污染
+  Key 不是认证凭据，零安全性；GUID 只证明对端理解协议
 
 帧
   FIN（分片）+ opcode（1=text 2=binary 8=close 9=ping A=pong）+ 长度字段
   ★ 有长度字段 → 没有粘包
-  客户端帧必须加掩码 → 防代理缓存投毒
+  客户端帧必须加掩码 → 防代理缓存投毒（未加掩码 → 1002）
 
 四种方案
   短轮询：简单，实时性差，无效请求多
   长轮询：实时性好，每客户端占一个挂起连接
-  SSE：纯 HTTP 单向、自带重连 + Last-Event-ID、只文本（ChatGPT 打字机）
+  SSE：纯 HTTP 单向、自带重连 + Last-Event-ID、只文本
   WebSocket：双向、最好、要自己做重连
 
 工程实践（重点）
-  心跳 30s（Nginx 默认 60s 会断）；浏览器不能主动发 ping 帧
+  心跳 30s（小于中间设备空闲超时）；浏览器不能主动发 ping 帧
   重连：指数退避 + 随机抖动（防惊群）
   鉴权：HTTP 换一次性 ticket（query 里的长期 token 会进日志）
-  连接长活 → 服务端定时校验 token 过期
+  连接长活 → 服务端定时校验 token 过期（4001）
   负载均衡：Redis Pub/Sub 广播（有状态连接）
   Nginx：proxy_http_version 1.1 + Upgrade + proxy_read_timeout 3600s
   断线补偿：seq + lastSeq 补发；缺太多拉快照
