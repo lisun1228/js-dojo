@@ -1,6 +1,6 @@
 # 属性枚举：Object.keys / for...in / getOwnPropertyNames / Reflect.ownKeys
 
-四个 API 都能「拿到键」，但它们回答的不是同一个问题：**要不要沿原型链、要不要不可枚举、带不带 Symbol**。先看一个同时包含四类键的对象（Node 22 实测）：
+四个 API 都能「拿到键」，但它们回答的不是同一个问题：**要不要沿原型链、要不要不可枚举、带不带 Symbol**。同一个对象同时包含整数键、字符串键、Symbol、不可枚举键与继承键（Node 22 实测）：
 
 ```js
 const sym = Symbol('s')
@@ -19,8 +19,6 @@ Object.getOwnPropertyNames(obj) // ['1', '2', 'b', 'a', 'hidden']
 Reflect.ownKeys(obj) // ['1', '2', 'b', 'a', 'hidden', Symbol(s)]
 // for...in：'1' '2' 'b' 'a' 'inherited'
 ```
-
-同一个对象，四种结果没有一个是「错的」，差别只在三个开关。
 
 ---
 
@@ -44,14 +42,12 @@ Reflect.ownKeys(obj) // ['1', '2', 'b', 'a', 'hidden', Symbol(s)]
 - `Object.getOwnPropertyNames`：**自有 + 全部 + 字符串键**，返回数组
 - `Reflect.ownKeys`：**自有 + 全部 + 字符串键 + Symbol**，返回数组
 
-> 只有 `for...in` 打开了「原型链」开关，只有 `Reflect.ownKeys` 打开了「Symbol」开关。
-
-选型可以按用途直接对应的：
+选型按用途对应：
 
 - 取业务数据 → `Object.keys`
-- 调试、元编程、检查对象真实结构 → `Reflect.ownKeys`（默认首选，信息最全）
+- 调试、元编程、检查对象真实结构 → `Reflect.ownKeys`（信息最全）
 - 只想要字符串形式的属性名 → `Object.getOwnPropertyNames`
-- 确实需要继承属性、又不想创建数组 → `for...in`，并配合 `Object.hasOwn` 过滤
+- 确实需要继承属性、又不想创建数组 → `for...in`，配合 `Object.hasOwn` 过滤
 
 ## 判定矩阵：三种开关
 
@@ -62,10 +58,9 @@ Reflect.ownKeys(obj) // ['1', '2', 'b', 'a', 'hidden', Symbol(s)]
 | `Object.getOwnPropertyNames` | ❌       | ✅       | ❌     | `string[]`     | `'ab'` → `['0','1','length']`；`null` → TypeError |
 | `Reflect.ownKeys`            | ❌       | ✅       | ✅     | `(string\|symbol)[]` | 必须是对象，`'ab'` / `5` → TypeError |
 
-两处容易被忽略的细节：
+**`Object.keys` 会先 `ToObject`，`Reflect.ownKeys` 不会。** `Object.keys('ab')` 合法，`Reflect.ownKeys('ab')` 抛 `TypeError`；`null / undefined` 两者都抛。
 
-1. **四者都不触发 getter。** 枚举只读取属性描述符，不取值；真正触发 getter 的是 `Object.values`、`Object.entries`、`Object.assign`、展开运算符和 `JSON.stringify`。
-2. **`Object.keys` 会先 `ToObject`，`Reflect.ownKeys` 不会。** 所以 `Object.keys('ab')` 合法，`Reflect.ownKeys('ab')` 直接抛 `TypeError`；只有 `null / undefined` 是两者都抛。
+**四个 API 都不触发 getter**，只读属性描述符；`Object.values`、`Object.entries`、`Object.assign`、展开和 `JSON.stringify` 才取值。
 
 ## 顺序规则：整数键为什么插队
 
@@ -93,13 +88,11 @@ Reflect.ownKeys(o)
 // 只有 2、10 被当成索引排到前面，其余保持插入顺序
 ```
 
-这条规则还会顺着 `JSON.parse` 传进来：
+经 `JSON.parse` 传入的字段同样按此重排：
 
 ```js
 Object.keys(JSON.parse('{"b":1,"2":2,"a":3}')) // ['2', 'b', 'a']
 ```
-
-所以「后端返回的字段顺序」不可依赖，需要顺序就存数组或改用 `Map`。
 
 `for...in` 的顺序是**分层**的，不是全局排序：先按上面的规则遍历自有键，再按同样的规则遍历原型上的键：
 
@@ -142,7 +135,7 @@ Object.keys(o) // []
 Reflect.ownKeys(o) // [Symbol(x)]
 ```
 
-注意最后一条：**Symbol 键被 `Object.keys` / `for...in` / `getOwnPropertyNames` 忽略，跟可枚举性无关**，是这些 API 本身只处理字符串键。
+**Symbol 键被 `Object.keys` / `for...in` / `getOwnPropertyNames` 忽略，跟可枚举性无关**：这些 API 只处理字符串键。
 
 `propertyIsEnumerable` 只检查自有属性，而 `for...in` 看到的是「整条原型链上可枚举」：
 
@@ -163,7 +156,7 @@ for (const k in obj) {
 | `Object.assign` / 展开      | 自有 + 可枚举 + 字符串 + **Symbol**  | ✅          |
 | `JSON.stringify`            | 自有 + 可枚举 + 字符串（跳过 Symbol） | ✅          |
 
-两个恒等式可以直接记：
+两个恒等式：
 
 ```js
 Reflect.ownKeys(obj)
@@ -191,7 +184,7 @@ function allKeysInChain(obj) {
 
 ## Proxy 场景：谁触发了哪些陷阱
 
-这部分是面试里区分「背过」和「理解」的地方。把 target 设为 `{ a: 1, [Symbol('s')]: 2 }` 再加一个不可枚举的 `hidden`，用 Proxy 记录陷阱调用顺序，实测结果：
+把 target 设为 `{ a: 1, [Symbol('s')]: 2 }` 再加一个不可枚举的 `hidden`，用 Proxy 记录陷阱调用顺序（Node 22 实测）：
 
 | 操作                        | 触发的陷阱                                                    |
 | --------------------------- | ------------------------------------------------------------- |
@@ -226,8 +219,7 @@ for (const k in child) {
 还有一个不变量（invariant）约束：如果 `getOwnPropertyDescriptor` 把 target 上**不可配置且不可枚举**的属性报成 `enumerable: true`，`Object.keys` 会直接抛错：
 
 ```
-TypeError: 'getOwnPropertyDescriptor' on proxy: trap returned descriptor for property
-'locked' that is incompatible with the existing property in the proxy target
+TypeError: 'getOwnPropertyDescriptor' on proxy: trap returned descriptor for property 'locked' that is incompatible with the existing property in the proxy target
 ```
 
 所以响应式代理不能随意伪造描述符——`ownKeys` 的结果必须包含 target 上所有不可配置属性，`getOwnPropertyDescriptor` 也不能和不可配置属性的事实冲突。
@@ -236,9 +228,9 @@ TypeError: 'getOwnPropertyDescriptor' on proxy: trap returned descriptor for pro
 
 1. **用 `for...in` 遍历数组。** 拿到的是字符串索引，还会把原型上的可枚举扩展一起遍历出来。遍历值用 `for...of`，遍历索引用 `Object.keys`。
 2. **`for...in` 不过滤继承属性。** 用 `Object.hasOwn(obj, key)`（ES2022）比 `Object.prototype.hasOwnProperty.call` 更稳，因为对象可能自定义 `hasOwnProperty`，也可能是 `Object.create(null)`。
-3. **把 `Object.keys` 当成「对象全部属性」。** 会漏掉不可枚举键和 Symbol 键，序列化自定义类、检查内部标记时最容易踩。
-4. **误判 `Object.keys` 的容错。** `Object.keys(5)` 返回 `[]`，`Object.keys(null)` 抛 `TypeError`，行为并不一致；入口处先判空，别用 try/catch 兜。
-5. **边遍历边增删。** 删除还没访问的键不会被访问；新增的键不保证被访问；删掉再重新加回来，可能被访问两次（规范允许）。
+3. **把 `Object.keys` 当成「对象全部属性」。** 会漏掉不可枚举键和 Symbol 键。
+4. **误判 `Object.keys` 的容错。** 非对象参数行为不一致（见判定矩阵最后一列）；入口处先判空，别用 try/catch 兜。
+5. **边遍历边增删。** 删除还没访问的键不会再被访问；新增的键不保证被访问；删掉再加回，规范允许访问两次（V8 实测一次）。
 6. **依赖键顺序做业务。** 整数键会被提前排序，`JSON.parse` 和接口返回的字段顺序也不可控。需要稳定顺序就存数组或改用 `Map`。
 
 ## 答题模板
@@ -253,7 +245,7 @@ TypeError: 'getOwnPropertyDescriptor' on proxy: trap returned descriptor for pro
 | -------------------------------- | -------------------------------------------------------------------- |
 | 哪个能看到 Symbol 键             | `Reflect.ownKeys`，或 `Object.getOwnPropertySymbols`                  |
 | 哪个会走原型链                   | 只有 `for...in`                                                      |
-| 不可枚举属性怎么造               | `defineProperty` 默认值、`class` 方法、数组 `length`                 |
+| 不可枚举属性怎么造               | `defineProperty` 不写 `enumerable`、`class` 方法、数组 `length`      |
 | 哪个会触发 getter                | 四个都不触发；`values / entries / assign / 展开 / JSON.stringify` 才触发 |
 | `for...in` 为什么不适合数组      | 字符串索引、继承扩展、顺序受整数键规则影响                           |
 | 与 Proxy 的关系                  | `Object.keys` 走 `ownKeys` + `getOwnPropertyDescriptor`；`Reflect.ownKeys` 只走 `ownKeys` |

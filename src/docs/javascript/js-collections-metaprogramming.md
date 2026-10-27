@@ -1,8 +1,7 @@
 # JS · 07 集合与元编程
 
-> 本册覆盖：Map vs Object、Set、WeakMap/WeakSet、Symbol、Reflect、Proxy、`defineProperty`、装饰器、迭代器
-> 题单：题 43 给了 3 条对比（键任意/插入顺序/size），题 45「同 ES6 文档第 18 题」（不存在），题 48「和 Proxy 拦截器一一对应」（太简），题 49/50「同 ES6 文档」（不存在）。
-> 本册的核心是 **Proxy vs defineProperty 的四个缺陷**——这是「为什么 Vue 3 换 Proxy」的标准答案，也是元编程这块唯一的高频考点。
+> 覆盖：Map vs Object、Set、WeakMap/WeakSet、Symbol、Reflect、Proxy、`defineProperty`
+> 核心是 **Proxy vs defineProperty 的四个缺陷**——「为什么 Vue 3 换 Proxy」的标准答案，也是元编程最高频的考点
 
 ---
 
@@ -31,7 +30,7 @@
 
 ## 7.2 Map vs Object
 
-### 7.2.1 七个维度对比（全部实测）
+### 7.2.1 七个维度对比
 
 | 维度 | `Object` | `Map` |
 |---|---|---|
@@ -43,7 +42,7 @@
 | **序列化** | ✅ `JSON.stringify` 正常 | ❌ **返回 `{}`** |
 | **频繁增删性能** | 较差（隐藏类变化） | ✅ **更好**（专为增删设计） |
 
-**逐条实测验证**：
+**逐条验证**：
 
 ```js
 // ① 键的类型
@@ -116,8 +115,6 @@ function firstSingleChar(s) {
 firstSingleChar('3a3b1');    // 'a'  ✅
 ```
 
-**这个例子实测验证过，非常适合面试时举。**
-
 ### 7.2.3 「序列化」这个差异为什么重要
 
 ```js
@@ -128,13 +125,14 @@ JSON.stringify(new Set([1, 2]));       // '{}'
 **所以要序列化 Map，必须先转成数组或对象**：
 
 ```js
+const map = new Map([['a', 1]]);
 // Map → 数组
 JSON.stringify([...map]);              // '[["a",1]]'
 JSON.stringify([...map.entries()]);    // 同上
 JSON.stringify(Object.fromEntries(map));   // '{"a":1}'（key 必须是字符串）
 
 // 反序列化
-new Map(JSON.parse(str));
+new Map(JSON.parse('[["a",1]]'));
 ```
 
 **这就是「Map 不能直接放进 Redux state / localStorage」的原因。**
@@ -206,12 +204,13 @@ set.clear();             // 清空
 **迭代**：
 
 ```js
+const set = new Set([1, 2, 3]);
 for (const v of set) { }
 set.forEach((v, v2) => { });    // 注意：两个参数都是值（为了兼容 Map 的签名）
 [...set];                       // 转数组
 ```
 
-### 7.3.3 交并差（ES6 没有内置，要手写）
+### 7.3.3 交并差
 
 ```js
 const A = new Set([1, 2, 3]);
@@ -230,7 +229,7 @@ new Set([...A].filter(x => !B.has(x)));   // {1}
 new Set([...A, ...B].filter(x => !(A.has(x) && B.has(x))));
 ```
 
-**ES2025 会加原生方法**（`union` / `intersection` / `difference` / `symmetricDifference` / `isSubsetOf` 等），但目前还要手写。
+**ES2025 已纳入原生方法**（`union` / `intersection` / `difference` / `symmetricDifference` / `isSubsetOf` 等），Node 22（V8 12.4）实测可用，旧环境仍需手写。
 
 ### 7.3.4 数组去重的四种方式对比
 
@@ -270,14 +269,15 @@ typeof wm.clear;           // 'undefined'
 [...wm];                   // TypeError: wm is not iterable
 ```
 
-**这不是「设计缺陷」，是逻辑必然而非选择**——一旦允许枚举，就等于间接持有强引用，弱引用就失效了。
+**这是逻辑必然，不是设计缺陷**——一旦允许枚举，就等于间接持有强引用，弱引用就失效了。
 
 ### 7.4.2 两个限制
 
 ```js
-// ① key 必须是对象（不能是原始值）
-new WeakMap().set(1, 2);      // TypeError: Invalid value used as weak map key
-new WeakMap().set(Symbol(), 1);   // TypeError（Symbol 也不行，除了 registered symbol）
+// ① key 必须是对象（未注册的 Symbol 是唯一例外）
+new WeakMap().set(1, 2);                 // TypeError: Invalid value used as weak map key
+new WeakMap().set(Symbol(), 1);          // 正常：ES2023 起未注册 Symbol 可作 key
+new WeakMap().set(Symbol.for('x'), 1);   // TypeError：注册表里的 Symbol 永不回收
 
 // ② 不能遍历，只能 get/has/set/delete
 ```
@@ -297,11 +297,11 @@ function process(obj) {
 }
 
 // ✅ 用 WeakMap：obj 被外部丢弃后，缓存条目自动消失
-const cache = new WeakMap();
-function process(obj) {
-  if (cache.has(obj)) return cache.get(obj);
+const weakCache = new WeakMap();
+function processWeak(obj) {
+  if (weakCache.has(obj)) return weakCache.get(obj);
   const result = heavyCompute(obj);
-  cache.set(obj, result);        // ← 弱引用，不阻止 GC
+  weakCache.set(obj, result);    // ← 弱引用，不阻止 GC
   return result;
 }
 ```
@@ -382,7 +382,7 @@ wm.set(key, 'value');
 wm.get(key);        // 'value'
 
 key = null;         // ← 唯一的强引用没了
-// 下一轮 GC 后，wm 里的条目会消失（无法观测，因为不能遍历）
+// 之后的某次 GC 会回收该条目（时机不可观测，因为不能遍历）
 ```
 
 **⚠️ 注意**：**GC 时机不确定**，所以不能依赖「立即回收」。
@@ -407,9 +407,9 @@ Symbol.for('x') === Symbol.for('x');     // true   ← 全局注册表
 
 const s = Symbol('k');
 const obj = { [s]: 'sym-value', normal: 1 };
-Object.keys(obj);          // ['normal']       ← Symbol 键不出现
-Reflect.ownKeys(obj);      // [s, 'normal']    ← 这个能看到
-JSON.stringify(obj);       // '{"normal":1}'   ← JSON 忽略
+Object.keys(obj);          // ['normal']              ← Symbol 键不出现
+Reflect.ownKeys(obj);      // ['normal', s]           ← 字符串键在前，Symbol 键排最后
+JSON.stringify(obj);       // '{"normal":1}'          ← JSON 忽略
 ```
 
 ### 7.5.2 四个用途
@@ -421,8 +421,9 @@ JSON.stringify(obj);       // '{"normal":1}'   ← JSON 忽略
 // 用 Symbol 就不会
 const LIB_A = Symbol('metadata');
 const LIB_B = Symbol('metadata');
-obj[LIB_A] = {...};
-obj[LIB_B] = {...};      // 互不干扰
+const obj = {};
+obj[LIB_A] = { from: 'A' };
+obj[LIB_B] = { from: 'B' };      // 互不干扰
 ```
 
 **② 模拟私有属性（`#x` 之前）**
@@ -433,14 +434,14 @@ class Counter {
   constructor() { this[_count] = 0; }
   inc() { this[_count]++; }
 }
-// 外部拿不到 _count 这个 Symbol，除非用 Reflect.ownKeys 硬查
+// 外部拿不到 _count 这个 Symbol，除非用 Reflect.ownKeys / Object.getOwnPropertySymbols 硬查
 ```
 
 **⚠️ 但这不是真私有**——`Reflect.ownKeys` 能拿到。
 
 **③ 定义「协议」（内置 Symbol）**
 
-**这是最重要的用途**，JS 用 Symbol 定义了一组「钩子」：
+**这是最主要的用途**，JS 用 Symbol 定义了一组「钩子」：
 
 | Symbol | 作用 | 被谁调用 |
 |---|---|---|
@@ -531,7 +532,7 @@ obj.b = 5;
 obj.b;                    // 10  ← 实测
 ```
 
-### 7.6.2 `defineProperty` 的四个致命缺陷（这就是 Vue 3 换 Proxy 的原因）
+### 7.6.2 `defineProperty` 的四个缺陷（Vue 3 换 Proxy 的原因）
 
 | # | 缺陷 | 实测 |
 |---|---|---|
@@ -590,6 +591,7 @@ function observe(obj) {
 ### 7.6.3 Proxy 的优势
 
 ```js
+const target = {};
 const p = new Proxy(target, {
   get(t, k, receiver) { return Reflect.get(t, k, receiver); },
   set(t, k, v, receiver) { return Reflect.set(t, k, v, receiver); },
@@ -615,7 +617,7 @@ const p = new Proxy(target, {
 | 5 | **`ownKeys`** | `Object.keys`、`Object.getOwnPropertyNames`、`Reflect.ownKeys` |
 | 6 | **`getOwnPropertyDescriptor`** | `Object.getOwnPropertyDescriptor` |
 | 7 | **`defineProperty`** | `Object.defineProperty` |
-| 8 | **`getPrototypeOf`** | `Object.getPrototypeOf`、`instanceof`（部分） |
+| 8 | **`getPrototypeOf`** | `Object.getPrototypeOf`、`instanceof`（未自定义 `Symbol.hasInstance` 时） |
 | 9 | **`setPrototypeOf`** | `Object.setPrototypeOf` |
 | 10 | **`isExtensible`** | `Object.isExtensible` |
 | 11 | **`preventExtensions`** | `Object.preventExtensions` |
@@ -638,12 +640,12 @@ const p4 = new Proxy(function(){}, {
 new p4(1, 2);          // { built: [1, 2] }  ✅
 ```
 
-**⚠️ `Object.keys` 不触发 `get`**：
+**`Object.keys` 不触发 `get`**：
 
 ```js
-const p = new Proxy(target, { get(t, k) { console.log('get', k); return t[k]; } });
-Object.keys(p);        // 不打印任何 get  ← 实测
-// 它触发的是 ownKeys + getOwnPropertyDescriptor
+const target = { a: 1 };
+const p = new Proxy(target, { get(t, k, r) { console.log('get', k); return Reflect.get(t, k, r); } });
+Object.keys(p);        // 不打印 get；触发顺序是 ownKeys → getOwnPropertyDescriptor
 ```
 
 ### 7.6.5 Proxy 拦不住的三个东西
@@ -654,7 +656,7 @@ Object.keys(p);        // 不打印任何 get  ← 实测
 | **`===` / `==`** | 代理对象和原对象**不相等**（`proxy !== target`），且无法拦截 |
 | **对象的内部槽**（部分） | 比如 `Map`/`Set`/`Date` 的方法，直接代理会报 `incompatible receiver` |
 
-**第三条是个大坑**：
+**第三条最隐蔽**：
 
 ```js
 const map = new Map();
@@ -667,6 +669,7 @@ p.set('a', 1);         // ❌ TypeError: Method Map.prototype.set called on inco
 **解法**：在 `get` 里把方法绑回原对象：
 
 ```js
+const map = new Map();
 const p = new Proxy(map, {
   get(t, k) {
     const v = Reflect.get(t, k);
@@ -681,10 +684,9 @@ const p = new Proxy(map, {
 |---|---|---|
 | **新增/删除属性** | ❌ 要 `Vue.set` / `Vue.delete` | ✅ 自动 |
 | **数组索引/长度** | ❌ 要重写 7 个方法 | ✅ 自动 |
-| **初始化性能** | ❌ 递归遍历所有属性 | ✅ 惰性代理 |
-| **深层对象** | ❌ 一次递归到底 | ✅ 访问时才代理 |
+| **初始化 / 深层对象** | ❌ 递归遍历到底，初始化慢 | ✅ 访问到哪层才代理哪层 |
 | **Map/Set** | ❌ 不支持 | ✅ 支持 |
-| **`class` 字段** | 部分场景有问题 | ✅ 正常 |
+| **`class` 私有字段** | ⚠️ 不是自有可枚举属性，劫持不到 | ⚠️ 方法里 `this.#x` 抛 TypeError（`this` 是 Proxy） |
 | **兼容性** | ✅ IE11 | ❌ 不支持 IE |
 | **`===` 比较** | ✅ 原对象 | ⚠️ 代理对象，`obj === proxy` 为 false |
 
@@ -699,12 +701,12 @@ const p = new Proxy(map, {
 **核心问题：`Proxy` 的 trap 里怎么「执行默认行为」？**
 
 ```js
-const p = new Proxy(obj, {
+const target = { a: 1 };
+const p = new Proxy(target, {
   get(t, k, receiver) {
-    // 我想在记录日志后，走「原本的 get 行为」
-    // ❌ obj[k] 不行：如果 t 自己也是 Proxy 会递归
-    // ❌ t[k] 也不完美：丢失了 receiver
-    // ✅ Reflect.get(t, k, receiver)
+    // 记录日志后执行默认行为：
+    // ❌ t[k]：丢失 receiver，且 t 本身是 Proxy 时会重复触发 trap
+    return Reflect.get(t, k, receiver);   // ✅
   },
 });
 ```
@@ -752,7 +754,7 @@ Reflect.get(proto, 'x', obj);                // 'from-obj'  ✅ 显式传 receiv
 Object.getOwnPropertyDescriptor(proto, 'x').get.call(proto);   // undefined  ❌ this 是 proto
 ```
 
-**实测确认**。**这就是为什么 Proxy 的 `get` trap 里必须用 `Reflect.get(t, k, receiver)`**——把 `receiver`（代理对象）传下去，getter 里的 `this` 才是正确的。
+**这就是为什么 Proxy 的 `get` trap 里必须用 `Reflect.get(t, k, receiver)`**——把 `receiver`（代理对象）传下去，getter 里的 `this` 才是正确的。
 
 ---
 
@@ -765,7 +767,7 @@ Object.getOwnPropertyDescriptor(proto, 'x').get.call(proto);   // undefined  ❌
 | 用 `'key' in obj` 判断字典有没有某个键 | 会被原型链干扰（`'toString' in {}` 是 true），用 `Object.hasOwn` 或 `Object.create(null)` |
 | 以为 `WeakMap` 有 `size` | 没有，因为依赖 GC 无法确定 |
 | 以为 `WeakMap` 可以遍历 | 不能，逻辑必然而非缺陷 |
-| 用 `WeakMap` 存原始值做 key | 报 TypeError，key 必须是对象 |
+| 用字符串/数字/`Symbol.for()` 做 `WeakMap` key | 报 TypeError；对象和未注册的 `Symbol` 才行 |
 | 以为 `Symbol` 能真私有 | `Reflect.ownKeys` 能拿到 |
 | 用 `Symbol` 做需要序列化的值 | JSON 会忽略 Symbol 键 |
 | 以为 Proxy 能拦 `===` | ❌ 拦不住；且 `proxy !== target` |
@@ -781,29 +783,23 @@ Object.getOwnPropertyDescriptor(proto, 'x').get.call(proto);   // undefined  ❌
 
 ### 30 秒版（Map vs Object）
 
-> 七个差异，最关键三个：**键的类型**——Map 可以是任意类型（对象、NaN），Object 只能是 string/Symbol；**顺序**——Map 严格保持插入顺序，Object 会把整数键提前并排序；**可迭代和 size**——Map 本身可迭代且有 O(1) 的 size，Object 要 `Object.keys().length`。
-> 另外 Map 没有原型链污染（`'toString' in {}` 是 true 但 `map.has('toString')` 是 false），但 Map 不能 `JSON.stringify`（返回 `{}`）。
-> 所以：需要非字符串键、严格顺序、频繁增删 → Map；需要序列化/简单配置对象 → Object。
+- **键类型**：Map 任意类型（对象、`NaN`），Object 只有 string/Symbol（其他会被转成字符串）
+- **顺序**：Map 严格保持插入顺序；Object 整数键提前并按数值升序
+- **能力**：Map 可迭代、`size` 是 O(1)、无原型链干扰，但 `JSON.stringify` 返回 `{}`；Object 要 `Object.keys().length`，序列化正常
+- 选型：非字符串键、严格顺序、频繁增删 → Map；序列化、结构固定的配置 → Object
 
 ### 30 秒版（Proxy vs defineProperty）
 
-> `defineProperty` 有四个致命缺陷：**无法监听新增和删除属性**（所以要 `Vue.set`）、**无法监听数组索引和 length**（所以要重写 7 个数组方法）、**必须递归遍历所有属性**（初始化慢）、**只能定义一次**。
-> Proxy 全都解决了：13 个 trap 能拦 `get`/`set`/`has`/`deleteProperty` 等，而且是**惰性代理**——只在访问到某一层时才代理那一层，初始化很快。Vue 3 就是因此从 `defineProperty` 换成 Proxy。
-> 代价是 Proxy 不支持 IE，而且代理对象和原对象 `===` 不相等，Vue 3 要用 `toRaw()` 拿原对象。
+- `defineProperty` 四个缺陷：监听不到新增/删除（要 `Vue.set`）、监听不到数组索引和 `length`（要重写 7 个方法）、必须递归遍历所有属性（初始化慢）、`configurable: false` 时只能定义一次
+- Proxy 用 13 个 trap 解决了前三条，且是**惰性代理**：访问到哪层才代理哪层
+- 代价：不支持 IE；`proxy !== target`，Vue 3 用 `toRaw()` 拿原对象
 
-### 2 分钟版（把元编程串起来讲，推荐）
+### 2 分钟版（把元编程串起来讲）
 
-> 我分「集合」和「元编程」两块说。
->
-> **集合**这边，`Map` 和 `Object` 的关键差异是**键类型**和**顺序**。Object 的键只能是 string/Symbol，其他类型会被转成字符串——`o[{}]` 的键变成 `'[object Object]'`；而且**整数键会被提前并按数值排序**，`{3:'a',1:'b',2:'c'}` 的 `Object.keys` 是 `['1','2','3']`，而 Map 是 `[3,1,2]`。这个差异在实战里会咬人：比如统计字符频次，用对象时数字字符会被排序，导致「找第一个只出现一次的字符」答错。所以我一般说「Object 是数据结构，Map 是字典」。
->
-> `WeakMap` 和 `WeakSet` 是弱引用版，所以**不能遍历、没有 size、没有 clear**——这不是设计缺陷，是逻辑必然，因为一旦能枚举就等于间接持有强引用。用途是「给对象附加数据但不阻止回收」，Vue 3 的依赖收集用的就是 `WeakMap`（`targetMap: WeakMap<target, Map<key, Set<effect>>>`）。
->
-> **元编程**这边核心是 `Proxy` vs `defineProperty`。`defineProperty` 有四个坑：不能监听新增删除属性、不能监听数组索引和 length、必须递归所有属性、只能定义一次。这正是 Vue 2 需要 `Vue.set` 和重写 7 个数组方法的原因。Proxy 用 13 个 trap 全解决了，而且**惰性代理**——只在访问到某层时才代理那层，所以初始化性能好很多。
->
-> 但 Proxy 有三个拦不住的东西：**`typeof`**、**`===`**、以及**对象的内部槽**。最后一条是个大坑——直接代理 `Map`/`Set`/`Date` 会报 `incompatible receiver`，因为它们的方法要求 `this` 是真正的实例，得在 `get` trap 里把方法 `bind` 回原对象。
->
-> 最后 `Reflect`，它是「对象操作的函数式版本」，和 Proxy 的 13 个 trap 一一对应。**为什么必须搭配用**：在 trap 里要执行「默认行为」，用 `t[k]` 会丢 `receiver`（导致 getter 的 `this` 错），用 `Reflect.get(t, k, receiver)` 才能把 receiver 传下去。这也是 Proxy 里写 `Reflect.set` 必须返回它的布尔结果的原因——否则 `set` 会静默失败。
+- **集合**：键类型和顺序是硬差异——`o[{}]` 的键变成 `'[object Object]'`，`{3:'a',1:'b',2:'c'}` 的 `Object.keys` 是 `['1','2','3']`，Map 则是 `[3,1,2]`；统计字符频次时数字字符会被排序，导致「第一个只出现一次的字符」答错
+- **Weak 系列**：不能遍历、没有 `size`、没有 `clear`，因为能枚举就等于间接持有强引用；用途是给对象附加数据但不阻止回收，Vue 3 依赖收集用 `WeakMap<target, Map<key, Set<effect>>>`
+- **元编程**：`defineProperty` 的前三个缺陷正是 Vue 2 需要 `Vue.set` 和重写 7 个数组方法的原因；Proxy 的 13 个 trap 加惰性代理把它们覆盖掉，但拦不住 `typeof`、`===` 和内部槽——直接代理 `Map`/`Set`/`Date` 会报 `incompatible receiver`，要在 `get` 里把方法 `bind` 回原对象
+- **Reflect**：trap 里执行默认行为必须用 `Reflect.get(t, k, receiver)`，否则 getter 的 `this` 会错；`set` trap 必须 `return Reflect.set(...)`，否则严格模式抛 `TypeError`
 
 ### 追问表
 
@@ -814,7 +810,7 @@ Object.getOwnPropertyDescriptor(proto, 'x').get.call(proto);   // undefined  ❌
 | Map 能 JSON 序列化吗 | 不能，返回 `{}` |
 | `'toString' in {}` 为什么是 true | 继承自 `Object.prototype`，用 `Object.hasOwn` 或 `Object.create(null)` |
 | WeakMap 为什么没有 size | 依赖 GC，无法给确定值；能枚举就等于强引用 |
-| WeakMap 的 key 可以是原始值吗 | 不能，必须对象 |
+| WeakMap 的 key 可以是原始值吗 | 不能，必须是对象；未注册的 `Symbol` 自 ES2023 起可以 |
 | Vue 3 为什么用 WeakMap | 依赖收集，target 卸载后能自动回收 |
 | Symbol 能真私有吗 | 不能，`Reflect.ownKeys` 能拿到 |
 | Symbol 有什么实际用途 | 避免键冲突、定义协议（`Symbol.iterator` 等）、模拟私有 |
@@ -844,12 +840,12 @@ Map vs Object
 Set
   SameValueZero：NaN==自己，0==-0；两个 {} 不合并
   O(1) has；可迭代；保持插入顺序
-  交并差要手写（ES2025 才有原生）
+  交并差：旧环境手写；Node 22 / ES2025 已原生支持 `union` 等
   ★ 数组去重首选 [...new Set(arr)]；indexOf 去重会丢掉所有 NaN
 
 WeakMap / WeakSet
   ★ 无 size / 无 clear / 不可迭代 —— 逻辑必然（能枚举就等于强引用）
-  key 必须是对象
+  key 必须是对象（未注册 Symbol 可以，Symbol.for 不行）
   用途：DOM 关联数据、memoize、私有数据、★ Vue3 依赖收集、打标记
   注意：GC 时机不确定，不能依赖立刻回收
 
@@ -864,7 +860,7 @@ Proxy vs defineProperty★
     ① 不能监听新增/删除（要 Vue.set）
     ② 不能监听数组索引和 length（要重写 7 个方法）
     ③ 必须递归所有属性（初始化慢）
-    ④ 只能定义一次
+    ④ configurable: false 时只能定义一次
   Proxy 13 trap：get set has deleteProperty ownKeys getOwnPropertyDescriptor
                 defineProperty getPrototypeOf setPrototypeOf isExtensible
                 preventExtensions apply construct

@@ -1,7 +1,7 @@
 # JS · 06 ES6+ 语法特性
 
-> 本册覆盖：数组方法、ES6 特性总览、`arguments`、rest、展开、解构、模板字符串、可选链、空值合并、`for...of` vs `for...in`
-> 题单这些题基本只有一行「`...args` 收集剩余参数」这种级别。本册把它们讲成「能用、能说出陷阱」的程度。所有行为在 Node 22 实测。
+> 覆盖：数组方法、ES6 特性总览、`arguments`、rest、展开、解构、模板字符串、可选链、空值合并、`for...of` vs `for...in`
+> 重点不是语法形式，而是各自的语义边界；示例输出以 Node 22 为准。
 
 ---
 
@@ -24,9 +24,7 @@
 
 ## 6.1 一句话结论
 
-ES6+ 这一堆语法糖的核心是**减少样板代码**：
-**`rest` 收集、展开摊平、解构提取、模板字符串拼接、可选链防空、空值合并给默认值、`for...of` 走迭代器。**
-但它们各自有**语义边界**——尤其「浅拷贝」「只对 `undefined` 生效」「`for...in` 会遍历原型和自定义属性」这三点，是最高频的坑。
+ES6+ 这批语法的共同作用是**减少样板代码**：`rest` 收集、展开摊平、解构提取、模板字符串拼接、可选链防空、空值合并给默认值、`for...of` 走迭代器。每一项都有语义边界，下面按语法逐条说明。
 
 ---
 
@@ -34,7 +32,7 @@ ES6+ 这一堆语法糖的核心是**减少样板代码**：
 
 ### 6.2.1 按「是否改变原数组」分类（这是最重要的分类）
 
-**⚠️ 9 个会改变原数组**（实测全部确认）：
+**9 个会改变原数组**：
 
 | 方法 | 作用 | 返回 |
 |---|---|---|
@@ -50,14 +48,14 @@ ES6+ 这一堆语法糖的核心是**减少样板代码**：
 
 **记忆口诀：「推弹移反排剪填拷」——九个都会改原数组。**
 
-**其余都是纯函数（不改原数组）**：
+**其余方法不修改原数组**：
 
 | 分类 | 方法 |
 |---|---|
 | **遍历** | `forEach`、`map`、`filter`、`reduce`、`reduceRight`、`some`、`every`、`find`、`findIndex`、`findLast`、`findLastIndex`、`flatMap` |
 | **提取** | `slice`、`concat`、`flat`、`join`、`at` |
-| **查找** | `indexOf`、`lastIndexOf`、`includes`、`find`、`findIndex` |
-| **判断** | `isArray`（静态）、`some`、`every` |
+| **查找** | `indexOf`、`lastIndexOf`、`includes` |
+| **判断** | `isArray`（静态） |
 | **转换** | `toString`、`toLocaleString`、`entries`、`keys`、`values` |
 
 ### 6.2.2 `sort` 的两个坑
@@ -65,29 +63,30 @@ ES6+ 这一堆语法糖的核心是**减少样板代码**：
 **坑 1：默认按字符串排序**
 
 ```js
-[10, 9, 1].sort();              // [1, 10, 9]  ← 按字典序！
-[10, 9, 1].sort((a, b) => a - b);   // [1, 9, 10]  ✅
+[10, 9, 1].sort();              // [1, 10, 9]  ← 按字典序
+[10, 9, 1].sort((a, b) => a - b);   // [1, 9, 10]
 ```
 
-**原因**：默认把元素转成字符串比较，`'10' < '9'`（因为 `'1' < '9'`）。
+默认把元素转成字符串比较，`'10' < '9'`（因为 `'1' < '9'`）。
 
 **坑 2：`sort` 的稳定性**
 
 ```js
 [{k:1,v:'a'}, {k:1,v:'b'}, {k:0,v:'c'}].sort((x,y) => x.k - y.k)
-// [{k:0,v:'c'}, {k:1,v:'a'}, {k:1,v:'b'}]   ← a 在 b 前，稳定 ✅
+// [{k:0,v:'c'}, {k:1,v:'a'}, {k:1,v:'b'}]   ← a 在 b 前
 ```
 
-**ES2019 起规范要求 `sort` 必须稳定**，V8 因此从快排换成了 TimSort（详见算法册）。
+ES2019 起规范要求 `sort` 必须稳定。
 
 ### 6.2.3 稀疏数组：迭代方法会「跳过空位」
 
 ```js
 const sparse = [1, , 3];
+let count = 0;
 
 sparse.map(x => x).length;        // 3（长度保持）
 1 in sparse.map(x => x);          // false  ← 空位还是空位
-sparse.forEach(() => count++);    // 只执行 2 次！← 跳过空位
+sparse.forEach(() => count++);    // count = 2，跳过空位
 
 [...sparse].length;               // 3，但空位变成 undefined
 for (const v of sparse) { }       // 遍历 3 次（含 undefined）
@@ -109,7 +108,7 @@ for (const v of sparse) { }       // 遍历 3 次（含 undefined）
 [5].reduce((a, b) => a + b);      // 5
 ```
 
-**所以「给初始值」是防止空数组报错的标准做法。**
+**「给初始值」是防止空数组报错的标准做法。**
 
 ---
 
@@ -120,71 +119,66 @@ for (const v of sparse) { }       // 遍历 3 次（含 undefined）
 | 特性 | 说明 |
 |---|---|
 | **是类数组** | 有 `length` 和索引，但**没有数组方法**（`map`/`push` 都没有） |
-| **`Array.isArray` 为 false** | 实测确认 |
+| **`Array.isArray` 为 false** | 类数组，不是 `Array` 实例 |
 | **原型是 `Object.prototype`** | 不是 `Array.prototype` |
 | **只在普通函数里有** | 箭头函数没有（会取外层的） |
 | **非严格模式下与形参双向绑定** | 改形参会影响 `arguments[0]`，反之亦然 |
 
-**实测**：
+**验证**：
 
 ```js
 function f(a, b) {
   Array.isArray(arguments);                       // false
   arguments instanceof Array;                     // false
   Object.getPrototypeOf(arguments) === Object.prototype;   // true
-  [...arguments];                                 // [1, 2, 3]  ← 可以转真数组
+  [...arguments];                                 // [1, 2, 3]
 }
 f(1, 2, 3);
 ```
 
-### 6.3.2 「双向绑定」的差异（冷门但常考）
+### 6.3.2 「双向绑定」的差异
 
 ```js
 function sloppy(a) { a = 9; return arguments[0]; }
-sloppy(1);              // 9   ← 非严格：双向绑定，改了 a 就改了 arguments[0]
+sloppy(1);              // 9   ← 非严格：改 a 就改了 arguments[0]
 
 function strictF(a) { 'use strict'; a = 9; return arguments[0]; }
 strictF(1);             // 1   ← 严格：不绑定
 ```
 
-**⚠️ 但「双向绑定」只对「没有默认值、没有 rest 参数」的形参生效**：
+**「双向绑定」只对「没有默认值、没有 rest 参数」的形参生效**：
 
 ```js
 function f(a = 1) { a = 9; return arguments[0]; }
-f(5);                   // 5   ← 有默认值时就不绑定了
+f(5);                   // 5   ← 有默认值时解除映射
 ```
-
-**实测确认**。
 
 ### 6.3.3 转成真数组的四种方式
 
 ```js
-Array.from(arguments);          // ✅ 推荐（ES6）
-[...arguments];                 // ✅ 推荐（ES6，要求 arguments 可迭代）
-Array.prototype.slice.call(arguments);   // ES5 老写法
-Array.prototype.concat.apply([], arguments);  // 更老的写法
+Array.from(arguments);          // 推荐（ES6）
+[...arguments];                 // 推荐（ES6，arguments 可迭代）
+Array.prototype.slice.call(arguments);   // ES5
+Array.prototype.concat.apply([], arguments);  // 更老
 ```
 
-**为什么 `[...arguments]` 能行**：`arguments` 有 `Symbol.iterator`。
+`[...arguments]` 能行的原因是 `arguments` 有 `Symbol.iterator`。
 
 ### 6.3.4 现在推荐用 rest 替代
 
 ```js
-// ❌ 老写法
-function sum() {
+// 老写法
+function sumOld() {
   return Array.prototype.reduce.call(arguments, (a, b) => a + b, 0);
 }
 
-// ✅ 新写法
-function sum(...nums) {
+// 新写法
+function sumNew(...nums) {
   return nums.reduce((a, b) => a + b, 0);
 }
 ```
 
-**rest 的优势**：
-- **是真数组**，能直接用数组方法
-- **语义明确**（只收剩余参数）
-- **箭头函数也能用**
+rest 是真数组、只收剩余参数，箭头函数也能用。
 
 ---
 
@@ -194,7 +188,7 @@ function sum(...nums) {
 
 ```js
 // rest：函数参数位置 → 收集
-function f(a, ...rest) { }        // rest 是 [剩余参数]
+function f(a, ...rest) { }        // rest 是剩余参数数组
 
 // 展开：调用/字面量位置 → 摊开
 f(...[1, 2, 3]);                  // 等价于 f(1, 2, 3)
@@ -202,7 +196,7 @@ const arr = [1, ...[2, 3]];       // [1, 2, 3]
 const obj = { a: 1, ...{ b: 2 } };  // { a: 1, b: 2 }
 ```
 
-### 6.4.2 六个展开场景
+### 6.4.2 五个展开场景
 
 ```js
 // ① 数组 → 参数
@@ -212,46 +206,39 @@ Math.max(...[1, 5, 3]);          // 5
 [...arr]
 
 // ③ 对象 → 对象（浅拷贝）
-{ ...obj }
+({ ...obj })
 
 // ④ 字符串 → 数组（按码点）
-[...'😀a']                        // ['😀', 'a']  长度 2
-'😀a'.split('')                   // ['\uD83D','\uDE00','a']  长度 3  ⚠️
+[...'😀a']                        // ['😀', 'a']，长度 2
+'😀a'.split('')                   // ['\uD83D','\uDE00','a']，长度 3
 
 // ⑤ Set / Map → 数组
 [...new Set([1, 1, 2])]          // [1, 2]
 [...new Map([['a', 1]])]         // [['a', 1]]
-
-// ⑥ NodeList / arguments → 数组
-[...document.querySelectorAll('div')]
 ```
 
-**`[...'😀a']` vs `split('')` 的差异**（实测：2 vs 3）——展开用**码点**，`split('')` 用 **UTF-16 码元**。这是处理 emoji 的关键差异。
+`[...'😀a']` 与 `split('')` 的差异（2 vs 3）：展开按**码点**，`split('')` 按 **UTF-16 码元**；处理 emoji 时不能混用。
 
-### 6.4.3 ⚠️ 展开是浅拷贝
+### 6.4.3 展开是浅拷贝
 
 ```js
 const o = { a: 1, b: { c: 2 } };
 const copy = { ...o };
 copy.b.c = 9;
-o.b.c;              // 9  ← 原对象被改了！因为 b 是同一个引用
+o.b.c;              // 9  ← 原对象被改，因为 b 是同一个引用
 ```
 
-**实测确认。**
-
-**所以不能用展开做深拷贝**（深拷贝见 11 册）。
+展开只复制第一层引用，不能做深拷贝（见 11 册深拷贝）。
 
 ### 6.4.4 展开对象时的覆盖顺序
 
 ```js
-{ a: 1, ...{ a: 2 } }        // { a: 2 }  ← 后面的覆盖前面
-{ ...{ a: 2 }, a: 1 }        // { a: 1 }
-{ ...undefined, ...null }    // {}        ← 展开 null/undefined 不报错
+({ a: 1, ...{ a: 2 } })        // { a: 2 }  ← 后面的覆盖前面
+({ ...{ a: 2 }, a: 1 })        // { a: 1 }
+({ ...undefined, ...null })    // {}        ← 展开 null/undefined 不报错
 ```
 
-**最后一条很实用**——`{ ...maybeNull }` 是安全的。
-
-**但展开数组时不行**：
+`{ ...maybeNull }` 是安全的；但展开数组时不行：
 
 ```js
 [...undefined]               // TypeError: undefined is not iterable
@@ -267,13 +254,12 @@ o.b.c;              // 9  ← 原对象被改了！因为 b 是同一个引用
 // ① 对象解构 + 重命名
 const { a: x } = { a: 1 };              // x = 1
 
-// ② 默认值（只在 undefined 时生效！）
+// ② 默认值
 const { b = 10 } = { b: undefined };    // b = 10
-const { c = 10 } = { c: null };         // c = null  ⚠️ null 不触发默认值
 
 // ③ 嵌套解构
 const { d: { e } = {} } = { d: { e: 1 } };   // e = 1
-const { f: { g } = {} } = {};                // g = undefined（不报错）
+const { f: { g } = {} } = {};                // g = undefined
 
 // ④ 剩余元素
 const { h, ...rest } = { h: 1, i: 2, j: 3 };   // rest = { i: 2, j: 3 }
@@ -283,14 +269,12 @@ const [first, ...others] = [1, 2, 3];          // others = [2, 3]
 const [, second] = [1, 2, 3];           // second = 2
 ```
 
-**实测验证**：`{ a: undefined }` 解构时 `a: renamed = 10` 得到 **10**（因为值是 `undefined`）。
-
 ### 6.5.2 八个实用场景
 
 ```js
 // ① 交换变量（不用临时变量）
 let a = 1, b = 2;
-[a, b] = [b, a];                        // 实测：2 1
+[a, b] = [b, a];                        // a=2, b=1
 
 // ② 函数参数解构 + 默认值
 function f({ name, age = 18 } = {}) { }   // 不传参也不报错
@@ -299,7 +283,7 @@ function f({ name, age = 18 } = {}) { }   // 不传参也不报错
 const { id, ...payload } = user;
 
 // ④ 解构字符串（字符串有 length 和索引）
-const { length } = 'hello';             // 5  实测
+const { length } = 'hello';             // 5
 
 // ⑤ 解构函数返回值
 const [err, data] = await to(promise);
@@ -307,8 +291,8 @@ const [err, data] = await to(promise);
 // ⑥ 解构正则结果
 const [, year, month] = '2026-10'.match(/(\d{4})-(\d{2})/);
 
-// ⑦ 别名避免冲突
-const { data: userData, data: orderData } = responses;
+// ⑦ 同一属性取不同别名时，来源要分开
+const { data: userData } = userRes, { data: orderData } = orderRes;
 
 // ⑧ 循环里解构
 for (const [key, value] of Object.entries(obj)) { }
@@ -319,14 +303,14 @@ for (const [key, value] of Object.entries(obj)) { }
 **坑 1：解构 `null` / `undefined` 会报错**
 
 ```js
-const { a } = null;               // TypeError: Cannot destructure property 'a' of 'null'
-const { a } = undefined;          // TypeError
+const { a } = null;               // TypeError: Cannot destructure property 'a' of 'null' as it is null.
+// 解构 undefined 同样抛 TypeError
 
-// ✅ 给默认值
-const { a } = obj ?? {};
+// ✅ 外层整体给默认值
+const { a: safeA } = obj ?? {};
 
-// ✅ 或者嵌套时给 {}
-const { b: { c } = {} } = obj;
+// ✅ 嵌套时也给外层兜底
+const { b: { c } = {} } = obj ?? {};
 ```
 
 **坑 2：默认值只对 `undefined` 生效**
@@ -337,7 +321,7 @@ const { b = 10 } = { b: 0 };      // b = 0
 const { c = 10 } = { c: '' };     // c = ''
 ```
 
-**这个规则和函数默认参数、`??` 是一致的**——只有 `undefined` 才触发。
+默认值只在 `undefined` 时触发，和函数默认参数一致；`??` 则对 `null` 和 `undefined` 都生效。
 
 ---
 
@@ -347,22 +331,23 @@ const { c = 10 } = { c: '' };     // c = ''
 
 ```js
 const name = 'world';
-`hello ${name}`;                  // 'hello world'（插值）
+`hello ${name}`;                  // 'hello world'
 `line1
 line2`;                           // 支持换行
-`${1 + 1}`;                       // '2'（可以有表达式，不能有语句）
+`${1 + 1}`;                       // '2'（表达式，不能是语句）
 ```
 
-**⚠️ 插值里的结果会被 `String()` 转换**：
+插值走 `ToString`；它与 `String()` 在 `Symbol` 上不同——模板里插 `Symbol` 会抛 `TypeError`：
 
 ```js
 `${null}`;                        // 'null'
 `${undefined}`;                   // 'undefined'
 `${{}}`;                          // '[object Object]'
 `${[1, 2]}`;                      // '1,2'
+`${Symbol('s')}`;                 // TypeError: Cannot convert a Symbol value to a string
 ```
 
-### 6.6.2 标签模板（冷门但有用）
+### 6.6.2 标签模板
 
 ```js
 function tag(strings, ...values) {
@@ -374,18 +359,18 @@ function tag(strings, ...values) {
 tag`hello ${'world'}, you are ${18}`;
 ```
 
-**`strings` 有一个特殊属性 `raw`**：
+`strings` 有一个特殊属性 `raw`，保留未转义的原始片段：
 
 ```js
-tag`a\nb`.raw;                    // 原始字符串（'\n' 是字面的反斜杠 + n）
+((strings) => strings.raw)`a\nb`;  // ['a\\nb']
 ```
 
 **实际用途**：
 
 | 用途 | 例子 |
 |---|---|
-| **SQL 模板** | `sql\`SELECT * FROM ${table}\`` —— 可以自动转义，防注入 |
-| **HTML 转义** | `html\`<div>${userInput}</div>\`` |
+| **SQL 模板** | `sql\`SELECT * FROM ${table}\`` —— tag 函数负责转义，防注入 |
+| **HTML 转义** | `html\`<div>${userInput}</div>\`` —— tag 函数负责转义 |
 | **i18n** | `i18n\`Hello ${name}\`` |
 | **CSS-in-JS** | `styled.div\`color: red\`` |
 | **GraphQL** | `gql\`query { ... }\`` |
@@ -395,8 +380,8 @@ tag`a\nb`.raw;                    // 原始字符串（'\n' 是字面的反斜�
 ### 6.6.3 `String.raw`
 
 ```js
-String.raw`C:\path\new`;          // 'C:\\path\\new'（不转义）
-`C:\path\new`;                    // 有问题（\n 变换行）
+String.raw`C:\path\new`;          // 结果：C:\path\new（反斜杠保留）
+`C:\path\new`;                    // 结果：C:path + 换行 + ew（\n 被解释）
 ```
 
 **用途**：Windows 路径、正则字面量。
@@ -415,16 +400,16 @@ obj?.a?.b?.c                      // 任何一层是 null/undefined 就返回 un
 obj?.fn?.()                       // fn 不存在就不调用
 
 // ③ 动态属性
-obj?.[key]                        // 方括号也能用
+obj?.[key]
 ```
 
-**实测**：
+**验证**：
 
 ```js
 const obj = { a: { b: null } };
-obj?.a?.b?.c;                     // undefined（不报错）
+obj?.a?.b?.c;                     // undefined
 obj?.x?.y;                        // undefined
-obj?.fn?.();                      // undefined（不报错）
+obj?.fn?.();                      // undefined
 ```
 
 ### 6.7.2 四个必须知道的细节
@@ -433,35 +418,37 @@ obj?.fn?.();                      // undefined（不报错）
 
 ```js
 const o = { a: 0 };
-o?.a;                             // 0  （正常返回）
+o?.a;                             // 0
 o.a?.toString();                  // '0'
 ```
 
-**② 短路是「整个链」的**
+**② 短路只覆盖 `?.` 之后的连续链，不保护后续的非可选访问**
 
 ```js
 const obj = null;
-obj?.a.b.c;                       // undefined，不会报错
-// 因为 obj 是 null，整个 obj?.a.b.c 直接返回 undefined，不再求值
+obj?.a.b.c;                       // undefined（obj 为 null，整条链短路）
+
+const empty = {};
+empty?.a.b.c;                     // TypeError: Cannot read properties of undefined (reading 'b')
+empty?.a?.b?.c;                   // undefined
 ```
 
-**这是 `?.` 和 `&&` 的关键差异**：
+所以 `?.` 和 `&&` 的区别不是「一个安全一个不安全」，而是：
 
-```js
-obj && obj.a.b.c;                 // 如果 obj 是 {}，还是会报错
-obj?.a.b.c;                       // 安全
-```
+- `?.` 只在 `?.` 所在层级判断 `null`/`undefined`；后续层仍可能为空，要逐层写 `?.`。
+- `&&` 在任意 falsy 值处短路，`0`/`''`/`false`/`NaN` 也会短路。
+- `empty && empty.a.b.c` 与 `empty?.a.b.c` 在 `empty = {}` 时都会抛错；`empty?.a?.b?.c` 才安全。
 
 **③ 不能用在赋值左侧**
 
 ```js
-obj?.a = 1;                       // ❌ SyntaxError
+obj?.a = 1;                       // SyntaxError: Invalid left-hand side in assignment
 ```
 
 **④ 不能和 `new` 一起用**
 
 ```js
-new obj?.Ctor();                  // ❌ SyntaxError
+new obj?.Ctor();                  // SyntaxError: Invalid optional chain from new expression
 new (obj?.Ctor)();                // ✅ 加括号可以
 ```
 
@@ -470,8 +457,8 @@ new (obj?.Ctor)();                // ✅ 加括号可以
 ```js
 null ?? 'dflt';                   // 'dflt'
 undefined ?? 'dflt';              // 'dflt'
-0 ?? 'dflt';                      // 0     ← 不触发！
-'' ?? 'dflt';                     // ''    ← 不触发！
+0 ?? 'dflt';                      // 0     ← 不触发
+'' ?? 'dflt';                     // ''    ← 不触发
 false ?? 'dflt';                  // false
 NaN ?? 'dflt';                    // NaN
 ```
@@ -490,12 +477,10 @@ NaN ?? 'dflt';                    // NaN
 **真实 bug 场景**：
 
 ```js
-const volume = userVolume || 50;      // ❌ 用户设 0 会被改成 50
-const volume = userVolume ?? 50;      // ✅
-
-const page = query.page || 1;         // ❌ page=0 时错
-const enabled = config.enabled || true;   // ❌ 传 false 时错
-const price = item.price || 99;       // ❌ 0 元商品时错
+const volume = userVolume ?? 50;           // ✅ 用户设 0 保留 0；|| 会改成 50
+const page = query.page ?? 1;              // ✅ page=0 保留 0
+const enabled = config.enabled ?? true;    // ✅ 传 false 保留 false
+const price = item.price ?? 99;            // ✅ 0 元商品保留 0
 ```
 
 ### 6.7.4 `??` 也是短路的
@@ -503,7 +488,7 @@ const price = item.price || 99;       // ❌ 0 元商品时错
 ```js
 let called = false;
 const r = 1 ?? (called = true);
-called;                            // false  ← 右侧没执行（实测）
+called;                            // false  ← 右侧没执行
 ```
 
 ### 6.7.5 `??=` 逻辑赋值（ES2021）
@@ -516,8 +501,10 @@ let b = 0;
 b ??= 'default';                   // b = 0（不赋值）
 
 // 对应的还有
-a ||= 'x';                         // falsy 时赋值
-a &&= 'x';                         // truthy 时赋值
+let c = 0;
+c ||= 'x';                         // falsy 时赋值 → 'x'
+let d = 1;
+d &&= 'y';                         // truthy 时赋值 → 'y'
 ```
 
 **`??=` 的经典用途：惰性初始化**
@@ -538,18 +525,18 @@ obj.cache ??= computeExpensiveValue();
 | **遍历什么** | **键名**（字符串） | **值** |
 | **依据** | 对象的**可枚举属性**（含原型链） | 对象的 **`[Symbol.iterator]`** |
 | **适用对象** | 对象 ✅、数组 ⚠️ | 数组 ✅、字符串 ✅、Map/Set ✅、**普通对象 ❌** |
-| **顺序** | 不保证（实际上有规则） | 按迭代器顺序 |
+| **顺序** | 规范顺序，见 6.8.4 | 按迭代器顺序 |
 | **能 `break`** | ✅ | ✅ |
 
-### 6.8.2 `for...in` 遍历数组的三个问题（实测）
+### 6.8.2 `for...in` 遍历数组的三个问题
 
 ```js
 const arr = [10, 20];
 arr.extra = 'x';                   // 给数组加自定义属性
 
 for (const k in arr) { }
-// 遍历到：'0', '1', 'extra'   ← ⚠️ 包含自定义属性！
-// 而且 k 是字符串 '0' 不是数字 0
+// 遍历到：'0', '1', 'extra'   ← 包含自定义属性
+// k 是字符串 '0'，不是数字 0
 ```
 
 **三个问题**：
@@ -557,7 +544,7 @@ for (const k in arr) { }
 | 问题 | 说明 |
 |---|---|
 | **① 会遍历自定义属性** | 上面 `extra` 被遍历了 |
-| **② 会遍历原型链上的可枚举属性** | 如果给 `Array.prototype` 加了东西，也会被遍历 |
+| **② 会遍历原型链上的可枚举属性** | 给 `Array.prototype` 加的可枚举属性也会被遍历 |
 | **③ 键是字符串** | `'0'` 不是 `0`，做运算要注意 |
 
 **所以「永远不要用 `for...in` 遍历数组」。**
@@ -565,8 +552,9 @@ for (const k in arr) { }
 ### 6.8.3 `for...of` 遍历对象会报错
 
 ```js
-for (const v of { a: 1 }) { }
-// TypeError: obj is not iterable   ← 实测
+const obj = { a: 1 };
+for (const v of obj) { }
+// TypeError: obj is not iterable
 ```
 
 **要遍历对象的三种方式**：
@@ -584,9 +572,9 @@ for (const k in obj) {
 }
 ```
 
-### 6.8.4 `for...in` 的顺序规则（冷门）
+### 6.8.4 `for...in` 的顺序规则
 
-**规范定义了顺序，但很反直觉**：
+规范顺序：
 
 ```
 ① 整数键（"0"、"1"、"2"…）→ 按数值升序
@@ -597,12 +585,11 @@ for (const k in obj) {
 ```js
 const o = { b: 1, 2: 'two', a: 2, 1: 'one' };
 Object.keys(o);                    // ['1', '2', 'b', 'a']
-// 整数键提前并排序！
 ```
 
-**这个规则在「用对象当字典，key 是数字」时会导致顺序错乱**——这就是 07 册讲的「为什么计数要用 `Map`」。
+用对象当字典且 key 是数字时，顺序与插入顺序不同——这就是 07 册「计数用 `Map`」的原因。
 
-### 6.8.5 `for...of` 的迭代器关闭（进阶）
+### 6.8.5 `for...of` 的迭代器关闭
 
 ```js
 for (const v of iterable) {
@@ -610,13 +597,11 @@ for (const v of iterable) {
 }
 ```
 
-**规范要求：`for...of` 被 `break` / `return` / `throw` 中断时，调用迭代器的 `return()` 做清理**（详见 05 册 5.8.2）。
+`for...of` 被 `break` / `return` / `throw` 中断时，会调用迭代器的 `return()` 做清理（详见 05 册 5.8.2）。
 
 ---
 
 ## 6.9 ES6 特性总览
-
-**题 16 是「罗列题」，按四组说最清晰。**
 
 ### 6.9.1 声明与作用域
 
@@ -662,8 +647,6 @@ for (const v of iterable) {
 
 ### 6.9.5 顺带补充：ES2016 之后的高频特性
 
-**题单叫「ES6 新特性」，但面试常连带问后续版本**：
-
 | 版本 | 新特性 |
 |---|---|
 | **ES2016** | `Array.prototype.includes`、`**` 幂运算 |
@@ -675,7 +658,7 @@ for (const v of iterable) {
 | **ES2022** | **顶层 await**、`Object.hasOwn`、`#private` 字段、`Array.at` |
 | **ES2023** | `findLast/findLastIndex`、`toSorted/toReversed/toSpliced/with`（不可变数组方法） |
 
-**⚠️ 这一条很重要**：题 3（如果被追问「ES6 新特性」）里如果有人答「可选链、空值合并」，那是**ES2020 不是 ES6**。这是最常见的版本混淆。
+可选链、空值合并是 **ES2020**，不是 ES6——这是最常见的版本混淆。
 
 ---
 
@@ -683,21 +666,21 @@ for (const v of iterable) {
 
 | 坑 | 正确说法 |
 |---|---|
-| 用 `for...in` 遍历数组 | ❌ 会遍历自定义属性和原型链，用 `for...of` |
-| 用 `for...of` 遍历普通对象 | ❌ 报 TypeError，用 `Object.entries` |
-| 用展开做深拷贝 | ❌ 浅拷贝，嵌套对象还是同一个引用 |
-| 用 `[...str]` 和 `split('')` 混用 | 前者按码点（emoji 算 1），后者按码元（算 2） |
-| 以为解构默认值对 `null` 生效 | ❌ 只对 `undefined` 生效 |
-| 解构 `null`/`undefined` | ❌ 报 TypeError，要给 `?? {}` 或 `= {}` |
+| 用 `for...in` 遍历数组 | 会遍历自定义属性和原型链，用 `for...of` |
+| 用 `for...of` 遍历普通对象 | 报 `TypeError`，用 `Object.entries` |
+| 用展开做深拷贝 | 浅拷贝，嵌套对象还是同一个引用 |
+| 以为 `[...str]` 和 `split('')` 等价 | 前者按码点（emoji 算 1），后者按码元（算 2） |
+| 以为解构默认值对 `null` 生效 | 只对 `undefined` 生效 |
+| 解构 `null`/`undefined` | 报 `TypeError`，外层用 `?? {}` 兜底 |
 | 用 `\|\|` 给默认值 | `0`/`''`/`false`/`NaN` 都会被替换，用 `??` |
-| 以为 `?.` 对 `0` 短路 | ❌ 只对 `null`/`undefined` 短路 |
-| `obj?.a.b.c` 里有 `&&` 混淆 | `?.` 短路整个链，`&&` 不会 |
+| 以为 `?.` 对 `0`/`''`/`false` 短路 | 只对 `null`/`undefined` 短路 |
+| 以为 `obj?.a.b.c` 全链安全 | `obj = {}` 时仍抛错，逐层可能为空要逐层 `?.` |
 | 忘给 `reduce` 初始值 | 空数组抛 `TypeError` |
 | 用 `sort()` 排数字 | 默认按字符串，要传 `(a,b) => a-b` |
 | 以为 `arguments` 是数组 | 是类数组，`Array.isArray` 为 false |
 | 在箭头函数里用 `arguments` | 会取外层的，不是自己的 |
 | 说「可选链是 ES6」 | 是 **ES2020** |
-| 以为 `?.` 能用在赋值左侧 | ❌ SyntaxError |
+| 以为 `?.` 能用在赋值左侧 | `SyntaxError` |
 
 ---
 
@@ -705,32 +688,24 @@ for (const v of iterable) {
 
 ### 30 秒版（`for...of` vs `for...in`）
 
-> `for...in` 遍历的是**键名**，依据是对象的可枚举属性——而且**会遍历原型链和自定义属性**，所以不能用来遍历数组。
-> `for...of` 遍历的是**值**，依据是 `[Symbol.iterator]`——所以数组、字符串、Map、Set 都能遍历，但**普通对象不能**（报 TypeError），要遍历对象得用 `Object.entries`。
-> 一句话：`for...in` 是「属性枚举」，`for...of` 是「迭代器遍历」。
+- `for...in` 遍历键名，依据可枚举属性，包含原型链和自定义属性，不能用来遍历数组。
+- `for...of` 遍历值，依据 `[Symbol.iterator]`，适用于数组、字符串、Map、Set；普通对象会抛 `TypeError`。
+- 一句话：`for...in` 是属性枚举，`for...of` 是迭代器遍历。
 
 ### 30 秒版（可选链、空值合并）
 
-> `?.` 在访问链路上遇到 `null`/`undefined` 就**短路整个链**返回 `undefined`，而不是只短路一级——这是它和 `&&` 的关键区别。它只对 `null`/`undefined` 生效，`0`、`''`、`false` 都照常返回。
-> `??` 只在左侧是 `null`/`undefined` 时取默认值，而 `||` 在左侧是任何 falsy 值（`0`、`''`、`false`、`NaN`）时都会取默认值。所以给「可能是 0 的数值」或「可能是空字符串」的字段设默认值，必须用 `??`。
+- `?.` 只在 `null`/`undefined` 处短路，且只覆盖该 `?.` 之后的连续链；后续层可能为空时要逐层写 `?.`。
+- `?.` 对 `0`/`''`/`false` 不短路。
+- `??` 只在左侧是 `null`/`undefined` 时取默认值；`||` 对所有 falsy 值都会替换。
+- 给可能为 `0`、`''`、`false` 的字段设默认值，必须用 `??`。
 
-### 2 分钟版（把 ES6 语法串起来讲，推荐）
+### 2 分钟版（把 ES6 语法串起来讲）
 
-> 我按「声明、语法糖、数据结构、模块」四组说，中间穿插几个坑。
->
-> **声明**这块是 `let`/`const`，块级作用域和 TDZ。
->
-> **语法糖**有七样：箭头函数（词法 `this`、不能 `new`）、默认参数、rest 参数、展开运算符、解构赋值、模板字符串（含标签模板）、对象字面量增强。这里有几个坑要说清：**展开是浅拷贝**，`{...obj}` 的嵌套对象还是同一个引用；**`[...str]` 按码点、`split('')` 按 UTF-16 码元**，所以 `[...'😀a']` 长度是 2 而 `split('')` 是 3；**解构的默认值只对 `undefined` 生效**，`{a = 10} = {a: null}` 得到的是 `null`。
->
-> **数据结构**有 `Map`/`Set`/`WeakMap`/`Symbol`/`Proxy`/`Reflect`/`Promise`/Generator/迭代器/TypedArray。
->
-> **模块与工程**是 ES Module、`class`、动态 `import()`。
->
-> 然后是 `for...of` 和 `for...in`：前者走迭代器遍历值，后者枚举属性遍历键。**`for...in` 会遍历原型链和自定义属性**，所以绝不能用来遍历数组；**`for...of` 不能遍历普通对象**，要 `Object.entries`。另外 `for...of` 有个冷门但重要的行为：**被 `break` 中断时会调用迭代器的 `return()` 做清理**。
->
-> 最后 `arguments`：它是类数组（`Array.isArray` 为 false），非严格模式下和形参**双向绑定**——改 `a` 会改 `arguments[0]`，但**有默认值或 rest 参数时就不绑定了**。现在都用 rest 参数替代，因为 rest 是真数组。
->
-> 补充一点：如果被问「ES6 新特性」，**可选链和空值合并是 ES2020 不是 ES6**，这是最常被扣分的版本混淆。
+- 声明与语法糖：`let`/`const`（块级作用域、TDZ）；箭头函数（词法 `this`、不能 `new`）、默认参数、rest、展开、解构、模板字符串、对象字面量增强、`for...of`，共八样。
+- 关键边界：展开是浅拷贝；`[...str]` 按码点、`split('')` 按 UTF-16 码元；解构默认值只对 `undefined` 生效，`null` 不触发。
+- 数据结构：`Map`/`Set`/`WeakMap`/`Symbol`/`Proxy`/`Reflect`/`Promise`/Generator/迭代器/TypedArray。
+- 模块与遍历：ES Module、`class`、动态 `import()`；`for...in` 枚举属性，`for...of` 走迭代器，`break` 时调用迭代器的 `return()`。
+- `arguments`：类数组（`Array.isArray` 为 false），非严格模式下与形参双向绑定，有默认值或 rest 参数时解除绑定；新代码用 rest。
 
 ### 追问表
 
@@ -752,7 +727,7 @@ for (const v of iterable) {
 | 解构 `null` 会怎样 | TypeError |
 | 标签模板有什么用 | SQL 转义、HTML 转义、i18n、CSS-in-JS、gql |
 | `?.` 只对什么短路 | `null`/`undefined`（`0`/`''`/`false` 不短路） |
-| `?.` 和 `&&` 区别 | `?.` 短路整条链 |
+| `?.` 和 `&&` 区别 | `?.` 只在该层判断 `null`/`undefined`；两者都不保护后续非可选访问 |
 | `??` 和 `\|\|` 区别 | `??` 只看 null/undefined |
 | `??=` 有什么用 | 惰性初始化 |
 | `for...in` 遍历数组有什么问题 | 包含自定义属性和原型链、键是字符串 |
@@ -768,11 +743,11 @@ for (const v of iterable) {
 数组方法
   ★ 9 个改原数组：push pop shift unshift reverse sort splice fill copyWithin
     口诀「推弹移反排剪填拷」
-  纯函数：map filter reduce slice concat flat flatMap join find findIndex some every includes
+  不改原数组：map filter reduce slice concat flat flatMap join find findIndex some every includes
   ★ sort 默认按字符串 → 数字要 (a,b)=>a-b
   ★ sort ES2019 起稳定
   ★ reduce 不给初始值，空数组抛 TypeError
-  ★ map/forEach/reduce 跳过稀疏空位；for...of 不跳
+  ★ map/filter/forEach/reduce 跳过稀疏空位；for...of 不跳
 
 arguments
   类数组，Array.isArray 为 false，原型是 Object.prototype
@@ -789,12 +764,12 @@ rest vs 展开
 解构
   重命名 / 默认值 / 嵌套 / rest / 跳过
   ★ 默认值只在 undefined 时生效（null 不触发）
-  ★ 解构 null/undefined 报 TypeError
+  ★ 解构 null/undefined 报 TypeError；外层用 ?? {} 兜底
 
 可选链 / 空值合并
   ?. 三种：obj?.a / obj?.fn?.() / obj?.[k]
-  ★ 只对 null/undefined 短路，且短路【整条链】
-  ★ 不能用在赋值左侧、不能直接 new
+  ★ 只对 null/undefined 短路；短路只覆盖该 ?. 之后的连续链
+  ★ 逐层可能为空要逐层 ?.；不能用在赋值左侧、不能直接 new
   ?? 只在 null/undefined 时取默认值
   ★ 0 / '' / false / NaN 用 ?? 都不会被替换（|| 会）
   ??= 惰性初始化

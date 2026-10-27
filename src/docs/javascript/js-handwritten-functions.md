@@ -1,8 +1,7 @@
 # JS · 10 手写实现（上）· 函数与工具
 
-> 本册覆盖：防抖、节流、`call`/`apply`/`bind`、`new`、`instanceof`、柯里化、`compose`、发布订阅、`reduce`、`add(1)(2)(3)`、`setTimeout` 实现 `setInterval`
-> **题单这 12 道全部写着「同编程题文档第 X 题」——那份文档不在工作区**，所以本册从零实现。
-> 所有实现在 Node 22 跑过，**防抖/节流还给实测执行次数**。
+> 覆盖：防抖、节流、`call`/`apply`/`bind`、`new`、`instanceof`、柯里化、`compose`、发布订阅、`reduce`、`add(1)(2)(3)`、`setTimeout` 实现 `setInterval`
+> 所有手写实现均在 Node 22 实跑，文中输出为真实结果
 
 ---
 
@@ -28,15 +27,13 @@
 
 ## 10.1 一句话结论
 
-这一组题考的不是「能不能写出来」，而是**三个细节**：
+这一组题的共同难点是三个细节：
 
 | 细节 | 说明 |
 |---|---|
-| **`this` 和参数透传** | 用 `fn.apply(this, args)` 而不是 `fn(...args)` |
-| **边界** | 空数组、`new` 调用、`cancel`、重复注册 |
-| **为什么这么设计** | 比如「`bind` 后还能 `new` 吗」「为什么要 `setTimeout` 实现 `setInterval`」 |
-
-**评分权重：边界 > 设计意图 > 代码正确性 > 简洁度。**
+| **`this` 和参数透传** | 延迟执行/间接调用时用 `fn.apply(this, args)`，不要只写 `fn(...args)` |
+| **边界** | 空数组、`null`/`undefined`、类数组、`new` 调用、`cancel`、重复注册 |
+| **设计意图** | `bind` 后为什么还能 `new`、为什么要用 `setTimeout` 实现 `setInterval` |
 
 ---
 
@@ -65,24 +62,22 @@ function debounce(fn, wait = 300) {
 
 | 点 | 为什么要这样写 |
 |---|---|
-| **`fn.apply(this, args)`** | 用箭头函数的话 `this` 是外层（普通函数的外层 `this` 是调用者），必须显式传 |
-| **`args` 在闭包里存** | 因为要延迟执行，参数必须捕获下来 |
+| **`fn.apply(this, args)`** | `setTimeout` 的回调是普通调用，不转发 `this`；用普通函数接收调用时的 `this`，再显式传给 `fn` |
+| **`args` 在闭包里存** | 真正执行在 `wait` 之后，参数必须先捕获 |
 
-**⚠️ 如果用箭头函数返回**：
+**⚠️ 用箭头函数返回会丢 `this`**：
 
 ```js
-// ❌ this 丢失
 function debounce(fn, wait) {
   let timer;
   return (...args) => {
     clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), wait);    // this 是 undefined
+    timer = setTimeout(() => fn(...args), wait);   // 普通调用，不转发 this
   };
 }
-
-// ✅ 要么用普通函数 + apply
-// ✅ 要么用箭头函数但捕获外层 this（在方法里用不了）
 ```
+
+实测：用对象方法调用时，箭头版的 `fn` 拿到的是 `globalThis`（非严格函数）或 `undefined`（严格函数），不是调用者对象。
 
 ### 10.2.3 完整版（`immediate` + `cancel`）
 
@@ -118,35 +113,18 @@ function debounce(fn, wait = 300, immediate = false) {
 **`immediate` 的语义**：**首次立即执行，之后 `wait` 内的触发全部忽略**。
 场景：按钮防连击（第一次点击立即响应，后面 300ms 内的点击忽略）。
 
-**实测验证**（Node 22，100ms 内连续调用 5 次，`wait=100ms`）：
+**实测**（Node 22，`wait=100ms`，每 10ms 调用一次，共 10 次）：
 
 ```
-普通模式（immediate=false）：
-  执行次数: 1，参数: 9          ← 只执行最后一次（第 10 次调用的参数）
-
-immediate 模式：
-  执行次数: 1，参数: 0          ← 只执行第一次
+普通模式（immediate=false）：执行 1 次，参数 9（最后一次）
+immediate 模式：执行 1 次，参数 0（首次）
 ```
 
-### 10.2.4 追问：`this` 为什么用 `apply` 不用 `call`
+### 10.2.4 追问：参数与 `this` 的透传
 
-```js
-fn.apply(this, args);        // 参数是数组
-fn.call(this, ...args);      // 等价（ES6 展开）
-
-// 都行，apply 更传统（不需要展开，老环境兼容好）
-```
-
-### 10.2.5 追问：为什么不能只写 `fn(...args)`
-
-**因为 `args` 是数组，而 `fn` 期待的是展开的参数列表**：
-
-```js
-fn(...args);          // ✅ 展开
-fn(args);             // ❌ 把整个数组当一个参数
-```
-
-**但在箭头函数里 `this` 会丢**，所以最稳的是 `fn.apply(this, args)`。
+- `fn.apply(this, args)` 与 `fn.call(this, ...args)` 等价；前者不需要展开参数。
+- 不能写 `fn(args)`：这会把整个数组当成第一个参数。
+- `args` 必须在闭包里捕获，因为真正执行发生在 `setTimeout` 之后。
 
 ---
 
@@ -159,7 +137,7 @@ fn(args);             // ❌ 把整个数组当一个参数
 
 ### 10.3.2 三种实现对比
 
-| 版本 | 首次执行 | 末次执行 | 问题 |
+| 版本 | 首次执行 | 尾执行 | 问题 |
 |---|---|---|---|
 | **时间戳版** | ✅ 立即 | ❌ **丢失最后一次** | 停止触发时最后一次被丢弃 |
 | **定时器版** | ❌ 延迟 | ✅ 有 | 首次不立即响应 |
@@ -182,16 +160,21 @@ function throttle(fn, wait = 300) {
 
 **问题**：如果最后一次触发后不再触发，那次调用就**丢了**。
 
-#### 版本 2：定时器（末执行，首延迟）
+#### 版本 2：定时器（尾执行，首延迟）
 
 ```js
 function throttle(fn, wait = 300) {
   let timer = null;
+  let lastArgs;
+  let lastThis;
+
   return function (...args) {
+    lastArgs = args;
+    lastThis = this;
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
-      fn.apply(this, args);
+      fn.apply(lastThis, lastArgs);     // 尾执行用最后一次的 this/参数
     }, wait);
   };
 }
@@ -205,10 +188,14 @@ function throttle(fn, wait = 300) {
 function throttle(fn, wait = 300) {
   let last = 0;
   let timer = null;
+  let lastArgs;
+  let lastThis;
 
   return function (...args) {
     const now = Date.now();
     const remaining = wait - (now - last);
+    lastArgs = args;
+    lastThis = this;
 
     if (remaining <= 0) {
       // 已经超过 wait，立即执行
@@ -217,40 +204,32 @@ function throttle(fn, wait = 300) {
         timer = null;
       }
       last = now;
-      fn.apply(this, args);
+      fn.apply(lastThis, lastArgs);
     } else if (!timer) {
       // 还在 wait 内，但没排定时器 → 排一个「补齐剩余时间」的
       timer = setTimeout(() => {
         last = Date.now();
         timer = null;
-        fn.apply(this, args);
+        fn.apply(lastThis, lastArgs);
       }, remaining);
     }
   };
 }
 ```
 
-**实测验证**：
+**实测（Node 22）**：
 
-| 场景 | wait | 调用情况 | 实际执行次数 |
-|---|---|---|---|
-| 100ms 内连续 10 次（每 10ms） | 100ms | 10 次 | **2 次**（第 0ms 和第 100ms） |
-| 1000ms 内每 50ms 一次（共 20 次） | 100ms | 20 次 | **11 次**（约每 100ms 一次） |
-
-**为什么第二个场景是 11 次而不是 10 次**：因为首次立即执行（leading edge）额外多了 1 次。
+- 10 次调用、每 10ms 一次、`wait=100`：时间戳版 1 次、定时器版 1 次（参数 9）、合体版 2 次（参数 0、9，时刻约 0ms、100ms）。
+- 20 次调用、每 50ms 一次、`wait=100`：合体版 11 次；首次立即执行（leading edge）额外多了 1 次。
 
 ### 10.3.3 防抖 vs 节流（一句话区分）
 
 ```
 防抖：事件密集触发时 → 只认「最后一次」（或第一次）
-      ┌──────────────────────┐
-      │ 触发触发触发触发触发 → │ 等 300ms → 执行 1 次
-      └──────────────────────┘
+      触发触发触发触发触发 → 等 wait → 执行 1 次
 
 节流：事件密集触发时 → 「匀速执行」
-      ┌──────────────────────┐
-      │ 触发触发触发触发触发 → │ 每 300ms 执行 1 次
-      └──────────────────────┘
+      触发触发触发触发触发 → 每 wait 执行 1 次
 ```
 
 **记忆**：
@@ -283,8 +262,8 @@ bound(2);                   // 现在才执行
 
 ```js
 Function.prototype.myCall = function (ctx, ...args) {
-  // ① 处理 null/undefined（非严格下指向 globalThis）
-  ctx = ctx ?? globalThis;
+  // ① null/undefined → globalThis；原始值先装箱
+  ctx = ctx == null ? globalThis : Object(ctx);
 
   // ② 用 Symbol 当键，避免覆盖 ctx 上同名属性
   const key = Symbol('fn');
@@ -296,13 +275,12 @@ Function.prototype.myCall = function (ctx, ...args) {
     configurable: true,
   });
 
-  // ④ 调用
-  const ret = ctx[key](...args);
-
-  // ⑤ 清理
-  delete ctx[key];
-
-  return ret;
+  // ④ 调用；try/finally 保证函数抛错也会清理
+  try {
+    return ctx[key](...args);
+  } finally {
+    delete ctx[key];
+  }
 };
 ```
 
@@ -310,29 +288,28 @@ Function.prototype.myCall = function (ctx, ...args) {
 
 | 细节 | 为什么 |
 |---|---|
-| **`ctx = ctx ?? globalThis`** | `fn.call(null)` 在非严格模式下 `this` 是 `globalThis` |
+| **`ctx == null ? globalThis : Object(ctx)`** | `null`/`undefined` 走非严格语义；原始值不装箱的话，`Object.defineProperty` 直接抛 `TypeError` |
 | **用 `Symbol` 而不是字符串键** | 字符串可能覆盖 `ctx` 上的真实属性（比如 `ctx.fn`） |
 | **`enumerable: false`** | 不让它出现在 `for...in` / `Object.keys` 里 |
-| **`delete ctx[key]`** | 用完必须清理，否则污染 `ctx` |
+| **`try/finally` + `delete`** | 用完必须清理；回调抛错也不残留 |
 
 **⚠️ 原始值会被装箱**：
 
 ```js
-fn.myCall(1);      // ctx = 1，非严格下会被装箱成 Number 对象
-// 严格模式下不装箱，this 就是 1
+fn.myCall(1);      // 返回装箱后的 Number 对象，instanceof Number 为 true
 ```
+
+原生 `call` 是否装箱取决于目标函数：非严格函数装箱，严格函数保持原始值 `1`。手写版无法感知目标函数的严格模式，统一按非严格语义装箱。
 
 ### 10.4.3 手写 `apply`
 
 ```js
-Function.prototype.myApply = function (ctx, args = []) {
-  return this.myCall(ctx, ...args);
+Function.prototype.myApply = function (ctx, args) {
+  return this.myCall(ctx, ...(args == null ? [] : Array.from(args)));
 };
 ```
 
-**`args` 要给默认值 `[]`**，因为 `fn.apply(ctx)` 是合法的（不传参数）。
-
-**⚠️ 注意 `args` 可以是类数组**（`arguments`），所以严格说应该 `Array.from(args)`。面试简化版用展开就行。
+`Array.from` 同时支持数组、`arguments` 和类数组；`null`/`undefined` 视为没有参数（`fn.apply(ctx, null)` 合法）。
 
 ### 10.4.4 手写 `bind`（重点：`new` 的处理）
 
@@ -341,16 +318,24 @@ Function.prototype.myBind = function (ctx, ...preset) {
   const target = this;
 
   function Bound(...args) {
+    // 箭头函数/方法简写没有 prototype，不能 new
+    if (new.target && typeof target.prototype !== 'object') {
+      throw new TypeError(`${target.name || 'target'} is not a constructor`);
+    }
     // ★ 关键：如果被 new 调用，this 是新对象，忽略 ctx
     return target.myCall(
       this instanceof Bound ? this : ctx,
       ...preset,
-      ...args
+      ...args,
     );
   }
 
-  // ★ 让 new Bound() 的实例原型正确
-  Bound.prototype = Object.create(target.prototype);
+  // ★ 让 new Bound() 的实例原型链经过 Bound.prototype
+  if (typeof target.prototype === 'object') {
+    Bound.prototype = Object.create(target.prototype, {
+      constructor: { value: Bound, enumerable: false, writable: true, configurable: true },
+    });
+  }
 
   return Bound;
 };
@@ -365,29 +350,28 @@ function Person(name) { this.name = name; }
 const Bound = Person.myBind({ name: 'ignored' }, 'alice');
 
 const p = new Bound();
-p.name;                    // 'alice'（来自预设参数）
-Object.getPrototypeOf(p) === Person.prototype;   // true  ← 原型正确
+p.name;                                          // 'alice'（预设参数生效）
+p instanceof Person;                             // true
+Object.getPrototypeOf(p) === Bound.prototype;    // true
+Object.getPrototypeOf(p) === Person.prototype;   // false（手写版多一层）
 ```
 
-**实测确认**：`bp.name === 'new-name'`（预设参数生效），`instanceof Person === true`。
+**实测**：`new Bound()` 时 `ctx` 被忽略，预设参数按顺序传入；`instanceof Person` 为 `true`。原生 `new Bound()` 的实例原型直接是 `Person.prototype`；手写版是 `instance → Bound.prototype → Person.prototype`，所以精确比较原型会得到 `false`。
 
 **规范依据**：`bind` 返回的函数在 `new` 调用时，`this` 是新建的对象，`boundThis` 被忽略（但预设参数仍然生效）。
 
 **② `Bound.prototype = Object.create(target.prototype)`**
 
-**为什么需要**：让 `new Bound()` 创建的实例，原型链是 `instance → Person.prototype`，这样：
+**为什么需要**：让 `new Bound()` 创建的实例原型链是 `instance → Bound.prototype → Person.prototype`，这样：
+
 - `instance instanceof Person` 为 true
 - `instance` 能访问 `Person.prototype` 上的方法
 
 **如果不设**：`instance` 的原型是 `Bound.prototype`（默认是 `{}`），链上找不到 `Person.prototype`。
 
-**⚠️ 一个细节**：`Bound.prototype.constructor` 会变成 `Object`（因为 `Object.create` 不设 constructor）。严格实现要补：
+`Object.create` 不设 `constructor`，严格实现要一并补成 `Bound`（见上面的代码）。
 
-```js
-Bound.prototype = Object.create(target.prototype, {
-  constructor: { value: Bound, enumerable: false, writable: true, configurable: true },
-});
-```
+**⚠️ 箭头函数/方法简写没有 `prototype`**：`bind` 后可以正常调用，但不能 `new`；直接 `Object.create(undefined)` 会抛 `TypeError`，所以先判 `target.prototype`。
 
 ### 10.4.5 追问：`bind` 能改几次
 
@@ -450,10 +434,11 @@ new A();       // { y: 2 }  ← this.x 白设了
 
 ```js
 const arrow = () => {};
-myNew(arrow);   // 报错（箭头函数没有 prototype，Object.create(undefined) 会抛）
+myNew(arrow);   // TypeError: Object prototype may only be an Object or null: undefined
+new arrow();    // TypeError: arrow is not a constructor
 ```
 
-**规范层面**：箭头函数没有 `[[Construct]]`，`new` 直接抛 `TypeError`。
+`myNew` 是在 `Object.create(undefined)` 处抛；原生 `new` 是因为箭头函数没有 `[[Construct]]` 直接抛。两者都报 `TypeError`，原因不同。
 
 **③ `class` 也必须用 `new`**
 
@@ -489,7 +474,7 @@ function myInstanceof(obj, Ctor) {
 
 | 点 | 说明 |
 |---|---|
-| **① 原始值必须排除** | `1 instanceof Number` 是 **false**（实测确认） |
+| **① 原始值必须排除** | `1 instanceof Number` 是 **false**；不排除的话 `Object.getPrototypeOf(1)` 会装箱成 `Number.prototype`，误判为 true |
 | **② 用 `Object.getPrototypeOf`** | 不用 `__proto__`（遗留特性，`Object.create(null)` 的对象没有） |
 | **③ 循环条件判 `proto`** | 原型链终点是 `null`，`while (proto)` 自然终止 |
 
@@ -506,8 +491,8 @@ Object.create(null) instanceof Object;   // false  ← 没有原型链
 
 | 限制 | 说明 |
 |---|---|
-| **不能跨 realm** | 不同 iframe 的 `Array.prototype` 不同 |
-| **可被 `Symbol.hasInstance` 改写** | `class Even { static [Symbol.hasInstance](n) { return n % 2 === 0 } }` |
+| **不能跨 realm** | 不同 realm（iframe、Node `vm` context）的 `Array.prototype` 不同；`vm.runInNewContext('[1,2]') instanceof Array` → false |
+| **可被 `Symbol.hasInstance` 改写** | 原生会优先查它（`class Even { static [Symbol.hasInstance](n) { return n % 2 === 0 } }`，`2 instanceof Even` → true）；手写版只沿原型链，不支持 |
 | **改 `prototype` 会失效** | `F.prototype = {}` 后旧实例 `instanceof F` 变 false |
 
 ---
@@ -544,7 +529,13 @@ function f(a, b = 1, ...rest) {}
 f.length;      // 1  ← 只算 a
 ```
 
-**所以「有默认参数」的函数没法用这个 `curry`**——要用下面的「不定长」版本。
+`fn.length` 遇到第一个默认参数就停止计数，`curry` 会误判参数已够而提前执行：
+
+```js
+const cdef = curry((a, b = 1) => a + b);
+cdef(1);      // 2（直接执行，b 用默认值）
+cdef(1)(2);   // TypeError: cdef(...) is not a function
+```
 
 ### 10.7.2 不定长版（`add(1)(2)(3)` 无限累加）
 
@@ -586,16 +577,17 @@ add(1)(2)(3)();      // 6
 add(1, 2)(3)();      // 6
 ```
 
-**面试时要先问清**：「是 `add(1)(2)(3)` 隐式转数字，还是 `add(1)(2)(3)()` 显式调用？」——**这个澄清本身就是加分项**。
+题目要求隐式转数字还是 `()` 结束，决定要不要 `valueOf`/`toString`。
 
 ### 10.7.4 带占位符的柯里化（加分版）
 
 ```js
+const _ = Symbol('_');   // 占位符必须和调用方共用同一个 Symbol
+
 function curry(fn) {
-  const PLACEHOLDER = Symbol('_');
   return function curried(...args) {
     // 判断参数是否够（且没有占位符）
-    const valid = args.slice(0, fn.length).filter((a) => a !== PLACEHOLDER);
+    const valid = args.slice(0, fn.length).filter((a) => a !== _);
     if (valid.length >= fn.length) return fn.apply(this, args);
 
     return (...rest) => {
@@ -603,7 +595,7 @@ function curry(fn) {
       const merged = [];
       let ri = 0;
       for (const a of args) {
-        if (a === PLACEHOLDER && ri < rest.length) merged.push(rest[ri++]);
+        if (a === _ && ri < rest.length) merged.push(rest[ri++]);
         else merged.push(a);
       }
       merged.push(...rest.slice(ri));
@@ -612,10 +604,8 @@ function curry(fn) {
   };
 }
 
-curry(fn)(1)(_, 3)(2);     // 占位符被后续参数填上
+curry((a, b, c) => `${a}-${b}-${c}`)(1)(_, 3)(2);   // '1-2-3'
 ```
-
-**这个版本面试很少要求，知道存在即可。**
 
 ---
 
@@ -636,17 +626,19 @@ const pipe = (...fns) => (x) => fns.reduce((acc, fn) => fn(acc), x);
 ```
 compose(f1, f2)(5) = 11   ← f2(5)=10，f1(10)=11
 pipe(f1, f2)(5)    = 12   ← f1(5)=6，f2(6)=12
+compose()(5)       = 5    ← 空参数返回恒等
+compose(f1)(5)     = 6
 ```
 
 ### 10.8.2 关键点
 
 | 点 | 说明 |
 |---|---|
-| **空参数** | `compose()` 应该返回恒等函数 `x => x`（`reduce` 不传初值会抛错，所以传 `x` 作为初值） |
+| **空参数** | 上面的写法用 `x` 作 `reduce` 初值，`compose()`/`pipe()` 返回恒等函数，不需要额外特判 |
 | **`reduce` vs `reduceRight`** | 前者左到右，后者右到左 |
 | **`this`** | 上面的实现不支持 `this`，严格实现要用 `function` 而非箭头 |
 
-**支持空参数和多参数的写法**：
+**需要多参数时**，把 reducer 改成 `(...args) => a(b(...args))`：
 
 ```js
 const compose = (...fns) => {
@@ -656,7 +648,7 @@ const compose = (...fns) => {
 };
 ```
 
-**这个版本支持「第一个函数接收多个参数」**（比如 `compose(f, g)(x, y)` → `f(g(x, y))`）。
+多参数只能给 **最右侧（最先执行）** 的函数：`compose(f, g)(x, y)` → `f(g(x, y))`，`g` 收到 `x`、`y`，`f` 只收到 `g` 的返回值。实测 `compose((x) => x + 1, (x, y) => x + y)(1, 2)` → 4；顺序反过来会得到 `NaN`。
 
 ### 10.8.3 实际用途
 
@@ -700,8 +692,8 @@ class EventEmitter {
   // 一次性订阅
   once(name, fn) {
     const wrapper = (...args) => {
+      this.off(name, wrapper);      // ★ 先摘：fn 里递归 emit 也不会重复
       fn(...args);
-      this.off(name, wrapper);      // ★ 执行后自己摘掉
     };
     return this.on(name, wrapper);
   }
@@ -717,49 +709,32 @@ class EventEmitter {
 
   // 触发
   emit(name, ...args) {
-    // ★ 用 slice() 拷贝：防止回调里 off 导致遍历跳过元素
+    // ★ 用 slice() 拷贝：防止回调里注销自己导致遍历跳过元素
     (this.events.get(name) || []).slice().forEach((fn) => fn(...args));
     return true;
   }
 }
 ```
 
-**实测**：`on` 触发 2 次，`once` 只触发 1 次 ✅。
+**实测**：`on` 两次 emit 触发 2 次；`once` 两次 emit 触发 1 次；`once` 回调里递归 emit 也只触发 1 次。
 
-### 10.8.2 四个必须注意的点
+### 10.9.2 四个必须注意的点
 
 **① `emit` 要用 `slice()` 拷贝数组**
 
 ```js
-// ❌ 如果回调里调了 off，forEach 会跳过下一个元素
+// ❌ 如果回调里注销自己（比如 once），forEach 会跳过下一个元素
 list.forEach((fn) => fn(...args));
 
 // ✅ 拷贝一份再遍历
 list.slice().forEach((fn) => fn(...args));
 ```
 
-**这是最容易被忽略的 bug**：A 回调里注销了 B，会导致 B 后面的元素被跳过。
+实测 `[A, B, C]` 中 A 注销自己：不拷贝只执行 `A, C`（B 被跳过），拷贝后三个都执行。
 
-**② `once` 要先执行再摘掉**
+**② `once` 要先摘再执行**
 
-```js
-// ❌ 先摘掉再执行：如果 fn 抛错，就再也摘不掉了？不，是如果 fn 里又 emit 会重复
-// ✅ 上面的写法是对的：先执行 fn，再 off
-```
-
-**更严谨的写法**（先摘再执行，防止递归 emit 重复）：
-
-```js
-once(name, fn) {
-  const wrapper = (...args) => {
-    this.off(name, wrapper);      // 先摘
-    fn(...args);                  // 再执行
-  };
-  return this.on(name, wrapper);
-}
-```
-
-**两种写法都能工作，但「先摘再执行」能防止「fn 里又 emit 同一事件」导致的重复执行。**
+如果先执行，`fn` 里再 `emit` 同一事件会再次命中自己（实测触发 2 次）；先 `off` 再执行则只触发 1 次，而且 `fn` 抛错也不会留下订阅。
 
 **③ `on` 返回取消函数（比返回 `this` 更易用）**
 
@@ -768,9 +743,7 @@ once(name, fn) {
 const unsub = emitter.on('x', handler);
 unsub();
 
-// ⚠️ 返回 this（链式调用好看，但取消订阅不方便）
-emitter.on('x', h1).on('y', h2);      // 链式
-emitter.off('x', h1);                 // 得自己保存 h1
+// ⚠️ 返回 this 能链式调用，但取消订阅要自己保存 handler
 ```
 
 **Vue 3 的 `watch` 就返回 `stop` 函数**，这是现代 API 的设计趋势。
@@ -811,11 +784,18 @@ Array.prototype.myReduce = function (fn, init) {
     if (arr.length === 0) {
       throw new TypeError('Reduce of empty array with no initial value');
     }
-    acc = arr[0];
-    i = 1;
+    // 跳过开头的空位，找到第一个存在的元素
+    let j = 0;
+    while (j < arr.length && !(j in arr)) j++;
+    if (j === arr.length) {
+      throw new TypeError('Reduce of empty array with no initial value');
+    }
+    acc = arr[j];
+    i = j + 1;
   }
 
   for (; i < arr.length; i++) {
+    if (!(i in arr)) continue;       // 稀疏数组跳过空位
     acc = fn(acc, arr[i], i, arr);
   }
   return acc;
@@ -825,9 +805,16 @@ Array.prototype.myReduce = function (fn, init) {
 **实测**：
 
 ```
-[1,2,3].myReduce((a,b) => a+b, 10)  → 16
-[1,2,3].myReduce((a,b) => a+b)      → 6
-[].myReduce((a,b) => a+b)           → TypeError ✅
+[1,2,3] init 10      → 16
+[1,2,3] 无 init      → 6
+[] 无 init           → TypeError
+[] init 0            → 0
+[1,2] init undefined → NaN（与原生一致）
+[1,,3] init 0        → 4
+[1,,3] 无 init       → 4
+[,1,2] 无 init       → 3
+[,,] 无 init         → TypeError
+[,,] init 0          → 0
 ```
 
 ### 10.10.2 三个关键点
@@ -835,13 +822,8 @@ Array.prototype.myReduce = function (fn, init) {
 **① 用 `arguments.length` 判断而不是 `init === undefined`**
 
 ```js
-// ❌ 错：显式传 undefined 时会被当成「没传」
-[1, 2].reduce((a, b) => a + b, undefined);    // 1+2=3（其实走的是无初始值分支？）
-
-// 实际测试：
 [1, 2].reduce((a, b) => a + b, undefined);    // NaN
-// 因为规范里：如果有 initialValue（即使 undefined），acc = undefined
-// undefined + 1 = NaN
+// 传了 initialValue（值是 undefined），acc 从 undefined 开始
 ```
 
 **规范用 `HasInitialValue`（内部标记），不是判 `undefined`。**
@@ -850,8 +832,10 @@ Array.prototype.myReduce = function (fn, init) {
 
 ```js
 [1, , 3].reduce((a, b) => a + b, 0);    // 4（跳过了空位）
-// 但按规范，回调不执行，空位被跳过
+[, ,].reduce((a, b) => a + b);          // TypeError（没有可用的第一个元素）
 ```
+
+循环里用 `if (!(i in arr)) continue` 跳过空位；无初始值时还要先找到第一个存在的元素作为 `acc`。
 
 **③ 回调接收四个参数**
 
@@ -877,19 +861,19 @@ arr.reduce((acc, cur, index, array) => {}, init);
 
 | 问题 | 说明 |
 |---|---|
-| **① 回调堆积** | 如果回调执行时间 > 间隔，会堆积（下一个还在排队） |
+| **① 回调背靠背** | 如果回调执行时间 > 间隔，下一次触发早已到期，回调结束后立刻再执行，没有空闲 |
 | **② 时间漂移** | 每次执行的实际间隔 ≈ 执行时间 + 间隔，误差累积 |
 | **③ 无法动态调整** | 想改间隔只能 `clearInterval` 再重建 |
 
-**实测验证第 ① 条**：
+**实测第 ① 条**：
 
 ```js
-// setInterval：回调耗时 > 间隔 → 堆积
 setInterval(() => {
   const start = Date.now();
   while (Date.now() - start < 200) {}    // 阻塞 200ms
 }, 100);
-// 结果：回调会一个接一个立即执行，间隔远小于 100ms
+// start 时刻：102 / 302 / 502 / 702
+// 间隔 200ms：下一次触发早已到期，回调背靠背执行，没有 100ms 空闲
 ```
 
 **`setTimeout` 递归能解决**：每次执行完才开始算下一个间隔。
@@ -923,8 +907,10 @@ function mySetInterval(fn, delay) {
 | 点 | 说明 |
 |---|---|
 | **`tick` 里先 `fn()` 再 `setTimeout`** | 保证「执行完才计时」，不堆积 |
-| **`stopped` 标记** | 防止 `clear` 后已经在队列里的 `tick` 还执行 |
+| **`stopped` 标记** | 防止 `clear` 后已排队的 `tick` 再执行回调 |
 | **返回 `{ clear }`** | 模仿 `clearInterval` 的用法 |
+
+**实测**（`delay=20`）：start 时刻 `21 / 42 / 63 / 84 / 104 / 125`；`clear` 在首次 tick 前调用 → 0 次；在回调内 `clear` → 2 次后停止。
 
 ### 10.12.3 追问：那「立即执行首次」怎么做
 
@@ -944,6 +930,8 @@ function mySetInterval(fn, delay, immediate = false) {
   return { clear: () => { stopped = true; clearTimeout(timer); } };
 }
 ```
+
+实测（`delay=30`）：start 时刻 `0 / 32 / 64 / 96`，首次同步执行。
 
 ### 10.12.4 追问：要「精确间隔」怎么办
 
@@ -969,9 +957,9 @@ function preciseInterval(fn, delay) {
 }
 ```
 
-**`next += delay` 而不是 `next = Date.now() + delay`**——这样才能补偿执行误差，保持长期平均间隔准确。
+**`next += delay` 而不是 `next = Date.now() + delay`**——这样才能补偿执行误差，保持长期平均间隔准确。前提是单次执行时间小于 `delay`；如果一直超过，`wait` 会一直是 0，只能背靠背执行（实测 `fn` 80ms / `delay` 50 → `50 / 131 / 212 / 293`）。
 
-**这个细节答出来很加分**：它区分了「相对间隔」和「绝对时间点」两种策略。
+实测（`fn` 阻塞 20ms，`delay=50`）：相对间隔 `51 / 122 / 193 / 263`，精确间隔 `50 / 101 / 150 / 200 / 251`。
 
 ---
 
@@ -979,24 +967,28 @@ function preciseInterval(fn, delay) {
 
 | 坑 | 正确说法 |
 |---|---|
-| 防抖里写 `fn(...args)` 而不用 `apply` | `this` 会丢（尤其在箭头函数里） |
+| 防抖里写 `fn(...args)` 而不用 `apply` | `this` 会丢（非严格函数是 `globalThis`，严格函数是 `undefined`） |
 | 节流只用时间戳版 | 会丢最后一次，要用合体版 |
+| 节流尾执行不更新 args/this | 补的那次会用第一次触发的参数和 `this` |
 | `bind` 手写忘了处理 `new` | `new Bound()` 时 `this` 应该是新对象 |
 | `bind` 忘了设 `Bound.prototype` | `instanceof` 会失效 |
+| `bind` 对箭头函数直接 `Object.create` | 没有 `prototype`，`Object.create(undefined)` 会抛 |
 | `call` 用字符串键挂方法 | 会覆盖 `ctx` 上的同名属性，用 `Symbol` |
-| `call` 忘了 `delete` | 污染 `ctx` |
+| `call` 忘了 `delete` / 没用 `finally` | 污染 `ctx`；回调抛错时残留 |
+| `call` 原始值不装箱 | `Object.defineProperty` 直接对原始值抛 `TypeError` |
 | `new` 判断返回值只判 `object` | 还要判 `function` |
 | `new` 忘了排除 `null` | `null` 是原始值，要返回新对象 |
-| `instanceof` 没排除原始值 | `1 instanceof Number` 是 false |
+| `instanceof` 没排除原始值 | `Object.getPrototypeOf(1)` 会装箱，误判 true |
 | `instanceof` 用 `__proto__` | 应该用 `Object.getPrototypeOf` |
 | `curry` 用 `fn.length` 判断参数够不够 | 有默认值/rest 参数时 `length` 不准 |
 | `add(1)(2)(3)` 忘了 `valueOf`/`toString` | 隐式转换拿不到数值 |
 | `add(1)(2)(3) === 6` 以为是 true | ❌ `===` 不触发转换 |
-| `emit` 用 `forEach` 不拷贝 | 回调里 `off` 会导致跳过元素 |
+| `emit` 用 `forEach` 不拷贝 | 回调里注销自己（如 `once`）会跳过下一个 |
 | `once` 忘了摘掉自己 | 会重复执行 |
 | 用对象存事件列表 | `'toString'` 等键有原型链干扰，用 `Map` |
 | `myReduce` 用 `init === undefined` 判断 | 应该用 `arguments.length` |
-| `setTimeout` 版 `setInterval` 忘了 `stopped` 标记 | `clear` 后可能还执行一次 |
+| `myReduce` 不判 `i in arr` | 稀疏数组会把空位算成 `undefined`，结果变 `NaN` |
+| `setTimeout` 版 `setInterval` 忘了 `stopped` 标记 | `clear` 后已排队的 tick 还会执行回调 |
 
 ---
 
@@ -1004,34 +996,23 @@ function preciseInterval(fn, delay) {
 
 ### 30 秒版（防抖节流）
 
-> **防抖**是「事件停止触发 `wait` 毫秒后才执行一次」——适合搜索联想、表单校验。
-> **节流**是「`wait` 毫秒内最多执行一次」——适合滚动、拖拽。
-> 防抖的关键是「每次触发都清掉上一个定时器」；节流有三种实现：时间戳版（首执行、丢末次）、定时器版（末执行、首延迟）、合体版（首末都执行，推荐）。
-> 两个都必须用 `fn.apply(this, args)` 保留 `this` 和参数，还要提供 `cancel` 方法供组件卸载时清理。
+- 防抖：停止触发 `wait` 后执行一次；每次触发先 `clearTimeout`，用 `fn.apply(this, args)` 保留 `this` 和参数；补 `immediate`（首次立即执行）和 `cancel`（卸载清理）。
+- 节流：`wait` 内最多执行一次；三版是时间戳（首执行、丢末次）、定时器（尾执行、首延迟）、合体（首尾都执行，尾执行用最新参数和 `this`）。
+- 实测：10 次触发、`wait=100` → 防抖 1 次，合体节流 2 次。
 
 ### 30 秒版（`call`/`apply`/`bind` 手写）
 
-> `call` 的核心是「把函数临时挂到目标对象上当方法调用」——用 `Symbol` 作键避免属性覆盖，`Object.defineProperty` 设 `enumerable: false`，用完 `delete` 清理。
-> `apply` 就是把数组展开后调 `call`。
-> `bind` 复杂一点：要返回一个新函数，且**必须处理 `new` 调用的情况**——被 `new` 时 `this` 应该是新建对象而不是绑定的 `ctx`，所以用 `this instanceof Bound ? this : ctx` 判断；还要设 `Bound.prototype = Object.create(target.prototype)` 保证 `instanceof` 正确。
+- `call`：把函数临时挂到 `ctx` 上当方法；`Symbol` 作键、`enumerable: false`、`try/finally` 清理；`null`/`undefined` 走 `globalThis`，原始值 `Object()` 装箱。
+- `apply`：`myCall(ctx, ...Array.from(args))`，兼容数组、`arguments`、类数组和 `null`。
+- `bind`：返回新函数；`new` 调用时用 `this instanceof Bound` 忽略 `ctx`，并用 `Bound.prototype = Object.create(target.prototype)` 保住 `instanceof`；没有 `prototype` 的函数只可调用、不可 `new`。`bind` 只生效一次，预设参数可叠加。
 
 ### 2 分钟版（把这一组串起来讲，推荐）
 
-> 这一组手写题有个共同点：**都是在「模拟语言内置行为」**，所以核心是「规范怎么定义的」。
->
-> **防抖节流**是最常考的。防抖是「清零重计时」，节流是「匀速放行」。防抖要补 `immediate`（首次立即执行，按钮防连击）和 `cancel`（卸载时清理）。节流三个版本必须都答得出——时间戳版会丢最后一次，定时器版首次有延迟，合体版用 `remaining` 计算补齐，首末都执行。实测数据可以加强说服力：100ms 内触发 10 次，防抖执行 1 次，节流执行 2 次。
->
-> **`call`/`apply` 是同一套实现**，核心技巧是「临时挂方法」。三个细节：用 `Symbol` 当键避免覆盖、`enumerable: false` 避免污染枚举、用完 `delete`。
->
-> **`bind` 有两个坑**。一是 `new` 调用时 `ctx` 要失效——规范里 `BoundFunction` 被 `new` 时 `this` 是新对象，所以要用 `this instanceof Bound` 判断。二是要设 `Bound.prototype`，否则 `new Bound()` 出来的实例原型链断了，`instanceof` 会失败。还有个冷知识：`bind` 只能绑一次，再次 `bind` 新 `ctx` 会被忽略。
->
-> **`new` 四步**里第 ④ 步最容易错：要判「返回的是对象**或函数**」，而且 `null` 要排除。
->
-> **`instanceof`** 核心是沿 `Object.getPrototypeOf` 找，两个坑：原始值直接 false、循环条件判 `proto` 为 null 终止。
->
-> **发布订阅**最容易忽略的是 `emit` 要用 `slice()` 拷贝数组——否则回调里调 `off` 会导致 `forEach` 跳过元素。另外 `on` 返回 unsubscribe 函数比返回 `this` 更实用，Vue 3 的 `watch` 返回 `stop` 也是这个设计。
->
-> **`setTimeout` 实现 `setInterval`** 的理由要答出来：`setInterval` 在回调耗时超过间隔时会**堆积**，而且有累积漂移；`setTimeout` 递归是「执行完才开始计时」，不会堆积。如果要精确间隔，还得用 `next += delay` 的绝对时间点策略补偿耗时。
+- 共同点：都是在「模拟语言内置行为」，先讲规范再写代码。
+- 防抖/节流：防抖是「停止后执行一次」，节流是「`wait` 内最多一次」；节流三版要都能说，合体版的尾执行要用最新参数和 `this`；实测 10 次触发 → 防抖 1 次、合体节流 2 次。
+- `call`/`apply`/`bind`：`call` 的核心是临时挂方法（`Symbol` + 不可枚举 + `finally delete`），`apply` 负责把类数组展开；`bind` 的难点是 `new` 时忽略 `ctx`、`Bound.prototype` 保住 `instanceof`，且再次 `bind` 不会改变 `this`。
+- `new`/`instanceof`：`new` 第 4 步判对象或函数、排除 `null`；`instanceof` 排除原始值、沿 `Object.getPrototypeOf` 找到 `null` 为止，原生还会查 `Symbol.hasInstance`。
+- 发布订阅/`reduce`/`setInterval`：`emit` 必须拷贝（`once` 会在回调里注销自己），`once` 先摘再执行；`reduce` 用 `arguments.length` 判初始值并跳过空位；`setInterval` 的间隔会被回调耗时占满且累积漂移，`setTimeout` 递归不堆积，精确间隔用 `next += delay`。
 
 ### 追问表
 
@@ -1040,22 +1021,16 @@ function preciseInterval(fn, delay) {
 | 防抖和节流的区别 | 「等你停下来」vs「按节奏来」 |
 | 防抖的 `immediate` 是什么 | 首次立即执行，之后 `wait` 内忽略 |
 | 节流为什么要合体版 | 时间戳版丢末次、定时器版首次延迟 |
-| 为什么用 `apply` 不用直接调 | 保留 `this` 和展开参数 |
-| `call` 为什么要用 `Symbol` | 避免覆盖 `ctx` 同名属性 |
-| `call` 为什么要 `delete` | 不污染 `ctx` |
 | `bind` 后还能 `new` 吗 | 能，且 `this` 是新对象，`ctx` 失效 |
 | `bind` 为什么要设 `prototype` | 保证 `instanceof` 和原型方法可用 |
-| `bind` 能绑多次吗 | 不能，只有第一次生效 |
+| `bind` 能绑多次吗 | 不能，只有第一次的 `this` 生效 |
 | `new` 的第 4 步要注意什么 | 判对象**或函数**，并排除 `null` |
 | `instanceof` 能判断原始值吗 | 不能，`1 instanceof Number` 是 false |
-| `curry` 用 `fn.length` 有什么问题 | 有默认值/rest 参数时不准 |
 | `add(1)(2)(3)` 靠什么拿值 | `valueOf`（数值）/ `toString`（字符串） |
 | `add(1)(2)(3) === 6` 是 true 吗 | 不是，`===` 不触发转换 |
-| `compose` 和 `pipe` 区别 | 右到左 vs 左到右 |
-| `emit` 为什么要 `slice` | 回调里 `off` 会导致跳过元素 |
-| 发布订阅和观察者区别 | 发布订阅有事件中心（解耦） |
+| `emit` 为什么要 `slice` | 回调里注销自己（如 `once`）会跳过下一个 |
 | `reduce` 怎么判断有没有初始值 | `arguments.length`，不是 `=== undefined` |
-| 为什么要 `setTimeout` 实现 `setInterval` | `setInterval` 会堆积、有漂移 |
+| 为什么要 `setTimeout` 实现 `setInterval` | 回调背靠背、有累积漂移 |
 | 怎么做到精确间隔 | 用 `next += delay` 绝对时间点补偿 |
 
 ---
@@ -1067,62 +1042,67 @@ function preciseInterval(fn, delay) {
   语义：停止触发 wait 后执行一次
   实现：每次 clearTimeout 再 setTimeout
   ★ fn.apply(this, args) 保 this 和参数
-  ★ immediate：首次立即执行（按钮防连击）
-  ★ cancel：卸载时清理
-  实测：100ms 内 10 次 → 执行 1 次（参数是最后一次）
+  ★ immediate：首次立即执行；cancel：卸载清理
+  实测：10 次@10ms → 1 次（普通参数 9 / immediate 参数 0）
 
 节流
   语义：wait 内最多执行一次
-  三版：时间戳（首执行丢末次）/ 定时器（末执行首延迟）/ 合体（首末都执行）
-  ★ 合体版用 remaining = wait - (now - last) 计算补齐
-  实测：100ms 内 10 次 → 2 次；1000ms 每 50ms → 11 次
+  三版：时间戳（首执行丢末次）/ 定时器（尾执行首延迟）/ 合体（首尾都执行）
+  ★ 合体版 remaining = wait - (now - last)；尾执行用最新 args/this
+  实测：10 次@10ms → 2 次；20 次@50ms → 11 次
 
 call / apply
   核心：把函数临时挂到 ctx 上当方法
-  ★ Symbol 作键避免覆盖 + enumerable: false + delete 清理
-  ★ ctx = ctx ?? globalThis（非严格下 null 指向全局）
-  apply = myCall(ctx, ...args)
+  ★ Symbol 作键 + enumerable: false + try/finally delete
+  ★ ctx == null → globalThis；原始值 Object(ctx) 装箱（严格函数原生不装箱）
+  apply = myCall(ctx, ...Array.from(args))，兼容类数组和 null
 
 bind
   返回新函数，要处理两件事：
   ★ new 调用时 ctx 失效：this instanceof Bound ? this : ctx
-  ★ Bound.prototype = Object.create(target.prototype) 保 instanceof
-  ★ bind 只能绑一次，再 bind 新 ctx 被忽略
+  ★ Bound.prototype = Object.create(target.prototype) 保 instanceof（比原生多一层）
+  ★ 无 prototype 的函数（箭头/方法简写）只能调用，不能 new
+  ★ bind 只绑一次，预设参数可叠加
 
 new
   ① Object.create(Ctor.prototype) ② apply ③ 返回对象/函数则用它，否则用 obj
   ★ 必须判 'function'；必须排除 null
+  ★ 箭头函数没有 [[Construct]]；class 必须 new
 
 instanceof
   沿 Object.getPrototypeOf 找，while (proto) 判 null 终止
-  ★ 原始值直接 false
-  ★ 不用 __proto__（遗留特性）
-  限制：不能跨 realm / 可被 Symbol.hasInstance 改写 / 改 prototype 会失效
+  ★ 原始值直接 false（否则 Object.getPrototypeOf(1) 会装箱误判）
+  ★ 不用 __proto__
+  限制：不能跨 realm / 原生会查 Symbol.hasInstance / 改 prototype 会失效
 
-柯里化+ add(1)(2)(3)
+柯里化 + add(1)(2)(3)
   curry：args.length >= fn.length 则执行
-  ★ fn.length 不含默认值/rest 参数
+  ★ fn.length 遇到第一个默认值/rest 就停，默认参数会提前执行
+  占位符：Symbol 必须定义在外层，调用方和 curry 共用同一个
   add：递归 + ★ valueOf/toString 让隐式转换拿值
   ★ add(1)(2)(3) === 6 是 false（=== 不转换）
   若要求 add(1)(2)(3)()，则不需要 valueOf
 
 compose / pipe
   compose = reduceRight（右到左）；pipe = reduce（左到右）
-  ★ 空参数返回恒等函数（reduce 初值传 x）
+  ★ 初值 x 让空参数返回恒等函数
+  ★ 多参数只能给最右侧（最先执行）的函数
   Redux 的 applyMiddleware 就是 compose
 
 发布订阅
-  on 返回 unsubscribe（比返回 this 实用）；once 先摘再执行
-  ★ emit 必须 slice() 拷贝，否则回调里 off 会跳过元素
+  on 返回 unsubscribe；once 先摘再执行（防递归 emit 重复）
+  ★ emit 必须 slice() 拷贝，否则回调里注销自己会跳过下一个
   ★ 用 Map 不用普通对象（避免原型链干扰）
   发布订阅 = 观察者 + 事件中心
 
 reduce
-  ★ 用 arguments.length < 2 判断，不能 init === undefined
+  ★ arguments.length < 2 判初始值，不能 init === undefined
+  ★ 跳过空位：if (!(i in arr)) continue；全空位且无初始值 → TypeError
   空数组 + 无初始值 → TypeError
 
 setTimeout → setInterval
-  理由：setInterval 回调超时会【堆积】+ 累积漂移
+  理由：setInterval 回调耗时超过间隔时背靠背执行，且有累积漂移
   实现：tick 里先 fn() 再 setTimeout，加 stopped 标记
   ★ 精确间隔用 next += delay（补偿耗时），不是 next = now + delay
+  实测：fn 20ms + delay 50 → 相对 51/122/193；精确 50/101/150
 ```

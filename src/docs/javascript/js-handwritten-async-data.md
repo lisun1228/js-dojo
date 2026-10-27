@@ -1,8 +1,7 @@
 # JS · 11 手写实现（下）· 异步与数据处理
 
-> 本册覆盖：Promise 全实现、`Promise.all`、`Promise.retry`、并发限制、深拷贝、数组去重、扁平化、千分位、URL 解析、括号匹配、LRU
-> **题单这些全部写着「同编程题文档第 X 题」或「同算法文档第 18 题」——那些文档不在工作区。**
-> 所有实现在 Node 22 跑过，**并发限制/深拷贝/去重对比都给实测数据**。
+> 覆盖：Promise 全实现、`Promise.all`、`Promise.retry`、并发限制、深拷贝、数组去重、扁平化、千分位、URL 解析、括号匹配、LRU
+> 示例输出均为 Node 22 实跑结果；浏览器专属行为只做定性说明，不编造数字
 
 ---
 
@@ -123,10 +122,10 @@ class MyPromise {
   }
 
   finally(cb) {
-    // ★ finally 不改变值/错误（除非 cb 抛错）
+    // ★ finally 不改变值/错误（除非 cb 抛错）；cb 返回 Promise 时要等它完成
     return this.then(
-      (v) => { cb(); return v; },
-      (r) => { cb(); throw r; }
+      (v) => MyPromise.resolve(cb()).then(() => v),
+      (r) => MyPromise.resolve(cb()).then(() => { throw r; }),
     );
   }
 
@@ -140,7 +139,7 @@ class MyPromise {
 }
 ```
 
-### 11.2.2 六个关键点（这才是评分点）
+### 11.2.2 六个关键点
 
 | # | 点 | 不写会怎样 |
 |---|---|---|
@@ -149,19 +148,19 @@ class MyPromise {
 | **3** | **状态不可逆** | 重复 `resolve` 会覆盖，`then` 触发两次 |
 | **4** | **`then` 回调异步执行** | `promise.then(fn); console.log(x);` 会先打 `fn` 再打 `x`（顺序反了） |
 | **5** | **`then` 返回值递归吸收** | `then` 里 `return Promise` 时，下一个 `then` 拿到的是 Promise 对象而不是值 |
-| **6** | **值/错误穿透** | `.then(fn).then(fn2)` 中间没传 `onRejected` 时，错误会丢 |
+| **6** | **值/错误穿透** | `.then(fn).then(fn2)` 中间没传 `onRejected` 时，原始错误会被换成 `TypeError: cb is not a function` |
 
 **第 4 点为什么用 `queueMicrotask` 而不是 `setTimeout(fn, 0)`**：
 
 - `setTimeout` 是**宏任务**，会在下一轮事件循环
 - 原生 Promise 用的是**微任务**，必须用 `queueMicrotask`（或 `process.nextTick` / `MutationObserver`）
 
-**用 `setTimeout` 会导致和原生 Promise 的顺序不一致**：
+两者都是微任务，顺序只由注册先后决定；换成 `setTimeout` 就晚一个宏任务：
 
 ```js
-Promise.resolve().then(() => console.log('native'));
-myPromise.resolve().then(() => console.log('mine'));
-// 如果 mine 用 setTimeout，输出顺序会反
+new MyPromise((r) => r(1)).then(() => log('mine'));
+Promise.resolve().then(() => log('native'));
+// mine → native；若 flush 改用 setTimeout，则 native → mine
 ```
 
 ### 11.2.3 实测验证
@@ -170,13 +169,11 @@ myPromise.resolve().then(() => console.log('mine'));
 then1: ok           ← 异步 resolve 后能正确走 then
 then2: ok!
 catch: boom         ← 链中抛错被 catch
-恢复: recovered     ← catch 返回后链恢复
+恢复: recovered     ← catch 返回新值后链继续
 MyPromise.all([]): []
 MyPromise.all([1, MyPromise.resolve(2)]): [1, 2]
 all reject: x
 ```
-
-**全部通过。**
 
 ### 11.2.4 追问：为什么 `then` 要返回新 Promise
 
@@ -217,31 +214,20 @@ static all(list) {
 }
 ```
 
-### 11.3.2 三个致命细节
+### 11.3.2 三个细节
 
 **① 空数组**
 
-```
-promises.length === 0
-    ↓
-forEach 一次都不执行
-    ↓
-count 永远是 0
-    ↓
-++count === 0 永远 false
-    ↓
-Promise 永久 pending  💥
-```
+空数组时 `forEach` 一次都不执行，没有任何代码调用 `resolve` → 永久 pending。所以必须先判 `len === 0`。
 
-**这就是「看起来对、但在边界上死锁」的典型 bug。**
+**② 稀疏数组不用改成 `for`**
 
-**② 用 `for` 而不是 `forEach`**
-
-**稀疏数组下 `forEach` 会跳过空洞**，导致某些索引永远不被写入、`count` 永远到不了 `len`。
+`[...list]` 展开时会把空位变成 `undefined`，`forEach` 照常遍历 3 次，结果与原生一致：
 
 ```js
 const sparse = [Promise.resolve(1), , Promise.resolve(3)];
-// forEach 只遍历 2 次，count 最多到 2，永远不等于 3
+MyPromise.all(sparse);   // [1, undefined, 3]
+Promise.all(sparse);     // [1, undefined, 3]
 ```
 
 **③ `results[i] = v` 而不是 `push`**
@@ -258,11 +244,11 @@ Promise.all([slow(100), fast(10)]);
 **没停。**
 
 ```js
-const p1 = fetch('/a');       // 5 秒
-const p2 = fetch('/b');       // 立即失败
+const p1 = fetch('/a');       // 慢请求
+const p2 = fetch('/b');       // 先失败
 Promise.all([p1, p2]).catch(() => {});
 
-// p1 仍然会跑完 5 秒，只是结果没人要了
+// p1 仍然会跑完，只是结果没人要了
 ```
 
 **要真正取消**必须 `AbortController`：
@@ -371,7 +357,7 @@ Promise.resolve().then(fn).then(resolve).catch(...);
 
 ```js
 retry(fn, 3)     // 总共尝试几次？
-// 我的实现：attempt(3) → 失败 attempt(2) → 失败 attempt(1) → 失败 attempt(0) → reject
+// 本实现：attempt(3) → 失败 attempt(2) → 失败 attempt(1) → 失败 attempt(0) → reject
 // 即：初始 1 次 + 重试 3 次 = 4 次
 ```
 
@@ -410,10 +396,11 @@ async function asyncPool(limit, items, iteratorFn) {
     // ★ 用 Promise.resolve().then 包一层，让 iteratorFn 异步启动
     const p = Promise.resolve().then(() => iteratorFn(item));
     ret.push(p);
-    executing.add(p);
 
-    const clean = () => executing.delete(p);
-    p.then(clean, clean);
+    // ★ race 只看「不会 reject」的副本，否则一个失败就中断后续入队
+    const slot = p.catch(() => {});
+    executing.add(slot);
+    slot.then(() => executing.delete(slot));
 
     // ★ 达到上限就等「任意一个完成」
     if (executing.size >= limit) {
@@ -429,8 +416,8 @@ async function asyncPool(limit, items, iteratorFn) {
 
 ```
 6 个任务，limit=2，每个耗时 50ms
-→ 总耗时 153ms（期望 3 批 × 50ms = 150ms）
-→ 最大并发 2  ✅
+→ 总耗时约 152ms（期望 3 批 × 50ms = 150ms）
+→ 最大并发 2
 ```
 
 ### 11.5.2 四个关键点
@@ -438,8 +425,8 @@ async function asyncPool(limit, items, iteratorFn) {
 | 点 | 说明 |
 |---|---|
 | **① `Promise.resolve().then(() => iteratorFn(item))`** | 让 `iteratorFn` 在**微任务**里启动，避免同步执行导致 `executing` 状态不对 |
-| **② `executing.add(p)` 要在启动后立即加** | 否则下一轮判断时 `size` 不准 |
-| **③ `p.then(clean, clean)` 两个都要传** | 成功的和失败的任务都要从 `executing` 里删掉 |
+| **② `executing` 里放 `p.catch(() => {})` 的副本** | 直接放 `p` 的话，失败会让 `Promise.race` 抛错，循环中断 |
+| **③ `slot.then(() => executing.delete(slot))`** | 任务结束后从 `executing` 里删掉，空出并发位 |
 | **④ `await Promise.race(executing)`** | 等「任意一个完成」，不是等全部 |
 
 ### 11.5.3 追问：为什么不用 `Promise.all` 分批
@@ -457,9 +444,15 @@ for (let i = 0; i < items.length; i += limit) {
 
 ### 11.5.4 追问：怎么控制「失败不中断」
 
+真正中断入队的不是 `Promise.all(ret)`，而是 `await Promise.race(executing)`：如果直接把 `p` 放进 `executing`，失败的 promise 会让 race 跟着 reject，循环抛出，后面的 item 根本没启动。
+
+实测（limit=2，第 2 个任务 10ms 失败、其余 50ms）：只有 `1, 2` 启动了。
+
+修法就是上面的 `p.catch(() => {})`：race 只看不会 reject 的副本，循环继续补位；`ret` 里仍是原始 promise，最后的 `Promise.all(ret)` 照常把失败抛出来。
+
+要让失败也继续，就换成 `Promise.allSettled(ret)`：
+
 ```js
-// 默认：任一失败就 reject（因为 Promise.all）
-// 需要「失败也继续」：
 const results = await Promise.allSettled(ret);
 ```
 
@@ -485,7 +478,7 @@ asyncPool(limit, items, async (item) => {
 | **`structuredClone`** | ✅ | ✅ | ✅ 支持 `Map`/`Set`/`Date` | ❌ 抛错 | **现代首选** |
 | **手写递归** | ✅ | ✅（用 WeakMap） | ✅ 可控 | 看实现 | **面试要考** |
 
-### 11.6.2 `JSON` 方案的六个丢失（实测）
+### 11.6.2 `JSON` 方案的丢失（实测）
 
 ```js
 const src = { d: new Date(0), r: /a/g, m: new Map([['k',1]]), s: new Set([1]), f() {}, u: undefined, sym: Symbol('x') };
@@ -503,11 +496,11 @@ copy.s;                 // {}
 **还有两个**：
 
 ```js
-// ⑦ 循环引用直接抛错
+// 循环引用直接抛错
 const a = {}; a.self = a;
 JSON.parse(JSON.stringify(a));   // TypeError: Converting circular structure to JSON
 
-// ⑧ NaN / Infinity 变成 null
+// NaN 变成 null
 JSON.stringify({ x: NaN });      // '{"x":null}'
 ```
 
@@ -563,7 +556,7 @@ function deepClone(obj, cache = new WeakMap()) {
 | # | 点 | 说明 |
 |---|---|---|
 | **1** | **`WeakMap` 缓存循环引用** | `cache.set` 必须在**递归子属性之前** |
-| **2** | **`Object.prototype.toString.call`** | 比 `instanceof` 可靠（能跨 realm，且不受 `Symbol.toStringTag` 伪造影响……实际上会被影响） |
+| **2** | **`Object.prototype.toString.call`** | 能跨 realm（`instanceof` 不能）；但会被 `Symbol.toStringTag` 伪造，不能当绝对可靠的类型判断 |
 | **3** | **`Reflect.ownKeys`** | 能拿到 Symbol 键和不可枚举键；`Object.keys` 拿不到 |
 | **4** | **`Object.create(Object.getPrototypeOf(obj))`** | 保留原型，class 实例拷完还是那个类 |
 | **5** | **`Map`/`Set` 要先 `cache.set` 再递归** | 否则 `Map` 里自引用会死循环 |
@@ -585,10 +578,9 @@ obj.forEach((v, k) => result.set(k, deepClone(v, cache)));
 ### 11.6.5 实测验证
 
 ```
-日期: true（是 Date）| 正则: a gi
-Map 深拷贝: true（内部对象不是同一引用）
-Set: 2
-循环引用: true（copy.self === copy）
+日期: true（instanceof Date）| 正则: /a/gi，lastIndex: 0
+Map 内部对象不是同一引用: true
+Set: 2 | 循环引用: true（copy.self === copy）
 Symbol 键: 9（Reflect.ownKeys 拿到了）
 嵌套数组不同引用: true
 ```
@@ -600,17 +592,17 @@ const copy = structuredClone(obj);
 ```
 
 **优点**：原生、快、支持循环引用和大部分内置类型。
-**四个限制**：
+**五个限制**：
 
 | 限制 | 说明 |
 |---|---|
-| **不能拷函数** | 抛 `DataCloneError` |
+| **不能拷函数** | 函数值抛 `DataCloneError` |
+| **不能拷 Symbol 值** | 抛 `DataCloneError` |
+| **Symbol 键** | 不报错，直接被丢弃 |
 | **不能拷 DOM 节点** | 抛错 |
-| **不能拷原型链** | class 实例会变成普通对象 |
-| **不能拷 Symbol 键** | 会被忽略 |
-| **不支持 `Error` 的子类属性**（部分） | — |
+| **不保留原型** | class 实例变成普通对象，`instanceof` 为 `false` |
 
-**所以「需要保留类原型」或「要拷函数引用」时，还得手写。**
+**所以「需要保留类原型」或「要拷函数 / Symbol」时，还得手写。**
 
 ---
 
@@ -625,8 +617,8 @@ const bySet = (arr) => [...new Set(arr)];
 // ② filter + indexOf（O(n²)，会丢 NaN）
 const byIndexOf = (arr) => arr.filter((v, i, a) => a.indexOf(v) === i);
 
-// ③ filter + includes（O(n²)，能保留 NaN）
-const byIncludes = (arr) => arr.filter((v, i, a) => a.indexOf(v) === i && !(Number.isNaN(v) && a.slice(0, i).some(Number.isNaN)));
+// ③ filter + includes（O(n²)，用 SameValueZero，能保留 NaN）
+const byIncludes = (arr) => arr.filter((v, i, a) => !a.slice(0, i).includes(v));
 
 // ④ Map（O(n)，能保留 NaN）
 const byMap = (arr) => {
@@ -675,18 +667,18 @@ const users = [
   { id: 1, name: 'c' },
 ];
 
-// ✅ 保留第一个
-const unique = [...new Map(users.map((u) => [u.id, u])).values()];
-// [{id:1,name:'a'}, {id:2,name:'b'}]
-
-// ✅ 保留最后一个
+// ✅ 保留最后一个：Map 里同 key 后写入的会覆盖先写入的
 const uniqueLast = [...new Map(users.map((u) => [u.id, u])).values()];
-// 反着 map 就行：users.reverse().map(...)
+// [{id:1,name:'c'}, {id:2,name:'b'}]
+
+// ✅ 保留第一个：只留下某个 id 首次出现的位置
+const uniqueFirst = users.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i);
+// [{id:1,name:'a'}, {id:2,name:'b'}]
 ```
 
 **为什么不能直接用 `Set`**：`Set` 对对象是引用比较，`{id:1}` 和 `{id:1}` 是两个不同的对象。
 
-**⚠️ 一个陷阱**：`byKey` 的 key 函数如果用 `String(v)`，`1` 和 `'1'` 会冲突；如果用 `JSON.stringify`，对象属性顺序不同也会冲突。
+**⚠️ 一个陷阱**：`byKey` 的 key 函数如果用 `String(v)`，`1` 和 `'1'` 会被当成同一个 key；如果用 `JSON.stringify`，属性顺序不同的等价对象会得到不同 key，反而合并不了。
 
 ```js
 // ❌ 冲突
@@ -758,7 +750,7 @@ function flattenIter(arr, depth = Infinity) {
 无嵌套         → [1,2,3]
 ```
 
-**⚠️ 我第一版写的 `stack.push(...v.map(x => [x, d-1]).reverse())` 是错的**——输出成了 `[2,3,4,5,1]`。**这个「reverse 后 push」的写法非常容易写错**，最好用上面的「索引栈」。
+**「reverse 后 push」的写法很容易把顺序写反**，优先用上面的「索引栈」。
 
 ### 11.8.3 原生 `flat`
 
@@ -816,7 +808,7 @@ const locale = (n) => n.toLocaleString('en-US');
 const intl = (n) => new Intl.NumberFormat('en-US').format(n);
 ```
 
-**实测**（`1234567.891`）：`1,234,567.891`（四种都对）
+**实测**（`1234567.891`）：`1,234,567.891`（五种都对）
 
 ### 11.9.2 正则怎么读
 
@@ -846,17 +838,17 @@ String(1234.5678).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 // '1,234.5,678'  ← ❌ 小数部分也被分组了！
 ```
 
-**所以处理小数必须用 `regexDecimal`（先拆分整数和小数）。**
+**所以处理小数必须用 `regexDecimal`（先拆分整数和小数）。**（`toLocaleString` / `Intl` 默认最多保留 3 位小数：`1234.5678` → `1,234.568`）
 
-**② 负数要单独处理**
+**② 负数要先剥符号**
 
 ```js
-// ❌ 朴素循环版
+// ❌ 不剥负号的循环版
 for (let i = 0; i < int.length; i++) { if (i > 0 && (int.length - i) % 3 === 0) r += ','; }
 // 输入 -123456 → '-,123,456'  ← 负号被当成数字位了！
 ```
 
-**实测确认**：`loop(-123456)` 得到 `-,123,456`（错），`loop(-1234567)` 碰巧得到 `-1,234,567`（对）。
+**实测**：不剥符号时 `-123456` 得到 `-,123,456`（错），`-1234567` 碰巧得到 `-1,234,567`（对）；上面的 `loop` 先剥符号，两个都得到 `-123,456` / `-1,234,567`。
 
 **这种「有时候对」的 bug 最危险**——必须显式剥离符号。
 
@@ -879,13 +871,16 @@ function parseQuery(url) {
   for (const pair of qs.split('&')) {
     if (!pair) continue;
 
-    const [k, v = ''] = pair.split('=');
+    // ★ 按第一个 = 切分，值里可能还有 =（如 base64）
+    const eq = pair.indexOf('=');
+    const k = eq === -1 ? pair : pair.slice(0, eq);
+    const v = eq === -1 ? '' : pair.slice(eq + 1);
     const key = decodeURIComponent(k);
     // ★ + 要还原成空格（表单编码规则）
     const val = decodeURIComponent(v.replace(/\+/g, ' '));
 
-    // ★ 重复 key 变数组
-    if (key in res) res[key] = [].concat(res[key], val);
+    // ★ 重复 key 变数组；必须用 hasOwnProperty，`in` 会命中原型链
+    if (Object.prototype.hasOwnProperty.call(res, key)) res[key] = [].concat(res[key], val);
     else res[key] = val;
   }
   return res;
@@ -897,9 +892,12 @@ function parseQuery(url) {
 ```js
 parseQuery('https://a.com/p?a=1&b=%E4%B8%AD&c=x+y&a=2#hash')
 // { a: ['1', '2'], b: '中', c: 'x y' }
+
+parseQuery('https://a.com/p?token=YWJjZA==&empty&constructor=1')
+// { token: 'YWJjZA==', empty: '', constructor: '1' }
 ```
 
-### 11.10.2 四个关键点
+### 11.10.2 六个关键点
 
 | # | 点 | 不处理会怎样 |
 |---|---|---|
@@ -907,6 +905,8 @@ parseQuery('https://a.com/p?a=1&b=%E4%B8%AD&c=x+y&a=2#hash')
 | **2** | **`+` 还原成空格** | `c=x+y` 会得到 `'x+y'` 而不是 `'x y'` |
 | **3** | **`decodeURIComponent`** | 中文保持 `%E4%B8%AD` |
 | **4** | **重复 key 变数组** | 后一个覆盖前一个 |
+| **5** | **用 `indexOf('=')` 切分** | `split('=')` 只取第二段，`token=YWJjZA==` 会丢掉末尾的 `==` |
+| **6** | **用 `hasOwnProperty.call` 判重** | `key in res` 会命中原型链，`?constructor=1` 会把 `Object` 当成旧值进数组 |
 
 **第 2 点最容易漏**：`application/x-www-form-urlencoded` 规范里，空格编码成 `+`（不是 `%20`）。所以解析时要先替换。
 
@@ -1080,22 +1080,22 @@ m.set('a', 3);          // 更新值，但【顺序不变】
 
 ### 11.12.3 双向链表版（面试常要求）
 
-**见「算法-19题 / 算法-06-哈希与缓存-LRU」的完整实现**，这里只给关键点：
+思路是 `Map<key, node>` + 带哨兵的双向链表，`get` / `put` 都是 O(1)。关键点：
 
 | 点 | 说明 |
 |---|---|
-| **为什么必须双向链表** | 删除节点需要前驱（单链表 O(n)） |
-| **节点必须存 `key`** | 淘汰时拿到尾节点，要从 `map` 里删，没有 key 就删不了 |
-| **哨兵 head/tail** | 把 `_remove` 从 6 行降到 2 行，消除所有边界判断 |
-| **`_addToFront` 四行顺序** | 必须先改「原第一个节点」的 `prev`，再改 `head.next` |
+| **为什么必须双向链表** | 删除或移动节点都要断开前驱，单链表找前驱是 O(n) |
+| **节点必须存 `key`** | 淘汰尾节点时要用 key 从 `map` 里删；只存 value 删不掉 |
+| **哨兵 head/tail** | 头尾不再是 `null`，插入/删除不用判空 |
+| **指针赋值顺序** | 先接好「原首节点」的 `prev`，再改 `head.next`，否则链会断 |
+
+完整实现与推演见 [哈希与缓存：LRU](/doc/algo-hash-lru)。
 
 ### 11.12.4 追问：为什么 `Map` 能直接用
 
 **因为 `Map` 内部就是「哈希表 + 双向链表」**——规范保证遍历顺序 = 插入顺序，且 `keys().next()` 是 O(1)（迭代器持有指针）。
 
 **所以 `Map` 版 LRU 本质上是「用语言内置的 LRU 结构实现 LRU」。**
-
-**这个洞察答出来很加分。**
 
 ---
 
@@ -1107,15 +1107,16 @@ m.set('a', 3);          // 更新值，但【顺序不变】
 | `then` 的回调用 `setTimeout` 异步 | 必须用 `queueMicrotask`（微任务） |
 | `then` 忘了捕获回调抛错 | 要 `try/catch` 包住 `cb(this.value)` |
 | `Promise.all([])` 忘了立即 resolve | **永久 pending** |
-| `all` 用 `forEach` 处理 | 稀疏数组会跳过 |
 | `all` 用 `push` 存结果 | 顺序会乱，要用 `results[i]` |
 | `retry` 直接 `fn()` 不包 Promise | 同步 throw 时 catch 抓不到 |
 | `asyncPool` 用 `Promise.all` 分批 | 慢任务会拖累整批，并发跑不满 |
+| `asyncPool` 把原始 promise 放进 `executing` | 失败会让 `Promise.race` 抛错、中断后续入队，要放 `p.catch(() => {})` |
 | 深拷贝不用 `WeakMap` | 循环引用死循环 |
 | 深拷贝 `Map` 时先递归后缓存 | `Map` 自引用死循环 |
 | 深拷贝用 `Object.keys` | 拿不到 Symbol 键 |
 | 深拷贝不处理 `RegExp.lastIndex` | 带 `g` 标志时匹配位置错 |
 | 用 `JSON` 做深拷贝 | 丢函数/`undefined`/`Symbol`/`Map`/`Set`，`Date` 变字符串，循环引用抛错 |
+| `structuredClone` 拷 Symbol | Symbol 值抛 `DataCloneError`，Symbol 键被丢弃 |
 | 用 `indexOf` 去重 | **`NaN` 全部丢弃** |
 | 去重时 `1` 和 `'1'` 想区分但用 `String` 当 key | 会冲突，要带类型 |
 | 扁平化用 `push(...arr.reverse())` | 顺序容易写错，用索引栈 |
@@ -1140,46 +1141,7 @@ m.set('a', 3);          // 更新值，但【顺序不变】
 
 > 递归 + `WeakMap` 缓存循环引用。要特别处理 `Date`（`new Date(getTime())`）、`RegExp`（重建 + 保留 `lastIndex`）、`Map`/`Set`（**先存缓存再递归**）、数组、以及普通对象用 `Object.create(getPrototypeOf(obj))` 保留原型。
 > 遍历要用 `Reflect.ownKeys` 才能拿到 Symbol 键。
-> 生产环境我优先用 `structuredClone`，但它不能拷函数、DOM、不保留原型；`JSON` 方案会丢函数/`undefined`/`Symbol`/`Map`/`Set`，`Date` 变字符串，循环引用直接抛错。
-
-### 2 分钟版（把这一组串起来讲，推荐）
-
-> 这组题我按「异步」「数据」「算法」三类说，每类挑最关键的坑。
->
-> **异步类**。`Promise` 的核心是状态机加回调队列，六个细节必须说全：`executor` 同步执行、`try/catch` 捕获同步 throw、状态不可逆、`then` 回调要用 `queueMicrotask` 保证微任务语义、返回值要递归吸收 thenable、非函数参数要穿透。`Promise.all` 最致命的坑是**空数组永不 resolve**——`forEach` 不执行、`count` 永远到不了 `length`，所以必须先判 `len === 0`。另外要用 `for` 不用 `forEach`（稀疏数组），要用 `results[i]` 不用 `push`（顺序）。`asyncPool` 的关键是 `Promise.race(executing)` 而不是 `Promise.all` 分批——分批会让慢任务拖累整批，并发跑不满；实测 6 个任务 limit=2 是 153ms，最大并发 2。
->
-> **数据类**。深拷贝的两个关键：`WeakMap` 缓存循环引用，且 `Map`/`Set` 要**先 `cache.set` 再递归**，否则自引用死循环；遍历用 `Reflect.ownKeys` 拿 Symbol 键。数组去重最大的坑是 **`indexOf` 会丢掉所有 `NaN`**——因为它用 `===`，所以 `[NaN, NaN]` 去重成 `[]`；`Set`/`includes`/`Map` 用的是 `SameValueZero`，能保留一个 `NaN`。扁平化的迭代版我用「显式栈 + 索引」而不是 `push(...reverse())`，后者顺序极易写错。千分位两个坑：正则要拆小数（不然 `1234.5678` 变 `1,234.5,678`）、循环版要剥离负号（不然 `-123456` 变 `-,123,456`）。URL 解析要处理 `#`、`+` 转空格、`decodeURIComponent`、重复 key 变数组。
->
-> **算法类**。括号匹配用栈，一行 `stack.pop() !== map[ch]` 同时处理「栈空」和「不匹配」；最后必须判 `stack.length === 0`，否则 `'((('` 会误判。LRU 用 `Map` 最简洁，但要处理三个边界：`capacity = 0`、`put` 已存在的 key 要先 `delete` 才能刷新顺序、`get` 不存在返回 `-1`。顺带说一句：`Map` 内部本来就是「哈希表 + 双向链表」，所以 `Map` 版 LRU 本质上是「用内置的 LRU 结构实现 LRU」。
-
-### 追问表
-
-| 追问 | 回答要点 |
-|---|---|
-| Promise 为什么 `then` 返回新 Promise | 支持链式，每步状态由回调返回值决定 |
-| `then` 回调为什么必须异步 | 规范要求（微任务），否则同步代码顺序会乱 |
-| 为什么用 `queueMicrotask` 不用 `setTimeout` | 前者微任务，后者宏任务，顺序不一致 |
-| `resolve` 一个 Promise 会怎样 | 吸收它的状态 |
-| `Promise.all([])` 返回什么 | `[]`，必须显式判空 |
-| `all` 结果顺序怎么保证 | 按索引写 `results[i]`，不用 `push` |
-| `all` 快速失败后其他 Promise 停了吗 | 没停，只是结果被丢弃 |
-| `any([])` 和 `race([])` 分别怎样 | 立即 reject / 永久 pending |
-| `retry` 为什么要包 `Promise.resolve().then` | 捕获同步 throw |
-| `asyncPool` 为什么不用分批 | 慢任务拖累整批，并发跑不满 |
-| 深拷贝循环引用怎么办 | `WeakMap` 缓存 |
-| 深拷贝 `Map` 为什么先缓存 | 否则自引用死循环 |
-| 深拷贝怎么拿 Symbol 键 | `Reflect.ownKeys` |
-| `structuredClone` 有什么限制 | 不能拷函数/DOM，不保留原型，忽略 Symbol |
-| 为什么 `indexOf` 去重会丢 NaN | `indexOf` 用 `===`，`NaN !== NaN` |
-| `Set` 去重能合并两个 `{}` 吗 | 不能，引用比较 |
-| 对象数组怎么去重 | 按 key 用 `Map`/`Set` |
-| 扁平化迭代版怎么写 | 显式栈 + 索引，别用 `push(...reverse())` |
-| 千分位正则怎么读 | `\B(?=(\d{3})+(?!\d))` 零宽断言 |
-| 千分位为什么要拆小数 | 否则小数部分也被分组 |
-| URL 解析要处理什么 | `#`、`+`→空格、`decodeURIComponent`、重复 key |
-| 括号匹配最后要判什么 | `stack.length === 0` |
-| LRU 为什么 `put` 已存在的 key 要 delete | `Map.set` 已存在的 key 不改变顺序 |
-| LRU 的 `capacity = 0` 怎么处理 | 直接 return |
+> 生产环境优先用 `structuredClone`，但它不能拷函数/Symbol 值、不保留原型；`JSON` 方案会丢函数/`undefined`/`Symbol`/`Map`/`Set`，`Date` 变字符串，循环引用直接抛错。
 
 ---
 
@@ -1193,9 +1155,9 @@ Promise
 
 Promise.all
   ★★ 空数组必须立即 resolve（否则永久 pending）
-  ★ 用 for 不用 forEach（稀疏数组）
+  ★ 稀疏数组经 [...list] 展开后按 undefined 计入，结果与原生一致
   ★ results[i] 不用 push（保证顺序）
-  ★ .then(onOk, onReject) 不用 .catch（少建一个 Promise）
+  ★ .then(onOk, onReject) 不用 .catch（.catch 会连带捕获 onOk 抛的错）
   四方法空数组：all→[] / allSettled→[] / any→reject / race→永久 pending
 
 retry
@@ -1205,9 +1167,9 @@ retry
 
 asyncPool
   Set 存执行中 + await Promise.race(executing)
-  p.then(clean, clean) 成功失败都要删
+  ★ executing 里放 p.catch(() => {})，否则失败会中断后续入队
   ★ 不用 Promise.all 分批（慢任务拖累整批）
-  实测：6 任务 limit=2 → 153ms，最大并发 2
+  实测：6 任务 limit=2 → 约 152ms，最大并发 2
 
 深拷贝
   递归 + WeakMap
@@ -1216,7 +1178,7 @@ asyncPool
   ★ RegExp 要保留 lastIndex
   ★ 普通对象用 Object.create(getPrototypeOf) 保留原型
   JSON 方案丢：函数/undefined/Symbol/Map/Set，Date 变字符串，循环引用抛错
-  structuredClone：不能拷函数/DOM，不保留原型
+  structuredClone：不能拷函数/Symbol 值，不保留原型，Symbol 键被丢弃
 
 数组去重
   ★ indexOf 用 ===，会把 NaN 全部丢掉
@@ -1240,6 +1202,7 @@ URL 解析
   ★ + 要还原成空格
   ★ decodeURIComponent
   ★ 重复 key 变数组
+  ★ 用 indexOf('=') 切分，用 hasOwnProperty.call 判重
   生产用 URLSearchParams（getAll 处理重复 key）
 
 括号匹配

@@ -1,8 +1,7 @@
 # JS · 08 内存管理与垃圾回收
 
-> 本册覆盖：垃圾回收机制、内存泄漏
-> 题单的答案：「分代回收：新生代（Scavenge）、老生代（Mark-Sweep）。引用计数已不用。」——**32 个字**，而且**「引用计数已不用」这句不严谨**。
-> 面试官会追问：Scavenge 具体是什么算法？对象什么时候晋升？三色标记是什么？写屏障解决什么问题？**这些题单一个都没提。**
+> 覆盖：分代回收、Scavenge、Mark-Sweep / Mark-Compact、三色标记与写屏障、引用计数、八类内存泄漏与排查
+> 主线：先讲「怎么回收」，再讲「怎么泄漏」，最后讲「怎么排查」
 
 ---
 
@@ -36,53 +35,46 @@ V8 用**分代回收**：**新生代**（对象朝生夕死）用 **Scavenge（C
 
 | 位置 | 存什么 | 大小 | 回收方式 |
 |---|---|---|---|
-| **栈（Stack）** | 原始值、引用地址、执行上下文 | 小（约 984KB） | 函数返回自动弹出 |
+| **栈（Stack）** | 原始值、引用地址、执行上下文 | 小（V8 默认 `--stack-size`，约 0.9MB，平台相关） | 函数返回自动弹出 |
 | **堆（Heap）** | 对象、数组、闭包、函数 | 大（GB 级） | **GC 回收** |
 
 ```js
-const a = 1;              // 1 存在栈上
-const b = { x: 1 };       // { x: 1 } 在堆上，b 存的是地址（在栈上）
+const a = 1;              // 原始值随栈槽 / 寄存器走
+const b = { x: 1 };       // { x: 1 } 在堆上，b 存的是地址
 ```
 
-**所以「`const` 不能改」只针对栈上的绑定，堆上的对象内容可以改。**
+**`const` 锁的是绑定，不是对象内容**：绑定不能重新赋值，堆上对象的属性照样能改。
 
-### 8.2.2 V8 堆的五个空间（实测输出）
+### 8.2.2 V8 堆的主要空间
 
-```
-read_only_space        只读空间（内置对象，如 Object.prototype）
-new_space              新生代 ← Scavenge
-old_space              老生代 ← Mark-Sweep / Mark-Compact
-code_space             编译后的机器码
-large_object_space     大对象（超过 ~128KB 的对象直接进这里）
-```
-
-**实测 `v8.getHeapSpaceStatistics()`**（Node 22，刚启动）：
+`v8.getHeapSpaceStatistics()` 会列出所有 space，和回收策略相关的是这几个：
 
 ```
-new_space      1.00 MB   | used: 0.90 MB
-old_space      3.02 MB   | used: 2.89 MB
-code_space     0.25 MB   | used: 0.07 MB
-large_object_space  0.27 MB
+new_space             新生代 ← Scavenge
+old_space             老生代 ← Mark-Sweep / Mark-Compact
+code_space            编译后的机器码
+large_object_space    大对象（超过常规对象上限，通常百 KB 级）不经过新生代
+read_only_space       只读空间（内置对象，如 Object.prototype）
 ```
+
+各 space 的 size / used 随机器、启动阶段、Node 版本变化（Node 22 还会额外列出 `shared_space`、`trusted_space`、`new_large_object_space` 等），记住分工即可，不要记数字。
 
 ### 8.2.3 默认堆上限（不要记死数字）
 
-**实测本机 `heap_size_limit` = 4144 MB**。
-
-但这个数字**不是固定的**：
+堆上限由**系统内存**推算，没有跨机器通用的常量：
 
 | 因素 | 影响 |
 |---|---|
 | **Node 版本** | Node 12 之前 64 位固定约 1.4GB；之后按系统内存动态调整 |
 | **系统内存** | 内存大的机器上限更高 |
-| **`--max-old-space-size`** | 可手动指定（MB） |
-| **`--max-semi-space-size`** | 指定新生代大小 |
+| **`--max-old-space-size`** | 手动指定老生代上限（MB） |
+| **`--max-semi-space-size`** | 指定新生代单个 semi-space 大小（MB） |
 
 ```bash
 node --max-old-space-size=4096 app.js     # 4GB
 ```
 
-**面试时说「约 1.4GB（可配置）」或「按系统内存动态调整，通常 1.4~4GB」都行，别说得太绝对。**
+**说「按系统内存动态调整，通常从 1.4GB 起步，可配置」即可**；把某个具体 MB 数当成固定值就是错的。
 
 ---
 
@@ -133,9 +125,9 @@ node --max-old-space-size=4096 app.js     # 4GB
 | 条件 | 说明 |
 |---|---|
 | **① 经历过 2 次 Scavenge 仍存活** | 说明「不是朝生夕死」的，移到老生代 |
-| **② To 空间使用超过 25%** | 为了不让 To 空间被填满（要留空间给后续复制），提前晋升 |
+| **② 回收后存活对象占比过高（V8 取 25% 阈值）** | 继续留在新生代会挤占 To 空间，提前晋升 |
 
-**实测观察**：长时间运行后 `old_space` 会逐渐增长，`new_space` 保持稳定。
+**所以老生代随驻留数据增长，新生代在 Scavenge 后回落**，`heapUsed` 因此呈锯齿状——这是正常现象，不是泄漏。
 
 ### 8.3.4 为什么是「两个」semi-space 而不是一个
 
@@ -187,26 +179,16 @@ node --max-old-space-size=4096 app.js     # 4GB
 
 ### 8.4.5 一次完整的 GC 流程（V8 Orinoco）
 
-```
-① 并发标记（Concurrent Marking）
-   主线程和标记线程并行，减少主线程停顿
-        ↓
-② 增量标记（Incremental Marking）
-   把标记拆成很多小步，穿插在 JS 执行之间（每步几毫秒）
-        ↓
-③ 并行标记（Parallel Marking）
-   多个标记线程同时工作
-        ↓
-④ 原子停顿（Atomic Pause）
-   短暂停一下，处理「标记期间变化的对象」（靠写屏障记录）
-        ↓
-⑤ 并发清除（Concurrent Sweeping）
-   清除阶段也在后台线程做
-        ↓
-⑥ 并行整理（Parallel Compaction，按需）
-```
+| 阶段 | 做什么 |
+|---|---|
+| **并发标记** | 标记线程与主线程并行，减少主线程停顿 |
+| **增量标记** | 标记拆成很多小步，穿插在 JS 执行之间 |
+| **并行标记** | 多个标记线程同时工作 |
+| **原子停顿** | 短暂停，处理「标记期间变化的对象」（靠写屏障记录） |
+| **并发清除** | 清除阶段也在后台线程做 |
+| **并行整理** | 按需压缩，解决碎片 |
 
-**关键指标**：V8 的目标是把「主线程停顿」控制在**几毫秒**级别，避免掉帧。
+**关键指标**：V8 的目标是把「主线程停顿」压到毫秒级，避免掉帧。
 
 ---
 
@@ -249,53 +231,48 @@ node --max-old-space-size=4096 app.js     # 4GB
    B.child = null       （B 原本指向 C，现在断开）
 
 ③ 标记继续：
-   因为 A 已经是黑色，GC 不会重新扫描 A
-   而 B 到 C 的引用已经断了
+   A 已是黑色，GC 不会重新扫描 A；B 到 C 的引用又断了
    → C 永远是白色 → 被回收
-   → 但 A.child 还指着 C ！💥 悬空引用
+   → 但 A.child 还指着 C，成了悬空引用
 ```
 
-**解法：写屏障（Write Barrier）**
-
-**在「赋值」这个操作上加一段检查代码**：
+**解法：写屏障（Write Barrier）**——在「赋值」这一层加检查，把并发期间的引用变化告诉 GC：
 
 ```js
-// 伪代码：V8 在每次对象属性赋值时执行的检查
-function writeBarrier(obj, key, value) {
-  if (isBlack(obj) && isWhite(value)) {
-    // 违反了三色不变式，需要修复
-    // 修复方式见下
+// 伪代码：SATB 写屏障，记录被覆盖掉的旧值
+function writeBarrier(obj, key, oldValue) {
+  if (isBlack(obj) && isWhite(oldValue)) {
+    markAsLive(oldValue);   // 视作标记开始时就存活，避免漏标
   }
 }
 ```
 
-**两种修复策略**：
+**两类屏障方向相反**：
 
 | 策略 | 做法 | 用在哪 |
 |---|---|---|
-| **增量更新（Incremental Update）** | 把**白色对象变灰**（重新纳入待扫描） | 老式实现 |
-| **SATB（Snapshot-At-The-Beginning）** | 把**黑色对象退灰**（重扫一遍） | **V8 用的** |
+| **增量更新（Incremental Update）** | 插入引用时把**白色对象变灰**（重新纳入待扫描） | 老式实现 |
+| **SATB（Snapshot-At-The-Beginning）** | 删除引用时把**被删掉的白色对象记为存活**（相当于保留标记开始时的快照） | **V8 用的** |
 
-**V8 用 SATB**：在标记开始时「拍个快照」，之后任何引用被删除时，把被删除的引用记录下来（当作快照时还存在），保证不漏扫。
+**这才是并发 GC 的核心难点**——不是「标记」难，是「标记期间程序还在改对象」难。
 
-**这就是「为什么并发 GC 这么复杂」的核心难点**——不是「标记」难，是「标记期间程序还在改对象」难。
+**口述要点**：
 
-> **面试话术**：「三色标记里有个问题叫『对象消失』：如果黑色对象新引用了一个白色对象，而指向那个白色对象的另一条路径被删除，GC 就会漏标导致误回收。解法是写屏障——在赋值操作上加检查，V8 用的是 SATB 策略，把被删除的引用记录下来，相当于保留一个『标记开始时的快照』。这就是并发 GC 的核心难点。」
+- 「对象消失」：黑色对象新引用白色对象，同时指向它的另一条路径被删除，GC 漏标 → 误回收。
+- 解法是在赋值路径上加写屏障，把变化记录下来。
+- V8 用 SATB，记录的是被删掉的旧引用，不是新插入的值。
 
 ---
 
 ## 8.6 引用计数：为什么被淘汰（纠正题单）
 
-### 8.6.1 题单说「引用计数已不用」——不严谨
-
-**准确的说法**：
+### 8.6.1 V8 主 GC 不用引用计数，但引用强度思想仍在
 
 | 事实 | 说明 |
 |---|---|
-| **V8 主 GC 不用引用计数** | ✅ 对，用标记清除 |
-| **但「引用计数」思想还在用** | `WeakRef` / `FinalizationRegistry` / `WeakMap` 的语义都是「引用强度」的体现 |
-| **某些引擎/场景仍用** | 早期的 DOM 实现、部分嵌入式 JS 引擎、Python 的主 GC |
-| **C++ 侧的对象管理** | V8 内部大量用 `Persistent` / `Global` 句柄（类似引用计数） |
+| **V8 主 GC 不用引用计数** | 用可达性分析（标记清除） |
+| **「引用强度」思想还在用** | `WeakRef` / `FinalizationRegistry` / `WeakMap` 的弱引用语义；何时清理由 GC 决定，不能预期 |
+| **某些引擎 / 场景仍用** | 早期的 DOM 实现、部分嵌入式 JS 引擎、Python 的主 GC（另配循环检测） |
 
 ### 8.6.2 引用计数的致命问题：循环引用
 
@@ -346,7 +323,7 @@ window.onload = function () {
 | # | 类型 | 典型代码 | 怎么修 |
 |---|---|---|---|
 | **1** | **意外的全局变量** | `function f() { leaked = [] }` | `'use strict'` + `let/const` |
-| **2** | **未清理的定时器** | `setInterval(fn, 1000)` 组件卸载时没 clear | `clearInterval` / 用 `AbortController` |
+| **2** | **未清理的定时器** | `setInterval(fn, 1000)` 组件卸载时没 clear | `clearInterval`（定时器没有 `signal` 选项） |
 | **3** | **未移除的事件监听** | `window.addEventListener('resize', fn)` 没 remove | `removeEventListener` / `{ signal }` |
 | **4** | **闭包持有大对象** | 返回的函数引用了大数组 | 缩小闭包捕获范围，用完置 `null` |
 | **5** | **未取消的订阅** | `store.subscribe(fn)` / `observer.observe` | 卸载时 `unsubscribe` |
@@ -363,7 +340,7 @@ function leak() {
   leaked = new Array(1e5).fill('x');    // ❌ 没有 var/let/const
 }
 leak();
-// 非严格模式：挂到 globalThis，永远不回收  ✅ 实测
+// 非严格模式：挂到 globalThis，函数返回后仍然可达
 // 严格模式：ReferenceError
 ```
 
@@ -388,12 +365,14 @@ mounted() {
 // 忘了 beforeUnmount 里 clearInterval
 ```
 
-**✅ 用 `AbortController`（现代写法）**：
+**定时器没有 `signal` 选项**——`setInterval(fn, 1000, { signal })` 里的对象只会被当成回调参数传进去，`abort()` 不会停掉定时器。只能显式清理：
 
 ```js
+// ✅ signal 只对 addEventListener / fetch 这类 API 有效
 const ac = new AbortController();
-setInterval(fn, 1000, { signal: ac.signal });      // Node 16+ / 浏览器新版支持
-ac.abort();                                        // 一次性清掉所有关联的
+const id = setInterval(fn, 1000);
+ac.signal.addEventListener('abort', () => clearInterval(id));
+ac.abort();
 ```
 
 **③ 未移除的事件监听**
@@ -515,13 +494,10 @@ function createFn() {
 const fn = createFn();
 fn();
 // 只要 fn 还被引用，big 就不回收 —— 但这是【预期行为】，不是泄漏！
-// fn 被丢弃后（fn = null），big 立刻可回收
+// fn = null 之后 big 不再可达，可被回收（具体时机由 GC 决定）
 ```
 
-**准确的定义**：
-
-> **内存泄漏 = 「不再需要的对象仍然可达」。**
-> 闭包让对象「更久地可达」，这本身是设计目的。只有当**你不想要它了，但引用没断**，才是泄漏。
+**泄漏 = 「不再需要的对象仍然可达」**。闭包让对象活得更久是设计目的，只有**你不想要它了、但引用没断**，才是泄漏。
 
 ---
 
@@ -600,7 +576,7 @@ setInterval(() => {
 | 说「GC 是定时的」 | 是**按需触发**（分配失败 / 堆增长到阈值），不是定时 |
 | 说「内存越大越好」 | 堆越大，单次 GC 停顿越长（要遍历更多对象） |
 | 说「手动 GC 可以用 `global.gc()`」 | 要 `node --expose-gc` 才有，生产不该依赖 |
-| 说「V8 堆上限固定 1.4GB」 | 现代 Node 按系统内存动态调整（实测 4GB+），可 `--max-old-space-size` 指定 |
+| 说「V8 堆上限固定 1.4GB」 | 旧版 Node 才固定，现代 Node 按系统内存动态调整，可 `--max-old-space-size` 指定 |
 | 忘记 `console.log` 会持有引用 | DevTools 打开时 console 保留强引用 |
 
 ---
@@ -609,29 +585,24 @@ setInterval(() => {
 
 ### 30 秒版（垃圾回收）
 
-> V8 用**分代回收**，因为绝大多数对象朝生夕死。**新生代**用 **Scavenge（Cheney 复制算法）**——把新生代分成 From 和 To 两个半区，GC 时把存活对象复制到 To、清空 From、然后互换，成本只和存活对象数成正比，而且没有碎片。对象经历两次 Scavenge 还活着，就**晋升到老生代**。
-> **老生代**用 **Mark-Sweep**（标记可达对象，清除不可达的），碎片多了再用 **Mark-Compact** 整理。为了减少停顿，V8 把标记拆成增量标记和并发标记，用**三色标记 + 写屏障**保证并发正确性。
-> 引用计数被淘汰是因为**无法处理循环引用**。
+- **分代**：对象朝生夕死，新生代用 **Scavenge（Cheney 复制）**——From/To 两个半区，存活对象复制到 To、清空 From、互换；成本 ∝ 存活数，无碎片，代价是 50% 空间。
+- **晋升**：经历 2 次 Scavenge 仍存活，或回收后存活占比过高（V8 阈值 25%），进入老生代。
+- **老生代**：Mark-Sweep（不移动、有碎片），碎片率超阈值切 Mark-Compact。
+- **并发正确性**：三色标记 + 写屏障（V8 用 SATB）解决「对象消失」。
+- **不用引用计数的原因**：处理不了循环引用。
 
 ### 30 秒版（内存泄漏）
 
-> 泄漏的本质是「**不再需要的对象仍然可达**」，不是「忘了释放」（JS 没有手动释放）。
-> 常见八类：意外的全局变量、未清理的定时器、未移除的事件监听、闭包持有大对象、未取消的订阅、游离 DOM 引用、无上限缓存、`console.log` 持有引用。
-> 排查用 Chrome Memory 面板的**三快照法**——操作前后各拍一次，对比 Delta，配合「Record allocation stacks」能直接定位到分配代码。
+- **本质**：「不再需要的对象仍然可达」，不是「忘了释放」（JS 没有手动释放）。
+- **八类**：意外全局变量、未清定时器、未移除监听、闭包持有大对象、未取消订阅、游离 DOM、无上限缓存、`console.log` 持有引用。
+- **排查**：Chrome Memory 面板三快照对比 Delta，配合「Record allocation stacks」定位到分配代码。
 
 ### 2 分钟版（完整版，推荐）
 
-> 我分「怎么回收」「怎么泄漏」「怎么排查」三块说。
->
-> **怎么回收**：V8 用分代。新生代的对象朝生夕死，所以用 Scavenge——Cheney 算法，把空间分成 From 和 To 两个半区，GC 时从根出发把存活对象复制到 To，紧凑排列，清空 From，然后角色互换。成本只和存活对象数成正比，没有碎片，但内存利用率只有 50%。对象经历两次 Scavenge 还活着、或者 To 空间用了超过 25%，就晋升到老生代。
->
-> 老生代存活对象多，复制成本高，所以用标记清除：从根遍历标记可达对象，清除没标记的。缺点是产生碎片，所以碎片率超阈值时会切 Mark-Compact 整理一次。
->
-> 为了不让 GC 停顿太久，V8 把标记拆成增量标记（穿插在 JS 执行之间，每步几毫秒）和并发标记（后台线程并行）。这里有个核心难点：**标记期间 JS 还在改对象**。如果黑色对象新引用了一个白色对象，而指向它的另一条路径被删了，GC 会漏标导致误回收——这叫「对象消失问题」。解法是**写屏障**，在赋值时加检查，V8 用 SATB 策略保留「标记开始时的快照」。这才是并发 GC 真正的难点。
->
-> **怎么泄漏**：本质是「不再需要的对象仍然可达」。八类场景：意外的全局变量（非严格下漏写 `let`）、未清理的定时器、未移除的事件监听、闭包持有大对象、未取消的订阅、游离 DOM、无上限缓存、`console.log`。要澄清一点：**闭包本身不是泄漏**，闭包让对象活得更久是设计目的，只有「你不想要了但引用没断」才是泄漏。同理循环引用在现代 GC 下也不是问题——那是引用计数时代的坑。
->
-> **怎么排查**：浏览器用 Memory 面板三快照法，操作前后各拍一次对比 Delta。看什么：`(closure)` 数量增长 → 闭包泄漏；`Detached HTMLElement` 增长 → 游离 DOM；`EventListener` 增长 → 监听器没移除。配合勾选「Record allocation stacks」能直接看到泄漏对象是在哪行代码分配的。Node 侧用 `process.memoryUsage()` 观察，正常是锯齿状波动，持续上升不回落就是泄漏。
+- **怎么回收**：分代 + Scavenge（From/To、复制存活、无碎片、50% 利用率、成本 ∝ 存活数）；经历两次 Scavenge 或存活占比过高就晋升；老生代 Mark-Sweep，碎片率超阈值切 Mark-Compact。
+- **哪里难**：标记期间 JS 还在改引用——黑色对象新引用白色对象、同时指向它的另一条路径被删，就会漏标误回收（对象消失）；写屏障 + SATB 记录被删掉的旧引用兜底，这才是并发 GC 的核心难点。
+- **怎么泄漏**：八类场景本质都是「引用没断」；闭包、循环引用本身不是泄漏——闭包让对象活得更久是设计目的，循环引用能被可达性分析回收。
+- **怎么排查**：浏览器三快照看 `(closure)` / `Detached HTMLElement` / `EventListener` 是否增长；Node 侧看 `process.memoryUsage()` 在 GC 后是否仍不回落。
 
 ### 追问表
 
@@ -641,7 +612,7 @@ setInterval(() => {
 | 新生代用什么算法 | Scavenge（Cheney 复制），From/To 两个半区 |
 | 为什么复制算法没碎片 | 复制时紧凑排列 |
 | 复制算法的缺点 | 内存利用率只有 50% |
-| 对象什么时候晋升 | 经历 2 次 Scavenge，或 To 空间用过 25% |
+| 对象什么时候晋升 | 经历 2 次 Scavenge，或回收后存活占比过高（V8 阈值 25%） |
 | 老生代用什么算法 | Mark-Sweep，碎片多了切 Mark-Compact |
 | Mark-Sweep 的缺点 | 内存碎片 |
 | 三色标记是什么 | 白（未访问）/ 灰（待处理）/ 黑（已完成） |
@@ -661,35 +632,33 @@ setInterval(() => {
 
 ```
 内存结构
-  栈：原始值 + 引用地址 + 执行上下文（约 984KB）
-  堆：对象/数组/闭包。V8 五个空间：
-    new_space（新生代，Scavenge）
-    old_space（老生代，Mark-Sweep/Compact）
-    code_space / large_object_space(>128KB) / read_only_space
-  ★ 堆上限按系统内存动态（实测 4GB+），--max-old-space-size 可调
+  栈：原始值 + 引用地址 + 执行上下文（V8 默认 --stack-size，约 0.9MB）
+  堆：对象/数组/闭包。主要 space：
+    new_space（Scavenge）/ old_space（Mark-Sweep|Compact）
+    code_space / large_object_space（不经过新生代）/ read_only_space
+  ★ 堆上限按系统内存动态调整，--max-old-space-size 可调
 
-新生代：Scavenge（Cheney 复制算法）
+新生代：Scavenge（Cheney 复制）
   From / To 两个半区
-  ① 从根复制存活对象到 To（紧凑）② 清空 From ③ 互换
+  ① 复制存活对象到 To（紧凑）② 清空 From ③ 互换
   优点：无碎片、成本∝存活数、分配快（指针碰撞）
   缺点：内存利用率 50%
-  ★ 晋升条件：经历 2 次 Scavenge，或 To 用过 25%
+  ★ 晋升：经历 2 次 Scavenge，或回收后存活占比过高（V8 阈值 25%）
 
 老生代：Mark-Sweep + Mark-Compact
-  标记可达 → 清除不可达（碎片）
-  碎片率超阈值 → Mark-Compact 整理一次
-  V8 Orinoco：并发标记 + 增量标记 + 并行标记 + 原子停顿 + 并发清除
+  标记可达 → 清除不可达（有碎片）；碎片率超阈值 → 整理一次
+  V8 Orinoco：并发 / 增量 / 并行标记 + 原子停顿 + 并发清除 + 按需整理
 
 三色标记 + 写屏障（★「对象消失」问题）
   白=未访问 灰=待处理 黑=已完成
   黑对象新引用白对象 + 另一条路径被删 → 白被误回收
-  解法：写屏障（赋值时检查）
-  两种策略：增量更新（白变灰）/ SATB（黑退灰，V8 用这个）
+  解法：写屏障
+  增量更新（插入时白变灰）/ SATB（删除时记录旧值，V8 用这个）
 
-引用计数（题单说「已不用」，要修正）
-  V8 主 GC 不用（无法处理循环引用）
-  但「引用强度」思想仍在：WeakRef / WeakMap / FinalizationRegistry
-  Python 主 GC 就是引用计数
+引用计数
+  V8 主 GC 不用：无法处理循环引用
+  但「引用强度」思想仍在：WeakRef / WeakMap / FinalizationRegistry（清理时机由 GC 决定）
+  Python 主 GC = 引用计数 + 循环检测
   IE 6/7 的 DOM 泄漏就是 DOM(引用计数) × JS(标记清除) 的循环引用
 
 八类泄漏
@@ -703,5 +672,5 @@ setInterval(() => {
   Chrome Memory 三快照对比 Delta
   看 (closure) / Detached HTMLElement / EventListener 增长
   勾选 Record allocation stacks → 直接定位分配代码
-  Node：process.memoryUsage()，锯齿波动正常，持续上升是泄漏
+  Node：process.memoryUsage() 锯齿波动正常，GC 后仍不回落才是泄漏
 ```

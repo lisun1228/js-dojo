@@ -3,14 +3,14 @@
 ![原型与原型链示意图](/yuanxinglian.png)
 两条最基础、也最容易绕晕的规则：
 
-- 每一个**对象**都有一个隐式属性 `__proto__`（标准名 `[[Prototype]]`），指向它的**原型对象**
-- 每一个**函数**都有一个显式属性 `prototype`，叫做**原型**
+- 对象的 `[[Prototype]]` 内部槽指向它的**原型对象**；`__proto__` 只是 `Object.prototype` 上的访问器，读写的就是这个槽，标准读法是 `Object.getPrototypeOf`
+- 由 `function` 声明或 `class` 定义的构造函数才有显式属性 `prototype`；箭头函数、对象方法、`bind` 返回的函数都没有
 
 ```js
 function Person() {}
 const p = new Person()
 
-// 实例的 __proto__ 指向构造函数的 prototype
+// 实例的 __proto__（等价于 Object.getPrototypeOf(p)）指向构造函数的 prototype
 p.__proto__ === Person.prototype                    // true
 
 // prototype 上默认带一个 constructor，指回构造函数
@@ -22,7 +22,6 @@ Person.prototype.__proto__ === Object.prototype     // true
 // 原型链终点
 Object.prototype.__proto__ === null                 // true
 ```
-
 
 ---
 
@@ -54,9 +53,6 @@ Function.__proto__ === Function.prototype           // true
 
 // 3. 函数原型链再往上还是 Object
 Function.prototype.__proto__ === Object.prototype   // true
-
-// 4. 终点依然是 null
-Object.prototype.__proto__ === null                 // true
 ```
 
 ```text
