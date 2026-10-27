@@ -1,30 +1,30 @@
 # Vue 中 keep-alive 详解与面试回答模板
 
 > 适用版本：Vue 2.x / Vue 3.x（含 `<script setup>`）
-> 阅读建议：第 1~4 节是「理解」，第 5 节是「原理（加分项）」，第 7 节是「面试直接背」，第 8 节是「自测」
+> 结构：1~4 节讲用法与匹配规则，5~6 节讲源码，7~8 节是问答，9~11 节是坑、手写与自测
 
 ---
 
 ## 目录
 
-1. [一句话回答](#1-一句话回答)
-2. [它到底解决了什么问题](#2-它到底解决了什么问题)
-3. [基本用法](#3-基本用法)
-4. [三个 props 详解](#4-三个-props-详解)
-5. [底层原理（面试加分核心）](#5-底层原理面试加分核心)
-6. [Vue 2 与 Vue 3 的实现差异](#6-vue-2-与-vue-3-的实现差异)
-7. [面试怎么答](#7-面试怎么答)
-8. [高频追问 20 问](#8-高频追问-20-问)
-9. [常见坑与最佳实践](#9-常见坑与最佳实践)
-10. [手写一个简化版 KeepAlive](#10-手写一个简化版-keepalive)
-11. [自测清单](#11-自测清单)
-12. [附：一页速记](#附一页速记)
+- [1. 一句话回答](#1-一句话回答)
+- [2. 它到底解决了什么问题](#2-它到底解决了什么问题)
+- [3. 基本用法](#3-基本用法)
+- [4. 三个 props 详解](#4-三个-props-详解)
+- [5. 底层原理（面试加分核心）](#5-底层原理面试加分核心)
+- [6. Vue 2 与 Vue 3 的实现差异](#6-vue-2-与-vue-3-的实现差异)
+- [7. 面试怎么答](#7-面试怎么答)
+- [8. 高频追问 20 问](#8-高频追问-20-问)
+- [9. 常见坑与最佳实践](#9-常见坑与最佳实践)
+- [10. 手写一个简化版 KeepAlive](#10-手写一个简化版-keepalive)
+- [11. 自测清单](#11-自测清单)
+- [附：一页速记](#附一页速记)
 
 ---
 
 ## 1. 一句话回答
 
-`<keep-alive>` 是 Vue 的**内置抽象组件**，它把组件实例（连同其 DOM 和内部状态）缓存起来，在组件切换时**不销毁、不重新创建**，而是「休眠 / 唤醒」，从而保留组件状态、避免重复渲染和重复请求，通常会带来体验和性能上的双重收益。
+`<keep-alive>` 是 Vue 的**内置抽象组件**：把组件实例连同 DOM 和内部状态缓存起来，切换时只做「移出 / 移回」，不销毁、不重新创建，从而保留组件状态、避免重复渲染和重复请求。
 
 关键词：**缓存组件实例、跳过销毁重建、activated / deactivated 生命周期、LRU 淘汰**。
 
@@ -38,7 +38,7 @@ Vue 中 `<component :is="xxx">` 或路由切换时，旧组件会被**卸载（u
 
 - 触发 `beforeDestroy / beforeUnmount` → `destroyed / unmounted`
 - 组件实例、响应式数据、DOM 全部丢弃
-- 再次切回来时，**重新 created → mounted**，重新发请求、重新渲染、滚动位置丢失、表单内容清空、TAB 选中态回到初始值……
+- 再次切回来时**重新 created → mounted**，重新发请求、重新渲染，滚动位置、表单内容、TAB 选中态都回到初始值
 
 ```mermaid
 flowchart LR
@@ -67,9 +67,9 @@ flowchart LR
 | 渲染开销 | 每次重新创建 DOM | 复用已有 DOM，只做移动 |
 | 内存 | 及时释放 | 常驻内存，需 `max` / `include` 控制 |
 
-**一句话总结**：keep-alive 用「内存换体验」，把「销毁重建」换成了「休眠唤醒」。
+keep-alive 用「内存换体验」，把「销毁重建」换成了「休眠唤醒」。
 
-### 2.3 和其他方案的对比（面试常问「还能怎么做」）
+### 2.3 和其他方案的对比
 
 | 方案 | 思路 | 优点 | 缺点 |
 | --- | --- | --- | --- |
@@ -191,18 +191,22 @@ onUnmounted(() => console.log('unmounted：组件真正被销毁时才执行'))
 ### 4.1 匹配规则
 
 ```js
-// 源码逻辑（简化）
+// runtime-core 中的 matches（简化）
 function matches(pattern, name) {
   if (Array.isArray(pattern)) return pattern.some((p) => matches(p, name))
   if (typeof pattern === 'string') return pattern.split(',').includes(name)
-  if (pattern instanceof RegExp) return pattern.test(name)
+  if (pattern instanceof RegExp) {
+    pattern.lastIndex = 0 // 带 g 标志的正则复用前必须重置
+    return pattern.test(name)
+  }
   return false
 }
 ```
 
-- 匹配的是**组件的 `name` 选项**，不是路由 `name`、不是文件路径、不是组件标签名。
-- `include="a,b"` 与 `include="a"`、`include="b"` 效果一致。
-- `exclude` 的判定在 `include` 之后，即**排除优先**。
+- 匹配的是 `getComponentName()` 的结果：优先组件 `name` 选项，其次 `<script setup>` 编译期按文件名注入的 `__name`；不是路由 `name`，也不是组件标签名。
+- `include="a,b"` 与 `include="a"`、`include="b"` 效果一致；`split(',')` 不 trim，`"a, b"` 里的 `" b"` 匹配不上 `b`。
+- 字符串与数组匹配区分大小写；正则按自身 `flags` 判定（加 `i` 才不区分）。
+- `exclude` 与 `include` 同时命中时以 `exclude` 为准（排除优先）。
 
 ```vue
 <!-- 字符串：逗号分隔 -->
@@ -215,7 +219,7 @@ function matches(pattern, name) {
 <keep-alive :include="/List|Detail/">
 ```
 
-> ⚠️ 最常见的错误：写 `:include="['list']"` 但组件里 `name` 是大写 `List` —— **大小写敏感，匹配不上**。
+> 常见错误：写 `:include="['list']"` 但组件里 `name` 是大写 `List` —— **大小写敏感，匹配不上**。
 
 ### 4.2 `<script setup>` 里组件名从哪来？
 
@@ -235,7 +239,7 @@ export default { name: 'List' }
 // ...
 </script>
 
-<!-- 方式 3：依赖文件名推断（Vue 3.2.34+ 会把文件名作为 __name） -->
+<!-- 方式 3：依赖文件名推断（编译器会把文件名注入 __name） -->
 <!-- 文件叫 List.vue 时，include="List" 通常可用，但不如前两种稳妥 -->
 ```
 
@@ -243,9 +247,9 @@ export default { name: 'List' }
 
 `max` 不是「随便删一个」，而是**最近最少使用淘汰（LRU）**：
 
-- 内部维护 `cache: Map<key, vnode>` 和 `keys: Set<key>`
+- 内部维护 `cache: Map<key, vnode>` 和 `keys: Set<key>`，`keys` 的插入序即 LRU 序
 - 每次命中缓存时，把该 key 从 `keys` 中删除再重新加入（**移到队尾 = 标记为最近使用**）
-- 超出 `max` 时，淘汰 `keys` 的**第一个**（最久未使用），并真正 `unmount` 它
+- 新增 key 后判断 `keys.size > parseInt(max, 10)`，超了就淘汰 `keys` 的**第一个**（最久未使用），并真正 `unmount` 它
 
 ```
 keys（左 = 最久未用，右 = 最近使用）
@@ -254,7 +258,7 @@ keys（左 = 最久未用，右 = 最近使用）
 插入 D → 淘汰 A → [ C, B, D ]
 ```
 
-> 源码里 `keys` 用的是 `Set`（Vue 3）或数组 `keys.push` + `remove`（Vue 2），语义都是「插入序 = LRU 序」。
+> Vue 3 用 `Set` 的 `delete` + `add`，Vue 2 用数组 `remove` + `push`，语义都是「插入序 = LRU 序」。
 
 ---
 
@@ -264,7 +268,7 @@ keys（左 = 最久未用，右 = 最近使用）
 
 | 设计 | 作用 |
 | --- | --- |
-| **抽象组件**（Vue 2 `abstract: true`） | 自身不渲染任何包裹 DOM，不会出现在父组件链中，`$parent` 会跳过它 |
+| **抽象组件**（Vue 2 `abstract: true`） | 自身不渲染包裹 DOM，不进入父组件链，`$parent` 会跳过它（Vue 3 无 `abstract`，靠直接返回子 vnode 达到同样效果） |
 | **`cache` + `keys` 容器** | `cache` 存 `vnode`（内含 `component` 实例和 `el`），`keys` 维护 LRU 顺序 |
 | **接管组件的卸载流程** | 命中缓存时不走 `unmount`，而是把 DOM 移到离线容器，实例标记为 `isDeactivated` |
 
@@ -278,10 +282,10 @@ flowchart TD
   C -->|否| C1["直接返回，不缓存"]
   C -->|是| D["取组件 name"]
   D --> E{"命中 exclude ?<br/>或未命中 include ?"}
-  E -->|是| E1["current = vnode<br/>直接返回，走正常卸载"]
+  E -->|是| E1["清掉 KEEP_ALIVE 标记<br/>直接返回，走正常卸载"]
   E -->|否| F{"cache 中有这个 key ?"}
-  F -->|是| G["复用：vnode.el / vnode.component 取自缓存<br/>打上 SHOULD_KEEP_ALIVE 标记<br/>更新 LRU 顺序"]
-  F -->|否| H["打上 SHOULD_KEEP_ALIVE 标记<br/>记录 pendingCacheKey<br/>超过 max 则先淘汰最久未用的"]
+  F -->|是| G["复用：vnode.el / vnode.component 取自缓存<br/>打上 KEPT_ALIVE 标记<br/>更新 LRU 顺序"]
+  F -->|否| H["加入 keys<br/>打上 SHOULD_KEEP_ALIVE 标记<br/>记录 pendingCacheKey<br/>超过 max 则先淘汰最久未用的"]
   G --> I["返回 vnode"]
   H --> I
 ```
@@ -319,10 +323,11 @@ const KeepAliveImpl = {
       move(vnode, storageContainer, null)       // DOM 搬进离屏容器（并未销毁）
       queuePostRenderEffect(() => {
         if (instance.da) invokeArrayFns(instance.da) // 触发 deactivated
+        instance.isDeactivated = true
       })
     }
 
-    // ② 真正卸载（max 超额、exclude 变更时才会走这里）
+    // ② 真正卸载（max 超额、include / exclude 变更时才会走这里）
     function unmount(vnode) {
       resetShapeFlag(vnode)
       _unmount(vnode, instance, parentSuspense, true)
@@ -344,30 +349,32 @@ const KeepAliveImpl = {
       const name = getComponentName(comp)
       const { include, exclude, max } = props
 
-      // 不满足缓存条件 → 原样返回，交给正常流程卸载
+      // 不满足缓存条件 → 清掉标记，原样返回，交给正常流程卸载
       if ((include && (!name || !matches(include, name))) ||
           (exclude && name && matches(exclude, name))) {
+        vnode.shapeFlag &= ~ShapeFlags.COMPONENT_SHOULD_KEEP_ALIVE
         current = vnode
         return rawVNode
       }
 
       const key = vnode.key == null ? comp : vnode.key
       const cachedVNode = cache.get(key)
+      pendingCacheKey = key
 
       if (cachedVNode) {
         // 命中缓存：复用实例和 DOM
         vnode.el = cachedVNode.el
         vnode.component = cachedVNode.component
         if (vnode.transition) setTransitionHooks(vnode, vnode.transition)
-        vnode.shapeFlag |= ShapeFlags.COMPONENT_SHOULD_KEEP_ALIVE
-        keys.delete(key); keys.add(key)                 // 更新 LRU：移到最新
+        vnode.shapeFlag |= ShapeFlags.COMPONENT_KEPT_ALIVE
+        keys.delete(key); keys.add(key)                 // 更新 LRU：移到队尾
       } else {
-        vnode.shapeFlag |= ShapeFlags.COMPONENT_SHOULD_KEEP_ALIVE
-        pendingCacheKey = key
-        if (max && keys.size >= parseInt(max)) {
+        keys.add(key)
+        if (max && keys.size > parseInt(max, 10)) {
           pruneCacheEntry(keys.values().next().value)   // 淘汰最久未使用
         }
       }
+      vnode.shapeFlag |= ShapeFlags.COMPONENT_SHOULD_KEEP_ALIVE
 
       current = vnode
       return rawVNode
@@ -377,7 +384,7 @@ const KeepAliveImpl = {
   // ④ 挂载 / 更新后才写入缓存（这样可以正确处理 Suspense 等异步子树）
   mounted() { if (pendingCacheKey != null) cache.set(pendingCacheKey, getInnerChild(this.subTree)) },
   updated() { /* 同上 */ },
-  unmounted() { /* 清理当前 vnode 的 KEEP_ALIVE 标记 */ },
+  beforeUnmount() { /* KeepAlive 自身卸载：缓存条目逐个真实 unmount，当前 vnode 只清标记 */ },
 }
 ```
 
@@ -385,7 +392,7 @@ const KeepAliveImpl = {
 
 > keep-alive 并没有「暂停」组件，而是**给 vnode 打上 `COMPONENT_SHOULD_KEEP_ALIVE` 标记**，让 renderer 在卸载时改走 `deactivate`：**把 DOM 移进离屏容器、保留 component 实例、不调用 `unmount`**；下次渲染命中缓存时，再用 `activate` 把 DOM 搬回来并做一次增量 `patch`。
 
-这就是为什么：
+由此得到三个结果：
 
 - 状态能保留 → 实例没销毁，响应式数据、闭包、定时器全都还在
 - 滚动位置能保留 → **DOM 节点是同一个**，只是被移动到别处又移回来
@@ -400,14 +407,14 @@ const KeepAliveImpl = {
 | 定义方式 | `Vue.component` 的选项对象，`abstract: true` | 组合式 `setup` 返回 render 函数，`__isKeepAlive` 标记 |
 | 抽象标识 | `abstract: true`（跳过父组件链、不渲染包裹节点） | 无 `abstract`，靠返回子 vnode 天然不产生包裹节点 |
 | 缓存时机 | `render` 中直接 `cache[key] = vnode` | `render` 只记 `pendingCacheKey`，在 `mounted / updated` 中写缓存（为兼容 Suspense / Transition） |
-| 缓存 key 默认值 | `componentOptions.Ctor.cid + '::' + tag` | `vnode.type`（组件定义对象本身） |
+| 缓存 key 默认值 | `componentOptions.Ctor.cid`（有 tag 时追加 `::tag`） | `vnode.type`（组件定义对象本身） |
 | 保留状态的方式 | 打 `vnode.data.keepAlive = true`，卸载钩子里判断该标记 → 不 `$destroy`，改调 `deactivateChildComponent`；DOM 引用留在 vnode 上，再激活时 `insert` 回去 | renderer 内部直接 `move` 到 `storageContainer`（离屏 div），激活时 `move` 回来 |
 | 生命周期钩子 | `activated` / `deactivated` | `onActivated` / `onDeactivated`（同样存在 `activated` 选项） |
-| 多子节点 | `getFirstComponentChild` 取第一个，其余忽略 | 抛警告 `KeepAlive should contain exactly one component child`，且不缓存 |
+| 多子节点 | `getFirstComponentChild` 取第一个，其余忽略 | 警告 `KeepAlive should contain exactly one component child`，且不缓存 |
 | 组件名获取 | 只看 `name` 选项 | 先 `name`，再 `__name`（`<script setup>` 由文件名推断） |
 | LRU 容器 | `cache` 对象 + `keys` 数组（`remove` + `push`） | `cache: Map` + `keys: Set`（`delete` + `add`） |
 
-### Vue 2 关键源码（`src/core/components/keep-alive.js` + `create-component.js`）
+### Vue 2 关键源码（`src/core/components/keep-alive.js` + `src/core/vdom/patch.js`）
 
 ```js
 // keep-alive.js
@@ -444,7 +451,7 @@ render () {
 ```
 
 ```js
-// create-component.js —— 卸载时拦截
+// patch.js —— 组件 vnode 的 destroy 钩子，卸载时拦截
 destroy (vnode) {
   const { componentInstance } = vnode
   if (!componentInstance._isDestroyed) {
@@ -461,41 +468,28 @@ destroy (vnode) {
 
 ## 7. 面试怎么答
 
-### 7.1 30 秒版（先给结论，别一上来就讲源码）
+### 7.1 30 秒版（先给结论）
 
-> `keep-alive` 是 Vue 的内置抽象组件，用来**缓存组件实例**。默认情况下组件切换会被销毁重建，状态丢失、重复请求、重复渲染；`keep-alive` 会在组件切走时**不销毁**，而是把 DOM 移到一个离屏容器、保留组件实例，切回来时再挂回页面，所以状态、滚动位置、表单内容都能保留。
->
-> 它有三个 props：`include` / `exclude` 按组件 `name` 控制缓存范围，`max` 用 **LRU** 限制缓存数量、防止内存膨胀。配合 `activated` / `deactivated` 两个专属生命周期做数据刷新和资源清理。最典型的场景就是**路由页面前进后退时保留列表页状态**。
+- **是什么**：内置抽象组件，缓存组件实例（vnode 上挂 `component` / `el`），不产生包裹 DOM。
+- **默认行为**：切换即卸载，实例与 DOM 丢弃，回来要重新创建、请求、渲染。
+- **怎么做**：切走时 `deactivate`（DOM 移到离屏容器、实例保留、触发 `deactivated`），切回时 `activate`（DOM 移回 + 增量 patch、触发 `activated`）。
+- **API**：`include` / `exclude` 按组件名控制范围，`max` 用 LRU 限数量；典型场景是列表页往返保留筛选与滚动位置。
 
-### 7.2 2 分钟版（结构化展开，体现深度）
+### 7.2 2 分钟版（结构化展开）
 
 按「是什么 → 为什么 → 怎么用 → 原理 → 注意点 → 场景」六段说：
 
 1. **是什么**：内置抽象组件，缓存组件实例，不产生额外 DOM。
 2. **为什么**：动态组件 / 路由切换默认会 `unmount` 旧组件，导致状态丢失、重复请求、重复渲染；keep-alive 用内存换体验。
 3. **怎么用**：包裹 `<component :is>` 或 `<router-view>`；`include` / `exclude` / `max`；`activated` / `deactivated`。
-4. **原理**：内部 `cache`（Map/对象）+ `keys`（LRU 顺序）；render 时给 vnode 打 `keepAlive` 标记；命中缓存就复用 `component` 实例和 `el`；卸载流程被改写为 `deactivate`（DOM 移入离屏容器，不调 `unmount`），激活时 `activate`（DOM 移回 + 增量 patch）。
-5. **注意点**：只支持一个子组件；`include` 匹配的是组件 `name`，`<script setup>` 要 `defineOptions({ name })`；缓存期间 `unmounted` 不触发，定时器/事件/请求要在 `deactivated` 清理；数据不会自动刷新，要在 `activated` 里按需刷新；`max` 防止内存泄漏。
-6. **场景**：列表页 → 详情页 → 返回保留筛选条件与滚动位置；多 Tab 后台系统；步骤表单；地图/编辑器等重初始化成本高的组件。
+4. **原理**：`cache`（Map/对象）+ `keys`（LRU 顺序）；render 时给 vnode 打 `keepAlive` 标记；命中缓存就复用 `component` 实例和 `el`；卸载流程被改写为 `deactivate`，激活时 `activate`。
+5. **注意点**：只支持一个子组件；`include` 匹配组件 `name`，`<script setup>` 要 `defineOptions({ name })`；缓存期间 `unmounted` 不触发，定时器 / 事件 / 请求要在 `deactivated` 清理；数据不会自动刷新；`max` 防止内存膨胀。
+6. **场景**：列表页 → 详情页 → 返回；多 Tab 后台系统；步骤表单；地图 / 编辑器等重初始化成本高的组件。
 
 ### 7.3 答题节奏建议
 
-- **先给结论再展开**：面试官最怕听你从 `created` 钩子讲起。
-- **主动带上"坑"**：能说出「缓存后数据不更新怎么办」基本就拉开差距了。
-- **不要背源码行号**：说清 `cache + keys + 打标记 + 拦截卸载` 四个要素即可，被追问再往下讲。
-- **主动对比方案**：`v-show` / 状态提升 / 手动缓存，体现你有方案选型能力。
-
-### 7.4 一段可以直接背的"标准答案"
-
-> keep-alive 是 Vue 的内置抽象组件，作用是**缓存组件实例，避免组件在切换时被销毁重建**。
->
-> 默认情况下，动态组件或路由切换时旧组件会走完整的卸载流程，`beforeUnmount`、`unmounted` 都会触发，实例和 DOM 全部丢弃，下次进入要重新创建、重新请求、重新渲染，滚动位置和表单状态也会丢。keep-alive 的做法是：渲染时先看这个组件是否命中缓存，命中就把缓存里的 `component` 实例和 `el` 赋给新 vnode，同时给 vnode 打上 `KEEP_ALIVE` 标记；渲染器看到这个标记后，卸载时不真正 `unmount`，而是 `deactivate` —— 把 DOM 移动到一个离屏容器里、保留实例，只触发 `deactivated`；下次再渲染时 `activate`，把 DOM 移回页面并做一次增量 patch，只触发 `activated`。
->
-> 对外 API 是三个 props：`include`、`exclude` 按组件 `name` 控制缓存白名单/黑名单，`max` 用 LRU 限制缓存数量，超出时淘汰最久未使用的并真正销毁，防止内存无限增长。生命周期上是 `activated` / `deactivated` 两个专属钩子。
->
-> 使用时要注意：它只接受一个子组件；`include` 匹配的是组件 `name` 而非路由 name，`<script setup>` 需要用 `defineOptions` 声明；缓存期间组件不会 `unmount`，所以定时器、事件监听、未完成请求要在 `deactivated` 里清理，否则会泄漏；数据也不会自动刷新，一般会在 `activated` 里根据时间戳或标记位决定是否重新请求。
->
-> 典型场景是后台系统的列表页，从列表进详情再返回，需要保留筛选条件、分页和滚动位置。
+- 先给结论再展开，源码细节留到被追问。
+- 主动补「缓存后数据不更新」「定时器泄漏」两个坑，并对比 `v-show` / 状态提升 / 手动缓存。
 
 ---
 
@@ -507,14 +501,13 @@ destroy (vnode) {
 
 ### Q2. 为什么缓存后 `mounted` 不再触发？
 
-`mounted` 属于「挂载」阶段钩子，只在实例首次挂载时执行。缓存复用的是同一个实例，不重新挂载，所以只触发 `activated`。需要"每次进入都执行"的逻辑应放到 `activated`。
+`mounted` 属于「挂载」阶段钩子，只在实例首次挂载时执行。缓存复用的是同一个实例，不重新挂载，所以只触发 `activated`。需要「每次进入都执行」的逻辑应放到 `activated`。
 
 ### Q3. `activated` 和 `mounted` 的执行顺序？
 
-首次进入：`setup` → `beforeMount` → `mounted` → `activated`。
-之后每次回到该组件：只有 `activated`。
+同 3.3：首次进入 `setup` → `beforeMount` → `mounted` → `activated`；之后每次回到该组件只有 `activated`。
 
-### Q4. 缓存后数据不更新怎么办？（必问）
+### Q4. 缓存后数据不更新怎么办？
 
 四种常见做法：
 
@@ -531,7 +524,7 @@ onActivated(() => {
   }
 })
 
-// ③ 用事件/状态标记触发（比如详情页修改后返回列表要刷新）
+// ③ 用事件/状态标记触发（详情页修改后返回列表要刷新）
 // 在 store / provide-inject 里放一个 needRefresh 标记，activated 里检查
 
 // ④ 干脆不缓存这个页面：把 include 里对应的 name 移除
@@ -553,7 +546,7 @@ onActivated(() => {
 
 ### Q6. 为什么 keep-alive 里只能有一个子组件？
 
-它的实现就是「取第一个子组件 vnode 来缓存」。Vue 2 中 `getFirstComponentChild` 直接取 `$slots.default[0]`，其余被忽略；Vue 3 里子节点数 > 1 会警告 `KeepAlive should contain exactly one component child` 并放弃缓存。
+它取默认插槽的第一个组件 vnode 来缓存。Vue 2 的 `getFirstComponentChild` 遍历 `$slots.default` 找第一个组件 vnode，其余忽略；Vue 3 子节点数 > 1 会警告 `KeepAlive should contain exactly one component child` 并放弃缓存。
 
 要切换多个组件，用 `<component :is>` 或 `v-if / v-else` 保证同一时刻只渲染一个。
 
@@ -576,7 +569,7 @@ onActivated(() => {
 </keep-alive>
 ```
 
-> 判断标准不是「写了几个标签」，而是**运行时 `slots.default()` 返回了几个 vnode**。`v-if` / `v-else` 只会产出一个，所以没问题；两个兄弟节点同时渲染（或用 `v-show` 的两个组件）就会出问题。
+> 判断标准不是「写了几个标签」，而是**运行时 `slots.default()` 返回了几个 vnode**。`v-if` / `v-else` 只产出一个，所以没问题；两个兄弟节点同时渲染（或用 `v-show` 的两个组件）就会出问题。
 
 ### Q7. `:key` 在 keep-alive 里起什么作用？
 
@@ -590,19 +583,19 @@ onActivated(() => {
 <component :is="Component" :key="$route.fullPath" />
 ```
 
-面试回答：`key` 决定缓存粒度，默认按组件类型缓存，加了 `key` 就按 `key` 值分别缓存。
+回答要点：`key` 决定缓存粒度，默认按组件类型缓存，加了 `key` 就按 `key` 值分别缓存。
 
 ### Q8. `max` 超出后是怎么淘汰的？
 
-LRU。每次命中缓存时把 key 挪到 `keys` 末尾（最近使用），超出 `max` 时删掉 `keys` 的首位（最久未使用），并对那个 vnode 执行真正的 `unmount`，触发 `unmounted`。
+同 4.3：命中缓存把 key 挪到 `keys` 末尾；新增 key 后 `keys.size > max` 时删掉首位（最久未使用），并对那个 vnode 执行真正的 `unmount`。
 
 ### Q9. 被 `max` 淘汰的组件会触发什么钩子？
 
-会走完整卸载：`deactivated` → `beforeUnmount` → `unmounted`（Vue 2：`deactivated` → `beforeDestroy` → `destroyed`）。
+`deactivated` 早在它被移出视图时就触发过；淘汰时只走完整卸载的 `beforeUnmount` → `unmounted`（Vue 2：`beforeDestroy` → `destroyed`），不会再补一次 `deactivated`。
 
 ### Q10. 缓存组件的定时器会怎样？
 
-**继续跑。** 因为实例没销毁，`setInterval`、`addEventListener`、WebSocket 连接都还活着。如果不清理，会：
+**继续跑。** 因为实例没销毁，`setInterval`、`addEventListener`、WebSocket 连接都还活着。不清理的后果：
 
 - 内存泄漏（持有已不需要的引用）
 - 后台仍在发请求 / 轮询
@@ -618,13 +611,13 @@ onDeactivated(() => { clearInterval(timer); timer = null })
 
 ### Q11. keep-alive 会导致内存泄漏吗？
 
-会。它是「常驻内存」的设计：
+它是「常驻内存」的设计，缓存不主动释放就会一直占内存：
 
 - 缓存实例上的响应式数据、闭包、DOM 全都不释放；
 - 缓存页面越多，内存越高；
 - 页面里有大列表 / 大图 / 大对象时尤其明显。
 
-缓解手段：`include` 精准白名单、`max` 限制数量、`deactivated` 里释放大对象（把列表数据置空）、不要把详情页这种"一次性的页面"也缓存。
+缓解手段：`include` 精准白名单、`max` 限制数量、`deactivated` 里释放大对象（把列表数据置空）、不要把详情页这种一次性页面也缓存。
 
 ### Q12. 如何手动清除某个缓存？
 
@@ -637,7 +630,7 @@ delete keepAlive.cache[key]
 keepAlive.keys = keepAlive.keys.filter((k) => k !== key)
 ```
 
-**推荐做法**：通过改变 `include` 数组来驱动 `pruneCache`（Vue 3 内部 `watch` 了 `include` / `exclude`，不匹配的缓存会被卸载）。
+推荐做法：通过改变 `include` 数组驱动 `pruneCache`（Vue 3 内部 `watch` 了 `include` / `exclude`，不匹配的缓存会被卸载）。
 
 ```js
 // 关掉某个页面的缓存
@@ -666,53 +659,35 @@ cachedViews.value = cachedViews.value.filter((n) => n !== 'Detail')
 
 ### Q14. keep-alive 和 `v-if` 一起用有什么问题？
 
-`v-if` 为 `false` 时，keep-alive 拿不到子节点（`slots.default()` 为空），会返回空，此时不报错但也不缓存。如果外层 `v-if` 反复切换，缓存依然保留在 `cache` 里（key 没变），下次打开还能命中。
+`v-if` 为 `false` 时，插槽里产出的是**注释占位 vnode**，KeepAlive 判定它不是组件后原样返回，不写新缓存，也不报警告。已经缓存过的条目仍然保留在 `cache` 里（key 没变），下次显示时照常命中。
 
 要注意的是：**keep-alive 自身被 `v-if` 移除时会销毁整个缓存**。
 
 ### Q15. 嵌套的 keep-alive 会怎样？
 
-多层缓存可以工作，但语义容易混乱：内层外层各有一份 cache，内层组件被外层 deactivate 时，内层 cache 里的东西还在。实际项目尽量避免，会显著增加内存和心智负担。
+多层缓存可以工作，但语义容易混乱：内层外层各有一份 cache。实际项目尽量避免，会显著增加内存和维护成本。
 
 ### Q16. keep-alive 组件内部还能再放 keep-alive 吗？缓存会不会叠加？
 
-能。每层独立管理自己的缓存，不冲突，但要清楚「谁在缓存谁」。
+能。每层独立维护自己的 `cache` / `keys`，不会互相覆盖；外层 `deactivate` 只是把整棵 DOM 移出，不改变内层缓存内容。
 
 ### Q17. keep-alive 在 SSR 下有用吗？
 
-SSR 是「一次渲染、直出 HTML」，没有客户端长时间的组件切换过程，缓存在服务端没有意义（每个请求的实例独立，跨请求共享会造成状态污染）。所以 `keep-alive` 基本是**纯客户端行为**。
+SSR 是「一次渲染、直出 HTML」，没有客户端长时间的组件切换过程，缓存在服务端没有意义（每个请求实例独立，跨请求共享会造成状态污染）。所以 `keep-alive` 基本是**纯客户端行为**。
 
 ### Q18. 为什么不用 `v-show` 代替？
 
-`v-show` 是「全部渲染 + 切换 `display`」：
+`v-show` 是「全部渲染 + 切换 `display`」：状态天然保留，但首屏就要渲染所有分支，DOM 数量和组件初始化成本成倍增加；地图、图表、富文本编辑器这类重组件不适合。
 
-- 优点：实现简单，状态天然保留；
-- 缺点：**首屏就要渲染所有分支**，DOM 数量、组件初始化成本都翻倍；深层组件（地图、图表、富文本编辑器）初始化开销大，不适合。
-
-`keep-alive` 是「按需渲染 + 缓存已渲染的」，更省首屏。两者适用场景不同：**少量轻量组件切换用 `v-show`，路由级 / 重组件用 `keep-alive`**。
+`keep-alive` 是「按需渲染 + 缓存已渲染的」，更省首屏。少量轻量组件切换用 `v-show`，路由级 / 重组件用 `keep-alive`。
 
 ### Q19. keep-alive 缓存后，`beforeRouteEnter` / `beforeRouteLeave` 还会触发吗？
 
-会。路由守卫属于路由层，跟组件是否被缓存无关，只要路由发生变化就会执行。但组件内的 `created` / `mounted` 不会重复执行，所以「进入页面时初始化」的逻辑要放 `activated`，或者用 `onBeforeRouteUpdate` 处理参数变化。
+会。路由守卫属于路由层，与组件是否被缓存无关，只要路由变化就会执行。但组件内的 `created` / `mounted` 不会重复执行，所以「进入页面时初始化」的逻辑要放 `activated`，或者用 `onBeforeRouteUpdate` 处理参数变化。
 
-### Q20. 如果一个页面既想缓存，又想"从详情页返回时刷新"，怎么做？
+### Q20. 如果一个页面既想缓存，又想「从详情页返回时刷新」，怎么做？
 
-常见三种模式：
-
-```js
-// 模式 A：时间戳 + 过期刷新
-onActivated(() => { if (isExpired()) refresh() })
-
-// 模式 B：全局标记（store 里放 needRefresh）
-onActivated(() => {
-  if (store.needRefresh) { refresh(); store.needRefresh = false }
-})
-
-// 模式 C：离开时主动打标记（详情页提交成功后设置）
-onDeactivated(() => { /* 或在详情页里设置标记 */ })
-```
-
-更精细的做法是「按页面的 `meta` 区分」：列表页 `keepAlive: true`，详情页不缓存；或者在路由 `beforeEach` 里判断 `from / to` 决定是否临时把某个 name 从 `include` 里摘掉（这就是后台系统「关闭标签页即销毁缓存」的实现思路）。
+同 Q4 的 ②③：时间戳过期刷新，或 store 里放 `needRefresh` 标记。页面级还可以用 `meta.keepAlive` 区分列表页 / 详情页；或者在路由 `beforeEach` 里判断 `from / to`，临时把某个 name 从 `include` 里摘掉（后台系统「关闭标签页即销毁缓存」就是这么做的）。
 
 ---
 
@@ -738,9 +713,9 @@ onDeactivated(() => { /* 或在详情页里设置标记 */ })
 
 1. **默认不缓存，按需缓存**：用 `meta.keepAlive` + `include` 白名单，而不是全局包一层。
 2. **一定要设 `max`**：后台系统这种多标签页场景，`max` 是最后一道防线。
-3. **缓存页面要"自洁"**：`deactivated` 里清理定时器、事件监听、未完成的 `fetch`（`AbortController`）。
+3. **缓存页面要「自洁」**：`deactivated` 里清理定时器、事件监听、未完成的 `fetch`（`AbortController`）。
 4. **数据刷新策略要明确**：时间戳 / 标记位 / 事件通知，选一种写进规范。
-5. **详情页、一次性页面不要缓存**：它们的状态没有复用价值，只会占内存。
+5. **详情页、一次性页面不要缓存**：状态没有复用价值，只会占内存。
 6. **大列表页返回时恢复滚动位置**：DOM 保留的话天然就恢复了；如果用了虚拟列表，需要自己在 `activated` 里重新 `scrollTo`。
 7. **慎用 `:key="route.fullPath"`**：它会为每个路径单独开一份缓存，内存会爆。
 
@@ -752,7 +727,7 @@ onDeactivated(() => { /* 或在详情页里设置标记 */ })
 
 ```js
 // 简化版：只演示「缓存 + 复用 + LRU」的思想
-import { defineComponent, getCurrentInstance } from 'vue'
+import { defineComponent } from 'vue'
 
 export default defineComponent({
   name: 'MyKeepAlive',
@@ -765,7 +740,7 @@ export default defineComponent({
     const keys = []             // LRU 顺序，尾部最新
 
     const match = (pattern, name) => {
-      if (Array.isArray(pattern)) return pattern.includes(name)
+      if (Array.isArray(pattern)) return pattern.some((p) => match(p, name))
       if (typeof pattern === 'string') return pattern.split(',').includes(name)
       if (pattern instanceof RegExp) return pattern.test(name)
       return false
@@ -847,7 +822,7 @@ export default defineComponent({
 
 ```
 作用：缓存组件实例，切换时不销毁重建 → 保留状态 + 省渲染 + 省请求
-API ：include / exclude（匹配组件 name）/ max（LRU）
+API ：include / exclude（匹配组件 name）/ max（LRU，超额淘汰最久未用并真实 unmount）
 钩子：activated（进入）/ deactivated（离开），mounted 只跑一次
 原理：cache(Map) + keys(LRU) + vnode 打 KEEP_ALIVE 标记
       卸载 → deactivate（DOM 移到离屏容器，不 unmount）

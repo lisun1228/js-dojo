@@ -1,6 +1,6 @@
 # Props、$attrs 与插槽
 
-父子组件通信的三块基础内容：**props 传值**、**$attrs 透传**、**插槽分发内容**，以及配套的 **$emit / $event**。
+父子组件通信的基础：**props 传值**、**$attrs 透传**、**插槽分发内容**，以及配套的 **$emit / $event**。插槽的编译原理与完整语法见 `vue/slots.md`，本篇只保留 props 视角下的用法。
 
 ---
 
@@ -17,12 +17,12 @@
 
 ## 1. 父传子：props
 
-父组件用 `v-bind`（简写 `:`）传值，子组件用 `defineProps` 声明接收。
+父组件用 `v-bind`（简写 `:`）传值，子组件用 `defineProps` 声明接收。`defineProps` 是编译宏：只能在 `<script setup>` 顶层使用，无需 import，编译后转成组件的 `props` 选项。
 
 ```vue
 <!-- 子组件 Child.vue -->
 <script setup>
-const props = defineProps(['name', 'age'])
+defineProps(['name', 'age'])
 </script>
 
 <template>
@@ -33,40 +33,55 @@ const props = defineProps(['name', 'age'])
 
 ```vue
 <!-- 父组件 -->
-<Child :name="parentName" :age="20" />
+<Child
+  :name="parentName"
+  :age="20"
+/>
 ```
 
-推荐用类型声明（`<script setup lang="ts">`）：
+TypeScript 下用类型声明，需要默认值时用 `withDefaults`（两种写法二选一）：
 
 ```ts
-const props = defineProps<{ name: string; age: number }>()
-// 需要默认值时配合 withDefaults
-const props = withDefaults(defineProps<{ age?: number }>(), { age: 18 })
+defineProps<{ name: string; age: number }>()
+
+withDefaults(defineProps<{ age?: number }>(), { age: 18 })
 ```
 
-> props 是**单向数据流**：子组件只读，不要直接修改；需要改就 `emit` 事件，由父组件改。
+- **单向数据流**：子组件不直接改 props；开发环境下 `setup` 里的 `props` 是 `shallowReadonly`，改顶层字段会告警且不生效，生产构建没有这层保护。要改值就 `emit` 事件交给父组件。
+- 只读是浅层的：`props.obj.key = 'x'` 不告警，会直接改到父组件的数据。
 
 ## 2. `$props` 与 `$attrs` 的区别
 
-父组件传过来的东西会被分成两份：
+父组件传入的内容按「子组件是否声明」分成两份：
 
 | 位置 | 内容 |
 | --- | --- |
-| `$props` | 子组件里用 `defineProps` **声明过**的 |
-| `$attrs` | **没有声明**的属性、事件监听器、`class` / `style` |
+| `$props` | `defineProps` 声明过的 props |
+| `$attrs` | 未声明的属性、未声明的事件监听器、`class` / `style` |
 
 ```vue
-<Child :name="parentName" :age="20" data-test="testAttr" />
+<Child
+  :name="parentName"
+  :age="20"
+  data-test="testAttr"
+  @custom="onCustom"
+/>
 ```
 
-- `name` / `age` 声明过 → 进 `$props`
-- `data-test` 没声明 → 进 `$attrs`
+- `name` / `age` 声明过 → `$props`
+- `data-test`、`@custom` 未声明 → `$attrs`，监听器以 `onCustom` 键存在
+- 在 `defineEmits` 里声明过的事件不进 `$attrs`
 
 ### 自动透传与 inheritAttrs
 
-`$attrs` 默认会**自动挂到子组件的根元素上**（`inheritAttrs: true`），所以最终渲染出的 DOM 上能看到 `data-test="testAttr"`。
+`inheritAttrs` 默认 `true`：`$attrs` 挂到子组件根元素，`class` / `style` 与根元素原有值合并。
 
-想自己控制挂载位置，就关掉自动透传：
+```vue
+<!-- 父：<Child class="c" data-test="t" style="color:red" />，子组件根元素 class="root" -->
+<div class="root c" data-test="t" style="color:red;">child</div>
+```
+
+组件是多根 / 文本根节点时没有唯一落点，Vue 不自动继承并告警，需要 `inheritAttrs: false` 手动挂：
 
 ```vue
 <script setup>
@@ -75,70 +90,39 @@ defineOptions({ inheritAttrs: false })
 
 <template>
   <div class="wrapper">
-    <!-- 手动决定 $attrs 挂到哪个元素 -->
     <input v-bind="$attrs" />
   </div>
 </template>
 ```
 
-> `$attrs` 最典型的用法是**透传**：中间层组件什么都不声明，把属性和事件原样转给更深层的组件。
+- 关掉后根元素不再收到 `$attrs`，只在 `v-bind="$attrs"` 处生效。
+- 中间层组件不声明 props、只写 `v-bind="$attrs"`，就能把属性和事件原样转给深层组件。
 
 ## 3. 插槽
 
-### 默认插槽
-
-父组件标签**内部的内容**会进入子组件的 `<slot>`：
+子组件用 `<slot>` 占位，父组件提供内容：
 
 ```vue
-<!-- 父 -->
-<Child>我是默认插槽内容</Child>
-
-<!-- 子 -->
-<slot />
-```
-
-### 具名插槽
-
-用 `<template #名字>` 区分多个插槽：
-
-```vue
-<!-- 父 -->
-<Child>
-  我是默认插槽文本
-  <template #header>我是具名 header 插槽</template>
-</Child>
-
-<!-- 子 -->
+<!-- 子组件 -->
 <slot />
 <slot name="header" />
+<slot name="item" :row="row" />
+<slot>没有传入时的后备内容</slot>
+
+<!-- 父组件 -->
+<Child>
+  默认内容
+  <template #header>标题</template>
+  <template #item="{ row }">{{ row.name }}</template>
+</Child>
 ```
 
-### `$slots`：判断有没有传
-
-```vue
-<div v-if="$slots.header">
-  <slot name="header" />
-</div>
-<p v-else>没有传入 header 插槽</p>
-```
-
-### 作用域插槽：子组件把数据「带出去」
-
-子组件在 `<slot>` 上绑定的属性，会作为插槽内容的参数传给父组件：
-
-```vue
-<!-- 子 -->
-<slot name="item" :row="row" :index="index" />
-
-<!-- 父 -->
-<template #item="{ row, index }">
-  {{ index }} - {{ row.name }}
-</template>
-```
+- 默认插槽接收没有指定插槽名的内容；具名插槽由 `<template #name>` 对应 `<slot name="name">`。
+- 作用域插槽把 `<slot>` 上的属性作为参数传给父组件，父组件用 `#item="{ row }"` 解构。
+- `<slot>` 内部内容只在父组件没传该插槽时渲染；`v-if="$slots.header"` 决定外层容器是否出现。
+- 更多插槽语法与编译产物见 `vue/slots.md`。
 
 ## 4. 事件：`$emit` 与 `$event`
-
-### 自定义事件
 
 子组件用 `defineEmits` 声明事件，再调用 `emit` 触发：
 
@@ -149,74 +133,30 @@ const emit = defineEmits<{
   'update:name': [name: string, count: number, flag: boolean]
 }>()
 
-const handleEmit = () => {
-  emit('update:name', '新名字', 99, true)
-}
+const handleEmit = () => emit('update:name', '新名字', 99, true)
 </script>
 ```
 
-```vue
-<!-- 父组件：方法引用写法，所有参数依次传给处理函数 -->
-<Child @update:name="onUpdateName" />
+父组件的三种接法与收到的参数：
 
-const onUpdateName = (name, count, flag) => {
-  console.log(name, count, flag) // '新名字' 99 true
-}
-```
-
-### `$event` 只代表第一个参数
-
-`$event` 在自定义事件里代表 **`emit` 的第一个参数**：
-
-```vue
-<!-- 内联写法：只能拿到第一个参数 -->
-<Child @update:name="onUpdateName($event)" />
-```
-
-想拿到**全部参数**，用 rest 参数接：
-
-```vue
-<Child @update:name="handleWithAllArgs" />
-
-const handleWithAllArgs = (...args) => {
-  // args = ['新名字', 99, true]
-}
-```
-
-> Vue 3 模板里**没有** `$arguments` 这个内置变量。要拿全部参数，就用方法引用写法（所有参数自动传入）或 rest 参数。
-> 反过来，如果只想拿第一个参数，内联写 `handler($event)` 即可。
-
-### 原生 DOM 事件里的 `$event`
-
-同一个 `$event`，在原生事件上含义不同 —— 它是**浏览器原生 Event 对象**：
-
-```vue
-<button @click="handleNativeClick($event)">点我</button>
-
-const handleNativeClick = (event) => {
-  // event 是原生 Event
-  console.log(event.target.tagName) // BUTTON
-}
-```
-
-对比总结：
-
-| 场景 | `$event` 是什么 |
+| 写法 | 处理函数收到 |
 | --- | --- |
-| `@自定义事件` | `emit` 的第一个参数 |
-| `@click` 等原生事件 | 浏览器原生 `Event` 对象 |
+| `@update:name="onUpdateName"` | 全部参数：`'新名字', 99, true` |
+| `@update:name="onUpdateName($event)"` | 只有第一个参数 |
+| `@update:name="handleWithAllArgs"`（`(...args)` 接收） | 全部参数 |
+
+- 自定义事件里的 `$event` 是 `emit` 的第一个参数，模板里没有 `$arguments`。
+- 原生事件里的 `$event` 是浏览器原生 `Event` 对象，`@click="fn($event)"` 中 `event.target.tagName` 为 `BUTTON`。
 
 ## 5. 顺带一提：模板 ref
 
-想在 `<script setup>` 里拿到 DOM 元素 / 子组件实例，用 `useTemplateRef`（Vue 3.5+）：
+`<script setup>` 里用 `useTemplateRef`（Vue 3.5+）拿 DOM 元素或子组件实例：
 
 ```vue
 <script setup>
 import { useTemplateRef } from 'vue'
 
 const inputEl = useTemplateRef('inputEl')
-
-// 通过 inputEl.value 访问真实 DOM，比如聚焦、测量、读取值
 const focus = () => inputEl.value?.focus()
 </script>
 
@@ -226,19 +166,21 @@ const focus = () => inputEl.value?.focus()
 </template>
 ```
 
-> 注意：ref 拿到的是**普通 DOM 元素**，它的 `value` 等属性并**不是响应式的**，直接在模板里写 `{{ inputEl?.value }}` 不会随输入实时更新，需要像下面这样自己同步：
->
-> ```vue
-> <input ref="inputEl" @input="readValue" />
-> <p>{{ inputValue }}</p>
->
-> const inputValue = ref('')
-> const readValue = () => { inputValue.value = inputEl.value?.value ?? '' }
-> ```
->
-> 只是想要「输入框和变量双向同步」的话，直接用 `v-model` 就够了，不需要模板 ref。
->
-> 老版本用 `const inputEl = ref(null)` + 同名 `ref="inputEl"` 也能实现，但变量名必须和模板里的 ref 值一致，容易写错，所以 3.5 起推荐 `useTemplateRef`。
+- 字符串要和模板里的 `ref="inputEl"` 一致，挂载后 `inputEl.value` 才有值。
+- 拿到的是真实 DOM，`inputEl.value.value` 是普通字符串、不是响应式数据，要随输入更新得自己同步：
+
+```vue
+<input
+  ref="inputEl"
+  @input="readValue"
+/>
+<p>{{ inputValue }}</p>
+
+const inputValue = ref('')
+const readValue = () => { inputValue.value = inputEl.value?.value ?? '' }
+```
+
+- 旧写法 `const inputEl = ref(null)` + 同名 `ref="inputEl"` 仍可用，只是变量名要手工和 ref 名保持一致。
 
 ## 6. 常用实例属性速查
 
@@ -249,4 +191,4 @@ const focus = () => inputEl.value?.focus()
 | `$slots` | 父组件传入的插槽 |
 | `$emit` | 触发自定义事件 |
 | `$refs` | 模板 ref 集合（推荐改用 `useTemplateRef`） |
-| `$el` | 组件根元素（多根节点时不适用） |
+| `$el` | 组件根节点；多根时是 fragment 起始锚点（文本节点） |

@@ -1,8 +1,7 @@
 # Vue 插槽 slot 详解与面试回答
 
 > 适用版本：Vue 2.x / Vue 3.x（含 `<script setup>`）
-> 阅读建议：第 1~4 节是「怎么用」，第 5 节是「原理（面试加分）」，第 9 节是「面试直接背」，第 10 节用来自测
-> 相关教程：`Props / 插槽 / $attrs` 讲父子通信的基础用法，本篇把插槽单独展开到编译层
+> 覆盖：默认 / 具名 / 作用域插槽，编译作用域，Vue 3 编译产物与 Vue 2 差异
 
 ---
 
@@ -23,11 +22,11 @@
 
 ## 1. 一句话回答
 
-**插槽是 Vue 的「内容分发」机制**：父组件在调用子组件时，把自己的模板片段「填」进子组件预留的位置。
+**插槽是 Vue 的「内容分发」机制**：父组件调用子组件时，把自己的模板片段「填」进子组件预留的位置。
 
 它解决的是——**子组件控制结构（在哪放），父组件控制内容（放什么）**，从而在不增加 props 数量的前提下实现高度可定制的组件。
 
-再补一句关键的：插槽内容**在父组件的作用域里编译**，想拿子组件的数据，必须用**作用域插槽**。
+关键约束：插槽内容**在父组件的作用域里编译**，想拿子组件的数据，必须用**作用域插槽**。
 
 ---
 
@@ -35,7 +34,7 @@
 
 ### 2.1 只用 props 的困境
 
-写一个 Card 组件，如果要支持「标题 + 内容 + 底部按钮 + 图标 + 自定义头部右侧操作区」：
+Card 组件要支持「标题 + 内容 + 底部按钮 + 图标 + 头部右侧操作区」：
 
 ```vue
 <!-- 用 props 的写法：props 数量爆炸，而且只能传字符串 / vnode -->
@@ -47,8 +46,6 @@
   :extra="h('a', {}, '详情')"
 />
 ```
-
-问题：
 
 | 问题 | 说明 |
 | --- | --- |
@@ -110,7 +107,7 @@ flowchart LR
   end
 ```
 
-> 一句话：**props 传数据，slot 传结构**。两者互补，不是替代关系。
+> **props 传数据，slot 传结构**。两者互补，不是替代关系。
 
 ---
 
@@ -189,23 +186,28 @@ Element Plus / Ant Design 的 Table、Select、Tree 的「自定义渲染」全�
 
 ### 3.4 动态插槽名
 
-插槽名可以是一个表达式，用 `#[name]`：
+插槽名可以是一个表达式，用指令动态参数 `#[name]`：
 
 ```vue
-<template
-  v-for="name in slotNames"
-  :key="name"
-  #[name]
->
-  <slot :name="name" />
-</template>
+<!-- 父组件：按 slotNames 逐个生成具名插槽 -->
+<Layout>
+  <template
+    v-for="name in slotNames"
+    :key="name"
+    #[name]
+  >
+    <span>{{ name }}</span>
+  </template>
+</Layout>
 ```
 
-> `#[dynamicName]` 用的是**指令动态参数**语法，Vue 2.6+ 与 Vue 3 都支持。
+编译产物不再是对象字面量，而是 `_createSlots([...])` + `DYNAMIC_SLOTS`（1024）patch flag；子组件侧对应的写法是 `<slot :name="name" />`。
+
+> `#[dynamicName]` 用的是**指令动态参数**语法；Vue 2.6 的对应写法是 `v-slot:[name]`。
 
 ### 3.5 后备内容
 
-`<slot>` 标签内部的内容，只在父组件没传这个插槽时渲染：
+`<slot>` 标签内部的内容，只在父组件没传这个插槽的有效内容时渲染：
 
 ```vue
 <slot name="footer">
@@ -221,6 +223,8 @@ Element Plus / Ant Design 的 Table、Select、Tree 的「自定义渲染」全�
 </footer>
 ```
 
+`$slots.footer` 只表示「父组件传了这个插槽」，不表示内容非空：`<template #footer></template>` 或只写注释时它仍然是函数（truthy），此时 `renderSlot` 会把注释、空文本视为无效内容，照旧渲染 fallback。
+
 ### 3.6 Vue 2 / Vue 3 语法对照
 
 | 能力 | Vue 2.5 及以前 | Vue 2.6+ / Vue 3 |
@@ -232,8 +236,8 @@ Element Plus / Ant Design 的 Table、Select、Tree 的「自定义渲染」全�
 
 两个必须记住的限制：
 
-- `v-slot` **只能用在 `<template>` 或组件标签上**，不能直接写在普通 DOM 元素上（Vue 2.6+ 强制）。
-- 缩写 `#` 后面**必须带插槽名**，单独一个 `#` 是非法的；默认插槽要写 `#default`。
+- `v-slot` **只能用在 `<template>` 或组件标签上**，写在普通元素上编译报错：`v-slot can only be used on components or <template> tags.`
+- 跨版本一律写 `#default`：Vue 3.5 的编译器会把单独的 `#` 当成默认插槽，这个边界行为不要依赖。
 
 ---
 
@@ -247,11 +251,11 @@ Element Plus / Ant Design 的 Table、Select、Tree 的「自定义渲染」全�
 | 默认 / 具名插槽 | 无数据传递（父作用域） | 父组件写内容 + 子组件定位置 |
 | **作用域插槽** | **子 → 父** | 父组件写内容 + 子组件提供数据 |
 
-> 面试金句：**props 是父传子，作用域插槽是子传父——但传的不是事件，是数据；父组件拿到数据后自己决定怎么渲染。**
+> **props 是父传子，作用域插槽是子传父——但传的不是事件，是数据；父组件拿到数据后自己决定怎么渲染。**
 
 ### 4.2 编译作用域
 
-为什么不能直接访问子组件的数据？因为 Vue 有一条规则：
+规则只有一条：
 
 > 父级模板里的所有内容，都在**父级作用域**中编译；子模板里的所有内容，都在**子作用域**中编译。
 
@@ -269,7 +273,7 @@ Element Plus / Ant Design 的 Table、Select、Tree 的「自定义渲染」全�
 </MyList>
 ```
 
-这解释了一个反直觉的现象：作用域插槽的内容虽然写在子组件标签内部，但它**属于父组件的渲染上下文**——能访问父组件的 `data` / `methods` / `computed`，访问不到子组件的内部状态。
+所以有一个反直觉的结论：作用域插槽的内容虽然写在子组件标签内部，但它**属于父组件的渲染上下文**——能访问父组件的 `data` / `methods` / `computed`，访问不到子组件的内部状态。
 
 ```vue
 <MyList :list="users">
@@ -283,16 +287,14 @@ Element Plus / Ant Design 的 Table、Select、Tree 的「自定义渲染」全�
 
 ### 4.3 编译层面的实现
 
-父组件把 `#default="{ item }"` 编译成一个**函数** `({ item }) => [vnode...]`，传给子组件；子组件渲染 `<slot :item="item" />` 时**调用这个函数并传入参数**，参数就是「作用域」。
+父组件把 `#default="{ item }"` 编译成一个**函数** `({ item }) => [vnode...]`，存进插槽对象；子组件渲染 `<slot :item="item" />` 时**以插槽 props 为参数调用它**，参数就是「作用域」。
 
 ```js
-// 子组件里 <slot :item="item" /> 的编译结果
-_renderSlot(_ctx.$slots, 'default', { item: item })
-
-// renderSlot 简化实现
-function renderSlot(slots, name, props) {
+// renderSlot 的核心（简化）
+function renderSlot(slots, name, props, fallback) {
   const slot = slots[name]
-  if (slot) return slot(props) // 调用父组件传进来的函数
+  const valid = slot ? ensureValidVNode(slot(props)) : null // 过滤注释等无效内容
+  return createBlock(Fragment, null, valid || (fallback ? fallback() : []))
 }
 ```
 
@@ -318,12 +320,15 @@ function renderSlot(slots, name, props) {
 ```
 
 ```js
-// Vue 3 编译结果（简化）
-_createVNode(Child, null, {
+// Vue 3 编译结果（省略 _resolveComponent 与 openBlock）
+_createBlock(_component_Child, null, {
   header: _withCtx(({ title }) => [_createElementVNode('h1', null, _toDisplayString(title), 1)]),
   default: _withCtx(() => [_createElementVNode('p', null, '正文')]),
+  _: 1 /* STABLE */,
 })
 ```
+
+组件的第三个参数（vnode 的 `children`）就是插槽对象：**键是插槽名，值是函数**。`_: 1` 标记插槽稳定；有动态插槽名时是 `_: 2`，并给 vnode 打 `DYNAMIC_SLOTS`（1024）patch flag。
 
 ### 5.2 withCtx 的作用
 
@@ -355,7 +360,13 @@ function withCtx(fn, ctx = currentRenderingInstance) {
 
 ```js
 // Vue 3 编译结果
-_renderSlot(_ctx.$slots, 'header', { title: pageTitle })
+_renderSlot(_ctx.$slots, 'header', { title: _ctx.pageTitle })
+```
+
+默认插槽同理：`_renderSlot(_ctx.$slots, 'default', { item: _ctx.item, index: _ctx.index })`。带 fallback 时它作为第四个参数传入：
+
+```js
+_renderSlot(_ctx.$slots, 'footer', {}, () => [_createElementVNode('span', null, '默认底部')])
 ```
 
 ### 5.4 完整数据流
@@ -372,7 +383,7 @@ sequenceDiagram
   C->>C: 把 vnode 插入 slot 所在的 DOM 位置
 ```
 
-**注意最后一步**：vnode 是在「父组件的渲染上下文」里创建的，但最终**挂载位置**在子组件的 DOM 树里。这就是「**渲染作用域**」和「**DOM 位置**」分离的经典体现。
+vnode 是在「父组件的渲染上下文」里创建的，但最终**挂载位置**在子组件的 DOM 树里——这就是「**渲染作用域**」和「**DOM 位置**」分离。
 
 ### 5.5 Vue 3 的惰性求值
 
@@ -382,11 +393,9 @@ Vue 3 中 `slots` 里存的是**函数**，调用才生成 vnode：
 slots.default()
 ```
 
-好处是：如果子组件内部用 `v-if` 没渲染这个插槽，父组件传进来的内容**根本不会创建 vnode**，省掉创建 + diff 的开销。
+如果子组件内部用 `v-if` 没渲染这个插槽，父组件传进来的内容**根本不会创建 vnode**，省掉创建 + diff 的开销。
 
 Vue 2 中插槽内容是在**父组件 render 时就先生成 vnode 数组**再传给子组件，属于「急求值」，子组件用不用都会创建。
-
-> 这是一个很好的加分点：**Vue 3 把 slots 设计成函数，是为了按需渲染（lazy），避免无用 vnode 的创建。**
 
 ### 5.6 获取 slots 的 API
 
@@ -407,7 +416,7 @@ const slots = defineSlots<{
 }>()
 ```
 
-模板里用 `$slots.default`、`$slots.header`。**注意 `$slots` 不是响应式的**（性能考虑），不要在 `computed` 里依赖它判断变化；需要响应式就改用 `onUpdated` 或直接传 props。
+模板里写 `$slots.default`、`$slots.header`，拿到的是函数，只适合做存在性判断。`$slots` 不是响应式数据：它是 `shallowReadonly(instance.slots)`，插槽更新不会 trigger 依赖（只有 HMR 会），所以不要在 `computed` 里依赖它；需要响应式就把数据上提成 props。
 
 ---
 
@@ -419,31 +428,10 @@ const slots = defineSlots<{
 | 求值时机 | 父组件 render 时求值（急） | 调用时才求值（惰性） |
 | 模板语法 | 2.5 用 `slot` / `slot-scope`；2.6+ 用 `v-slot` | 只有 `v-slot` / `#` |
 | 代码里访问 | `this.$slots.x` / `this.$scopedSlots.x(props)` | `slots.x()` / `useSlots()` |
-| 普通插槽底层 | 2.6 起统一走 `_u()` → `$scopedSlots`（`proxy: true`） | 直接是函数 |
 | 插槽透传 | `v-slot:[name]="props"` 手动转发 | `v-for="(_, name) in $slots"` + `<slot :name>` |
 | 类型支持 | 弱 | `defineSlots`（3.3+） |
 
-Vue 2.6+ 的编译产物：
-
-```js
-// 父组件
-_c('child', {
-  scopedSlots: _u([
-    {
-      key: 'header',
-      fn: function ({ title }) {
-        return []
-      },
-      proxy: true,
-    },
-  ]),
-})
-
-// 子组件 <slot name="header" :title="x" />
-_t('header', null, { title: x })
-```
-
-`_u` 就是 `resolveScopedSlots`，`proxy: true` 让普通插槽同时出现在 `$slots` 上（向后兼容）。
+Vue 3 已移除 `$scopedSlots`，作用域插槽同样挂在 `$slots` 上，值也是函数。
 
 ---
 
@@ -453,10 +441,9 @@ _t('header', null, { title: x })
 | --- | --- | --- |
 | 想直接访问子组件数据 | 报错 / undefined | 用作用域插槽，数据由子组件通过 `<slot :x>` 传出 |
 | `v-slot` 写在普通元素上 | 编译报错 | 只能用在 `<template>` 或组件标签上 |
-| 缩写只写 `#` | 编译报错 | 默认插槽写 `#default` |
 | 多个插槽忘了 `<template>` | 内容全进 default | 具名插槽必须包 `<template #name>` |
-| 在 `computed` 里依赖 `$slots` | 不更新 | `$slots` 非响应式，改用 `onUpdated` / 传 props |
-| `v-for` 里用插槽 | key 警告 | 给插槽内容补 `:key` |
+| 用 `$slots.x` 判断「有没有内容」 | 空插槽也是 truthy | `$slots` 只判断是否传入，空内容由 fallback 兜底 |
+| 在 `computed` 里依赖 `$slots` | 不更新 | `$slots` 非响应式，改用 props / `onUpdated` |
 | 作用域插槽解构担心丢响应式 | —— | 不会丢，每次渲染都会重新调用函数 |
 | 子组件没渲染插槽 | Vue 2 里内容已创建 | Vue 3 是惰性的，Vue 2 不是 |
 | 递归组件透传插槽 | 插槽丢失 | 用 `v-for="(_, name) in $slots"` + `<slot :name="name" />` 转发 |
@@ -562,51 +549,30 @@ watchEffect(async () => {
 
 ### 9.1 30 秒版
 
-> 插槽是 Vue 的**内容分发机制**，让父组件把自己的模板片段塞进子组件预留的位置。核心价值是「**子组件定结构，父组件定内容**」，避免 props 数量爆炸。
->
-> 分三种：默认插槽、具名插槽、**作用域插槽**。前两种内容在父作用域编译；作用域插槽是子组件通过 `<slot :item="item">` 把数据以**函数参数**的形式传回父组件，父组件用 `#default="{ item }"` 接收，典型应用就是 Table 的自定义列渲染。
->
-> 原理上，插槽会被编译成函数挂在 vnode 的 `children` 上（Vue 3 是 `slots` 函数），子组件渲染到 `<slot>` 时用 `renderSlot` 调用这个函数拿到 vnode 数组并插入对应位置，`withCtx` 保证执行时上下文仍然是父组件。Vue 3 把它设计成惰性函数，子组件不用就不创建 vnode，这是相比 Vue 2 的优化。
+- 插槽是**内容分发机制**：子组件定结构、父组件定内容，避免 props 数量爆炸。
+- 分默认、具名、作用域三种；插槽内容在父组件作用域编译，拿子组件数据只能靠作用域插槽。
+- 作用域插槽 = 函数 + 参数：子组件 `<slot :item="item">` 调用父组件传入的 `({ item }) => vnode[]`。
+- 原理：插槽编译成挂在组件 vnode `children` 上的函数，子组件 `renderSlot` 调用后把 vnode 插到 `<slot>` 位置。
+- `withCtx` 保证插槽函数执行时上下文仍是父组件；Vue 3 惰性求值，不用就不创建 vnode。
 
 ### 9.2 2 分钟结构化版
 
 1. **是什么**：内容分发机制，父组件传模板片段，子组件用 `<slot>` 占位。
 2. **为什么**：props 只能传数据，不能传结构；插槽让「结构」和「内容」解耦，是组件库可定制的基础。
-3. **分类**：默认、具名、作用域；作用域插槽是关键，解决「父组件要拿子组件数据来渲染」。
-4. **作用域规则**：编译作用域——父模板在父作用域编译，所以插槽内容能访问父组件数据、访问不到子组件数据，需要子组件用 `<slot :x>` 显式传出。
-5. **原理**：编译成函数 → 子组件 `renderSlot` 调用 → 得到 vnode 数组 → 插入 slot 位置；`withCtx` 保证渲染上下文是父组件。
-6. **Vue 3 改进**：slots 统一成函数、惰性求值、`defineSlots` 类型支持；Vue 2 是 `$slots` + `$scopedSlots` 两套。
-7. **场景**：布局组件、Table 自定义列、递归树透传、render props 式的逻辑复用。
+3. **分类**：默认、具名、作用域；作用域插槽解决「父组件要拿子组件数据来渲染」。
+4. **作用域规则**：父模板在父作用域编译，插槽内容能访问父组件数据、访问不到子组件数据，需要子组件用 `<slot :x>` 显式传出。
+5. **原理与版本差异**：编译成函数 → 子组件 `renderSlot` 调用 → vnode 插入 slot 位置，`withCtx` 保证渲染上下文是父组件；Vue 3 统一 `$slots` 为函数、惰性求值、`defineSlots`，Vue 2 是 `$slots` + `$scopedSlots` 两套。
 
 ### 9.3 高频追问速答
 
-**Q：插槽内容能访问子组件的数据吗？**
-
-不能直接访问，因为编译作用域是父组件。必须用作用域插槽，子组件把数据作为 `<slot>` 的属性传出来，父组件用 `#default="props"` 接收。
-
-**Q：作用域插槽和 props 有什么区别？**
-
-props 是父传子（数据 + 配置）；作用域插槽是子传父（数据），但父组件拿到后自己决定 UI，本质是「**函数作为 prop**」——子组件调用这个函数，把数据当参数传进去。
-
-**Q：为什么说作用域插槽是「函数」？**
-
-编译后它确实是一个函数 `({ item }) => vnode[]`，子组件渲染 `<slot :item="x" />` 时调用 `slot({ item: x })`。所以插槽 = 函数，作用域 = 参数。
-
-**Q：Vue 3 的 slots 为什么是函数？**
-
-惰性求值。子组件不渲染该插槽时，父组件传的内容不会被创建成 vnode，避免浪费；Vue 2 是父组件 render 时就生成好 vnode 数组。
-
-**Q：`$slots` 是响应式的吗？**
-
-不是。Vue 2 / Vue 3 都刻意不把 `$slots` 做成响应式（避免额外开销）。判断插槽是否传入，用模板里的 `v-if="$slots.footer"`；不要在 `computed` 里依赖它做缓存计算。
-
-**Q：怎么判断父组件传没传某个插槽？**
-
-看 `$slots.name` 是否存在。注意 Vue 3 中如果父组件传了但内容是注释节点，也算存在。
-
-**Q：插槽内容会重新渲染吗？**
-
-父组件重渲染时会重新调用插槽函数；子组件自身状态变化不会重跑父组件的插槽函数（除非变化影响到了父组件）。
+| 追问 | 答 |
+| --- | --- |
+| 插槽内容能访问子组件的数据吗 | 不能，编译作用域是父组件；用作用域插槽，由 `<slot :x>` 显式传出 |
+| 作用域插槽和 props 有什么区别 | props 传数据、子组件决定渲染；作用域插槽把数据以函数参数传回，渲染由父组件决定 |
+| 为什么说作用域插槽是「函数」 | 编译后就是 `({ item }) => vnode[]`，`<slot :item="x" />` 等价于调用 `slot({ item: x })` |
+| Vue 3 的 slots 为什么是函数 | 惰性求值：子组件不渲染该插槽就不创建 vnode；Vue 2 在父组件 render 时就生成好 vnode 数组 |
+| `$slots` 能驱动 `computed` 吗 | 不能，它不是响应式数据，插槽变化不会 trigger 依赖 |
+| 插槽内容会重新渲染吗 | 父组件重渲染会重新调用插槽函数；子组件自身状态变化不会重跑插槽函数 |
 
 ---
 
@@ -619,6 +585,6 @@ props 是父传子（数据 + 配置）；作用域插槽是子传父（数据�
 - [ ] 说出作用域插槽的编译结果（函数 + 参数）
 - [ ] 解释 `withCtx` 的作用
 - [ ] 说出 Vue 3 slots 是函数的性能意义
-- [ ] 说清 `$slots` 为什么不是响应式
+- [ ] 说清 `$slots` 为什么不能驱动 `computed`
 - [ ] 能写出 Table 自定义列的作用域插槽用法
 - [ ] 知道递归组件怎么透传插槽

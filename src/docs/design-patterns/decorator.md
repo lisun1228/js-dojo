@@ -1,17 +1,14 @@
 # ES 装饰器（Decorator）
 
-装饰器是一种**在不修改原类 / 方法 / 属性代码**的前提下，动态为其叠加额外行为（日志、校验、缓存、元数据等）的语法。它本质上就是一个**函数**，通过 `@` 语法糖挂载到目标上，由 TypeScript / 构建工具在编译阶段“展开”成普通的函数调用。
+装饰器是**在不修改原类 / 方法 / 属性代码**的前提下，动态叠加行为（日志、校验、缓存、元数据）的语法。本质是一个**函数**，`@` 只是语法糖，由 TypeScript 在编译期展开成普通函数调用（旧版需开启 `experimentalDecorators`）。
 
 ```ts
-// 开启装饰器语法（tsconfig.json）
-"experimentalDecorators": true
-
-// 装饰器 = 函数，@ 只是语法糖
 @log
 class User {}
-
 // 等价于：User = log(User)
 ```
+
+> 两套标准的签名差异见 [07｜装饰器与 mixin](/doc/typescript-decorator-mixin)；本文只讲封装手法与设计模式本身。
 
 ---
 
@@ -29,12 +26,10 @@ class User {}
 
 ## 1. 类装饰器
 
-作用于类本身，接收**一个参数：类的构造函数**。常用于扩展静态属性 / 方法，或替换整个类。
+作用于类本身，接收**一个参数：类的构造函数**。返回值会替换原类，因此既能扩展静态成员，也能整体替换。
 
 ```ts
-// 类装饰器：唯一参数是「类的构造函数」
 function entity(target: any) {
-  // 给类追加静态属性
   target.tableName = 't_' + target.name.toLowerCase()
 }
 
@@ -46,10 +41,9 @@ console.log(Article.tableName) // t_article
 
 ## 2. 方法装饰器
 
-作用于类的实例方法，接收**三个参数：`target`、方法名、属性描述符**。通过改写 `descriptor.value` 就能在原方法前后追加逻辑，这是最常用的一类装饰器（日志、埋点、防抖等）。
+作用于实例方法，接收 **`target`、方法名、属性描述符**。改写 `descriptor.value` 就能在原方法前后追加逻辑，是日志、埋点、防抖等功能最常用的落点。
 
 ```ts
-// 方法装饰器：target / key / descriptor
 function log(target: any, key: string, descriptor: PropertyDescriptor) {
   const fn = descriptor.value              // 原方法
   descriptor.value = function (...args: any[]) {
@@ -58,7 +52,7 @@ function log(target: any, key: string, descriptor: PropertyDescriptor) {
     console.log('after')                   // 后置增强
     return result
   }
-  return descriptor                        // 返回新的描述符
+  return descriptor
 }
 
 class User {
@@ -72,12 +66,14 @@ new User().say()
 // 输出：before → hello world → after
 ```
 
+- **包装而非改写**：`fn` 保存原方法引用，只替换 `descriptor.value`；`apply(this, args)` 透传调用现场的 `this`，原方法的返回值由包装函数带回。
+- **写回描述符**：`return descriptor` 供 `__decorate` 用新描述符重新定义属性。
+
 ## 3. 属性装饰器
 
-作用于类的普通属性，接收**两个参数：`target`、属性名**。因为属性此时还没有值，所以**没有描述符参数**，一般用来收集字段元数据（如 ORM 的列定义、校验规则）。
+作用于普通属性，接收 **`target`、属性名**。属性此时还没有值，所以**没有描述符参数**；`target` 是 prototype（实例属性）或构造函数（静态属性），实例还不存在，只能登记元数据。
 
 ```ts
-// 属性装饰器：target / key（没有 descriptor）
 const meta: Record<string, string[]> = {}
 
 function Column(label: string) {
@@ -94,17 +90,18 @@ class Product {
   @Column('basic')
   price!: number
 }
+
+// meta.basic = ['name', 'price']
 ```
 
 ## 4. 访问器装饰器
 
-作用于 `get / set` 访问器，参数与方法装饰器一致（含描述符）。可以修改 `enumerable`、`configurable` 等特性。
+作用于 `get / set`，参数与方法装饰器一致（含描述符），可以修改 `enumerable`、`configurable` 等特性。
 
 ```ts
-// 访问器装饰器：作用于 get / set，参数同方法装饰器
 function enumerable(value: boolean) {
   return function (target: any, key: string, descriptor: PropertyDescriptor) {
-    descriptor.enumerable = value          // 修改描述符特性
+    descriptor.enumerable = value
   }
 }
 
@@ -117,15 +114,16 @@ class Point {
   }
 }
 
-// Object.keys(new Point()) 为空 —— get x 不可枚举
+const p = new Point()
+p.x                // 3
+Object.keys(p)     // ['_x']：_x 是实例字段，get x 已不可枚举
 ```
 
 ## 5. 参数装饰器
 
-作用于方法（或构造函数）的**参数**，接收 **`target`、方法名、参数下标** 三个参数。常配合依赖注入使用，本身无法改变值，只用于登记信息。
+作用于方法（或构造函数）的**参数**，接收 **`target`、方法名、参数下标**。它无法改变参数值，只用于登记信息，常配合依赖注入使用。
 
 ```ts
-// 参数装饰器：target / key / 参数下标
 function Inject(target: any, key: string, index: number) {
   console.log('方法 ' + key + ' 的第 ' + index + ' 个参数需要注入')
 }
@@ -136,29 +134,27 @@ class Service {
   }
 }
 
-// 输出：方法 find 的第 0 个参数需要注入
-//       方法 find 的第 1 个参数需要注入
+// 输出：第 1 个 → 第 0 个（参数装饰器从后往前执行）
 ```
 
 ## 6. 多个装饰器的执行顺序
 
-同一声明上叠加多个装饰器时：**求值从下往上**（由近及远），真正**执行（调用返回的包装函数）从上往下**（由远及近）。
+同一目标上叠加多个装饰器时，**表达式自上而下求值，包装函数自下而上执行**。
 
 ```ts
 @a
 @b
 class Demo {}
 
-// 求值（表达式从下往上）：a → b
-// 执行（结果从上往下）：b 包装后的结果再交给 a
+// 求值：a → b
+// 执行：b → a，等价于 Demo = a(b(Demo))
 ```
 
 ## 7. 用装饰器理解「装饰器模式」
 
-设计模式中的 **Decorator Pattern（装饰器模式）** 与 ES 装饰器**同名，思想也一致**：都是**通过「包装」在不改动原有对象的前提下动态增强功能**。区别只是表现形式——设计模式用**对象层层包装**，ES 装饰器把这个过程**语法化**了。
+设计模式中的 **Decorator Pattern** 与 ES 装饰器同名，思想一致：**通过包装，在不改动原有对象的前提下动态增强功能**。区别只在表现形式：设计模式用**对象层层包装**，ES 装饰器把「取原方法 → 包一层 → 写回」交给编译期。
 
 ```ts
-// 装饰器模式：通过「包装」动态叠加功能
 interface Coffee {
   cost(): number
   desc(): string
@@ -173,11 +169,13 @@ class Espresso implements Coffee {
 // 装饰器：持有被装饰对象，在其基础上扩展
 class MilkDecorator implements Coffee {
   inner: Coffee
+
   constructor(inner: Coffee) {
     this.inner = inner
   }
-  cost() { return this.inner.cost() + 3 }         // 增强：加价
-  desc() { return this.inner.desc() + ' + 牛奶' }  // 增强：加描述
+
+  cost() { return this.inner.cost() + 3 }          // 增强：加价
+  desc() { return this.inner.desc() + ' + 牛奶' }   // 增强：加描述
 }
 
 let coffee: Coffee = new Espresso()
@@ -187,8 +185,6 @@ coffee.desc() // 浓缩咖啡 + 牛奶 + 牛奶
 coffee.cost() // 21
 ```
 
-> **对比着看**：`@log` 本质上就是替我们完成了「取出原方法 → 包一层新函数 → 写回」的动作，正如 `MilkDecorator` 包住 `Espresso` 一样，都属于**对行为的可插拔增强**，且可以**层层叠加**。
-
----
-
-> 以上各类装饰器的**可运行示例**见下方「交互演示」区域，点击按钮即可查看运行结果。
+- **同名同思想**：`@log` 做的就是「取出原方法 → 包一层新函数 → 写回」；`MilkDecorator` 做的是「持有原对象 → 转发并追加」。
+- **接口不变**：两者都实现同一个 `Coffee` / 方法签名，调用方无需感知包了几层。
+- **可以叠加**：包装顺序决定增强顺序，重复包装即重复增强（两份牛奶 +6）。

@@ -53,23 +53,23 @@ flowchart TD
   Q8 --> Q9
 ```
 
-**看出来的规律**：除了 SSR，其余 10 道题全部挂在「响应式」「编译渲染」「组件模型」这三根柱子上。所以答题时**尽量往这三根柱子上靠**，不要每题都独立背。
+**规律**：除 SSR 外，其余 10 道题都落在「响应式」「编译渲染」「组件模型」三条线上。
 
 ### 0.2 通用答题结构
 
 ```text
 ① 结论先行（10 秒）    —— 一句话说清「是什么 / 解决什么问题」
-② 展开机制（40 秒）    —— 怎么做到了？关键 API / 关键源码 / 数据流
+② 展开机制（40 秒）    —— 关键 API / 关键源码 / 数据流
 ③ 对比与边界（30 秒）  —— 和相近概念的区别、什么时候不该用
-④ 落地场景（20 秒）    —— 我项目里怎么用的、踩过什么坑
+④ 落地场景（20 秒）    —— 项目中的用法与边界
 ```
 
-**四个减分项**（务必避开）：
+**四个减分项**：
 
-- ❌ 上来就背 API 列表，不说「为什么」
+- ❌ 只背 API 列表，不说「为什么」
 - ❌ 只讲「能做什么」，不讲「有什么代价」
-- ❌ 概念之间不做对比（面试官最爱听对比）
-- ❌ 说「这个我没用过」——改成「这块我了解原理，实际项目里用的是 XX 方案」
+- ❌ 概念之间不做对比
+- ❌ 只给结论，不给适用条件
 
 ---
 
@@ -113,7 +113,7 @@ sequenceDiagram
 
 三个关键阶段：
 
-1. **服务端渲染**：`renderToString()` 把组件树变成 HTML 字符串。注意此时**只有 `setup` / `beforeCreate` / `created` 执行，`mounted` 不会执行**（因为没有 DOM）。
+1. **服务端渲染**：`renderToString()` 把组件树变成 HTML 字符串。此时执行的是 `setup` / `beforeCreate` / `created` / `onServerPrefetch`，**`mounted` 不会执行**（因为没有 DOM）。
 2. **直出 HTML**：首屏内容立刻可见 → 解决白屏和 SEO。
 3. **Hydration（水合）**：客户端复用这份 HTML 的 DOM 结构，只绑事件、恢复响应式，**不重新创建 DOM**。所以叫「激活」而不是「渲染」。
 
@@ -126,7 +126,7 @@ sequenceDiagram
 | 弱网 / 低端机 JS 执行慢 | 内容不依赖 JS 就能看到（内容型页面体验提升明显） |
 | 分享卡片没有缩略信息 | 服务端可直接输出 `meta` 标签 |
 
-### 1.5 代价（面试必须说，否则显得只会背优点）
+### 1.5 代价
 
 | 代价 | 说明 |
 | --- | --- |
@@ -243,15 +243,15 @@ onMounted(async () => {
 
 **30 秒版：**
 
-> SSR 是服务端渲染。用户请求页面时，服务端把 Vue 组件渲染成完整的 HTML 字符串返回，浏览器拿到就能显示内容，解决 CSR 的首屏白屏和 SEO 问题；之后浏览器加载 JS，用 `createSSRApp` + `hydrate` 复用这份 DOM、绑定事件，页面才变成可交互的 SPA。
->
-> 它的代价是需要 Node 服务、服务端有渲染压力、TTFB 会受接口影响，而且服务端没有 `window`，代码要区分环境，还要处理 hydration 不一致的问题。所以适合内容型、对 SEO 和首屏要求高的页面，比如电商详情、资讯、官网；后台管理系统一般没必要。
+- SSR：请求时服务端用 `renderToString` 生成完整 HTML，浏览器先显示内容；随后加载 JS，用 `createSSRApp` + hydrate 复用这份 DOM、绑定事件，页面才可交互。
+- 解决 CSR 的首屏白屏和 SEO；代价是需要 Node 服务、服务端有渲染压力、TTFB 受接口影响、服务端没有 `window`、hydration 可能不一致。
+- 适合内容型、对 SEO 和首屏要求高的页面（电商详情、资讯、官网）；后台管理系统一般不需要。
 
-**2 分钟加分版（多讲这三点）：**
+**2 分钟版（补三点）：**
 
-1. **hydration 是「复用」不是「重渲染」**：客户端不重新创建 DOM，只做事件绑定和状态恢复，所以 SSR 的首屏快，但**可交互时间（TTI）不一定快**。
-2. **SSR 不是银弹**：如果接口慢，服务端等数据的时间会直接变成 TTFB，用户看到的是「白屏更久」。所以要做接口缓存、流式渲染（`renderToWebStream`）先把 head 和骨架吐出去。
-3. **Vue 3 的 SSR 有编译层红利**：静态提升后，静态节点在服务端可以直接拼字符串，不需要走完整的 vnode 创建流程，比 Vue 2 的 SSR 快不少；同时支持 `Suspense` 的异步 setup 和流式输出。
+1. **hydration 是复用不是重渲染**：客户端不重建 DOM，只绑事件、恢复状态，所以首屏快不代表**可交互时间（TTI）**快。
+2. **SSR 不是银弹**：接口慢会直接拖长 TTFB，需要接口缓存，或用流式渲染（`renderToWebStream`）先输出 head 和骨架。
+3. **编译层红利**：静态提升让静态节点在服务端直接拼字符串，不必走完整 vnode 流程；`Suspense` 支持异步 setup 和流式输出。
 
 ### 1.9 追问
 
@@ -274,7 +274,7 @@ onMounted(async () => {
 
 Composition API 是**用函数来组织和复用组件逻辑**的一套 API。它最大的价值不是「写法变了」，而是：**让「同一个功能的代码」能写在一起，让「同一段逻辑」能抽出来复用，并且天然对 TypeScript 友好。**
 
-### 2.2 Options API 的四个真实痛点
+### 2.2 Options API 的四个痛点
 
 **痛点 1：逻辑被拆散**
 
@@ -310,14 +310,7 @@ export default {
 
 **痛点 2：mixin 是「复用灾难」**
 
-```js
-// 三个 mixin 都有 loading 和 fetchData
-mixins: [listMixin, paginationMixin, userMixin]
-// → this.loading 到底是谁的？
-// → 命名冲突时后引入的静默覆盖
-// → 数据从哪来完全看不出来（来源不清晰）
-// → 隐式依赖（mixin 里假设组件有 this.xxx）
-```
+来源不清晰、命名冲突、隐式依赖、不能传参、不能组合、TS 推导差，完整清单见 10.2。
 
 **痛点 3：TypeScript 支持差**
 
@@ -384,7 +377,7 @@ const { page, total, next } = usePagination()
 | **⑧ 灵活组合** | 可以条件调用、循环组合、嵌套组合（mixin 做不到） |
 | **⑨ 类型安全的依赖注入** | `provide/inject` 可以带类型，替代 `this.$parent` 链式访问 |
 
-**一个很实在的点**：**压缩友好**。打包后 `data(){return{loading:!1}}` 里的 `loading` 不能改名，而 `const loading = ref(false)` 会被压成 `const x=ref(!1)`。大型项目里这个收益不小。
+**压缩友好的具体差别**：打包后 `data(){return{loading:!1}}` 里的 `loading` 不能改名，而 `const loading = ref(false)` 会被压成 `const x=ref(!1)`。
 
 ### 2.5 它不替代 Options API
 
@@ -393,7 +386,7 @@ const { page, total, next } = usePagination()
 - 复杂组件（多逻辑交织）、需要复用、需要 TS 时用 Composition。
 - `<script setup>` 是 Composition API 的语法糖，编译后就是 `setup()` 返回一个渲染函数。
 
-### 2.6 代价（说出来显专业）
+### 2.6 代价
 
 | 代价 | 说明 |
 | --- | --- |
@@ -406,21 +399,21 @@ const { page, total, next } = usePagination()
 
 **30 秒版：**
 
-> Composition API 的核心是「用函数组织逻辑」。相比 Options API 按 `data` / `methods` / `computed` 分区，它让同一个功能的代码聚在一起，可读性和可维护性更好；同时它用 composable 替代 mixin，解决了 mixin 来源不清晰、命名冲突、隐式依赖的问题；再加上都是普通变量，对 TypeScript 推导和 tree-shaking 都更友好。
->
-> 它不是替代 Options API，官方会长期支持两者共存，简单组件用 Options 也没问题。
+- Composition API 用函数组织逻辑：同一功能的 state / computed / watch / 方法写在一起，不再按 `data` / `methods` 分区。
+- 用 composable 替代 mixin，解决来源不清晰、命名冲突、隐式依赖；普通变量对 TS 推导、tree-shaking、压缩都更友好。
+- 不替代 Options API，官方长期支持共存；简单组件用 Options 更直接。
 
-**2 分钟版（加一句「我为什么用它」）：**
+**2 分钟版（补三点实践约束）：**
 
-> 我实际感受最深的是两点：一是**复杂页面的可维护性**，以前一个页面十几个功能，`methods` 里堆几十个方法，现在每个功能一个 composable，谁负责什么一目了然；二是**复用**，我们把「列表分页 + 搜索 + 批量选择」抽成 `useTable`，十几个页面共用，改一处全生效，比之前复制粘贴或者写 mixin 稳得多。
->
-> 代价是团队要统一规范，比如 composable 必须以 `use` 开头、只返回 `ref`、必须在 `setup` 里同步调用、内部副作用自己清理，否则容易出现内存泄漏和不响应的问题。
+1. **复杂页面可维护性**：每个功能一个 composable，职责边界比全堆在 `methods` 里清晰。
+2. **复用靠规范**：`use` 前缀、只返回 `ref`、在 `setup` 同步调用、内部副作用自己清理。
+3. **代价**：要理解 `.value`、响应式丢失、依赖收集时机；没有选项约束，拆分靠自律。
 
 ### 2.8 追问
 
 | 追问 | 要点 |
 | --- | --- |
-| Composition API 和 React Hooks 区别？ | ① Vue 的 setup **只执行一次**，React 每次渲染都执行；② Vue 不要求记忆依赖数组，靠 Proxy 自动收集；③ Vue 没有闭包陷阱（每次渲染都拿新值），但要注意 `.value`；④ Vue 的 composable 可以用条件语句（Hooks 不行，要遵守调用顺序） |
+| Composition API 和 React Hooks 区别？ | 见 10.4：执行次数、依赖收集、闭包陷阱、调用限制四点 |
 | 为什么 setup 只执行一次就能保证响应式？ | 因为响应式是 Proxy + 依赖收集，不是靠重新执行函数；模板的渲染函数才是每次更新重新执行的 |
 | `setup` 里能拿到 `this` 吗？ | 不能，`setup` 在 `beforeCreate` 之前执行，且刻意不暴露 `this`（避免逻辑耦合组件实例） |
 | `<script setup>` 编译成什么？ | 编译成 `setup()` 函数 + 内联的 render 函数，顶层绑定直接暴露给模板，无需 `return` |
@@ -447,7 +440,7 @@ const { page, total, next } = usePagination()
 | 访问方式 | `x.value`（模板中自动解包，可省略） | `x.foo`（直接访问） |
 | 实现原理 | `class RefImpl` + `get value` / `set value` + `dep` 依赖收集 | `new Proxy(target, mutableHandlers)`，`get` 收集、`set` 触发 |
 | 整体替换 | ✅ `x.value = {...}` 可以 | ❌ `x = {...}` 会断开代理，**丢失响应式** |
-| 解构 | ✅ 解构后仍是 ref，**不丢响应式** | ❌ 解构后是普通值，**丢响应式**（要 `toRefs`） |
+| 解构 | ✅ 从普通对象 / composable 返回值解构仍是 ref，**不丢响应式** | ❌ 从 `reactive` 对象解构拿到解包后的普通值（要 `toRefs`） |
 | 深层响应 | 默认 `deep`（对象内部也会被 `reactive` 转换） | 默认深层响应 |
 | 模板中使用 | 自动解包，`{{ count }}` | 直接 `{{ obj.count }}` |
 | 适用场景 | 基本类型、需要整体替换、需要传给函数保持引用 | 固定结构的表单对象、配置对象、状态集合 |
@@ -465,13 +458,13 @@ class RefImpl {
     this.__v_isRef = true
   }
   get value() {
-    track(this.dep) // 收集依赖：谁读了我
+    track(this.dep) // 收集依赖：记录读取这个值的 effect
     return this._value
   }
   set value(newVal) {
     if (hasChanged(newVal, this._value)) {
       this._value = isObject(newVal) ? reactive(newVal) : newVal
-      trigger(this.dep) // 触发更新：读过我的人该重新跑了
+      trigger(this.dep) // 触发更新：重新执行读过它的 effect
     }
   }
 }
@@ -508,14 +501,17 @@ const obj = reactive({ n: 0 })
 ```js
 const state = reactive({ count: 0 })
 const { count } = state // ❌ count 是普通数字，改了不响应
-const { count } = toRefs(state) // ✅ count 是 ref
+const { count: countRef } = toRefs(state) // ✅ countRef 是 ref
 ```
 
-**③ ref 解构不丢**
+**③ 解构 ref 不丢，解构 reactive 丢**
 
 ```js
+const refs = { count: ref(0) }
+const { count } = refs // ✅ 仍是 ref
+
 const state = reactive({ count: ref(0) })
-const { count } = state // ✅ 拿到的是 ref，仍是响应式
+const { count: stateCount } = state // ❌ 0，普通值（get 时已解包）
 ```
 
 **④ reactive 嵌套 ref 会自动解包**
@@ -555,15 +551,15 @@ const state = ref({ a: 1 })
 state.value = { a: 2 } // ✅
 ```
 
-**⑥ `reactive(props)` 是错的**
+**⑥ `reactive(props)` 不会得到可写副本**
 
 ```js
 const props = defineProps(['foo'])
-const state = reactive(props) // ❌ dev 会警告（props 是 readonly）
-const { foo } = toRefs(props) // ✅ 正确姿势
+const state = reactive(props) // ❌ props 是 shallowReadonly，reactive() 原样返回；写 state.foo 触发只读警告
+const { foo } = toRefs(props) // ✅ 解构后仍是 ref
 ```
 
-### 3.5 选型建议（面试可以给个明确立场）
+### 3.5 选型建议
 
 | 场景 | 推荐 |
 | --- | --- |
@@ -574,26 +570,24 @@ const { foo } = toRefs(props) // ✅ 正确姿势
 | 大对象、第三方实例（ECharts、地图） | `shallowRef` / `markRaw` |
 | 只读派生 | `computed` |
 
-**我的实际偏好（可以这么说）**：**统一用 `ref`**。理由：① 不用记两套规则；② 解构、传参、整体替换都不会出问题；③ 团队新人少踩坑。只在「结构固定的对象、且需要频繁读写多个字段」时用 `reactive`。
+**选型结论**：**统一用 `ref`**。理由：① 只有一套规则；② 解构、传参、整体替换都不会断链；③ 新人少踩坑。只在「结构固定的对象、且需要频繁读写多个字段」时用 `reactive`。
 
 ### 3.6 面试怎么答
 
 **30 秒版：**
 
-> `ref` 和 `reactive` 都是创建响应式数据的方式，区别有三个层面。
->
-> 第一，**能力范围**：`ref` 支持任意类型，`reactive` 只能传对象，传基本类型无效。
-> 第二，**使用方式**：`ref` 返回一个包装对象，JS 里要 `.value`，模板里自动解包；`reactive` 返回 Proxy，直接访问属性。
-> 第三，**实现原理**：`ref` 是靠 `RefImpl` 类的 `get value` / `set value` 做拦截，因为 JS 拦不住变量本身；`reactive` 是直接 `new Proxy` 拦截对象属性。`ref` 传对象时内部其实就是 `reactive`。
->
-> 实践上要注意：`reactive` 解构会丢响应式（要 `toRefs`）、整体替换会断开代理（要 `Object.assign`）；`ref` 没这些问题。所以我一般统一用 `ref`，只在固定结构的表单对象上用 `reactive`。
+- **能力范围**：`ref` 支持任意类型，`reactive` 只能传对象，传基本类型无效。
+- **使用方式**：`ref` 返回包装对象，JS 里要 `.value`，模板自动解包；`reactive` 返回 Proxy，直接访问属性。
+- **实现原理**：`ref` 用 `RefImpl` 的 `get value` / `set value` 拦截（JS 拦不住变量本身）；`reactive` 用 `new Proxy` 拦截对象属性。`ref` 传对象时内部就是 `reactive`。
+- **边界**：`reactive` 解构丢响应式（要 `toRefs`）、整体替换断链（要 `Object.assign`）；`ref` 没有这些问题。
+- **选型**：统一用 `ref`，只在固定结构的表单对象上用 `reactive`。
 
 ### 3.7 追问
 
 | 追问 | 要点 |
 | --- | --- |
 | 为什么 `ref` 需要 `.value`？ | JS 无法拦截变量读写，只能拦截对象属性，所以要包一层用 get / set |
-| 模板里为什么不用 `.value`？ | 编译阶段对 setup 返回的 ref 做了自动解包（`_unref` / proxy 的 `get` 拦截） |
+| 模板里为什么不用 `.value`？ | 普通模板访问 `$setup.count`，setupState 是 `proxyRefs`，get 时自动 `unref`；内联模板编译期直接生成 `count.value` |
 | `reactive` 为什么不能传基本类型？ | `Proxy` 的 target 必须是对象；传基本类型会警告并原样返回 |
 | `ref` 和 `shallowRef` 区别？ | `shallowRef` 只对 `.value` 整体赋值做响应，内部属性变化不触发；适合大对象 / 只整体替换的场景，性能更好 |
 | `toRef` 和 `toRefs` 区别？ | `toRef(obj, key)` 单个；`toRefs(obj)` 全部，返回普通对象（每个值都是 ref），常用于解构 props |
@@ -688,8 +682,6 @@ watchEffect(() => {
 
 ### 4.6 清理副作用：onCleanup
 
-这是面试的**加分点**，很多人不知道。
-
 ```js
 // 搜索联想：上一次请求还没回来，新请求就发出了 → 竞态，结果可能被旧数据覆盖
 watch(keyword, async (kw, _, onCleanup) => {
@@ -720,7 +712,7 @@ const stop = watch(count, cb)
 stop()
 ```
 
-**自动停止的前提**：watcher 必须在 `setup` 的**同步执行阶段**被创建。Vue 会把它收集进当前组件的 effect scope，组件卸载时统一 `stop`。
+**自动停止的前提**：watcher 要在组件上下文的**同步执行期间**创建（`setup`，或生命周期钩子的同步段）。Vue 会把它收集进当前组件的 effect scope，组件卸载时统一 `stop`。
 
 ```js
 // ⚠️ 陷阱：await 之后 currentInstance 已经被清空，这里创建的 watcher 不属于任何组件
@@ -738,19 +730,16 @@ onMounted(async () => {
 
 **30 秒版：**
 
-> 两者都是监听响应式数据变化执行副作用，区别在「依赖怎么来」和「什么时候执行」。
->
-> `watch` 是**显式指定依赖**的，你告诉它监听哪个 ref / getter / 数组，默认**懒执行**，回调能拿到 **newVal 和 oldVal**，还可以配置 `deep`、`immediate`、`flush`。适合需要旧值、需要精确控制依赖、或者要条件监听的场景。
->
-> `watchEffect` 是**自动收集依赖**的：回调里访问了哪些响应式数据就监听哪些，**立即执行一次**，拿不到旧值，返回 stop 函数。适合依赖多个源、不想维护依赖列表的副作用。
->
-> 另外两者都支持 `onCleanup` 清理上一次的副作用，比如取消上一次请求，避免竞态。
+- 两者都在响应式数据变化时执行副作用，区别在「依赖怎么来」和「什么时候执行」。
+- **`watch`**：显式指定 ref / getter / 数组，默认**懒执行**，回调拿到 **newVal 和 oldVal**，可配 `deep`、`immediate`、`flush`；适合需要旧值或精确控制依赖的场景。
+- **`watchEffect`**：执行回调时自动收集依赖，**立即执行一次**，拿不到旧值，返回 stop 函数；适合依赖多个源、不想维护列表的副作用。
+- 两者都支持 `onCleanup`，可在下一次执行前清理上一轮副作用，例如取消上一次请求。
 
-**2 分钟加分版（补三个细节）：**
+**2 分钟版（补三个细节）：**
 
-1. **`watch(reactive对象的oldVal)` 是坑**：新旧值是同一个 Proxy 引用，拿不到真正的旧值，要监听具体字段。
-2. **`deep` 的默认值不一样**：`reactive` 默认深度；`ref` 包对象默认**不**深度，要显式 `deep: true`。这点很多人踩坑。
-3. **`flush: 'post'`**：想校验里读 DOM 尺寸、或者依赖 DOM 更新后的结果，必须用 `post`，否则拿到的是旧 DOM。
+1. **`watch(reactive 对象)` 的 `oldVal` 是坑**：新旧值是同一个 Proxy 引用，拿不到真正的旧值，要监听具体字段。
+2. **`deep` 的默认值不一样**：`reactive` 默认深度；`ref` 包对象默认**不**深度，要显式 `deep: true`。
+3. **`flush: 'post'`**：想读 DOM 尺寸、或者依赖 DOM 更新后的结果，必须用 `post`，否则拿到的是旧 DOM。
 
 ### 4.9 追问
 
@@ -791,7 +780,7 @@ _withDirectives(
       'onUpdate:modelValue': ($event) => (msg = $event),
     },
     null,
-    512,
+    8, // PROPS
   ),
   [[_vModelText, msg]],
 )
@@ -929,7 +918,7 @@ function onInput(e) {
 
 > 具名 v-model 的修饰符叫 `xxxModifiers`，比如 `v-model:title.trim` → `titleModifiers: { trim: true }`。
 
-### 5.6 元素上的 v-model 到底做了什么（中文输入法是个考点）
+### 5.6 元素上的 v-model 做了什么
 
 `vModelText` 指令简化实现：
 
@@ -937,7 +926,7 @@ function onInput(e) {
 export const vModelText = {
   created(el, { modifiers: { lazy, trim, number } }, vnode) {
     el._assign = getModelAssigner(vnode) // 就是编译出来的 $event => msg = $event
-    const castToNumber = number || el.type === 'number'
+    const castToNumber = number || vnode.props?.type === 'number'
 
     addEventListener(el, lazy ? 'change' : 'input', (e) => {
       if (e.target.composing) return // ← 关键：输入法拼写中不更新
@@ -947,9 +936,12 @@ export const vModelText = {
       el._assign(domValue)
     })
 
-    if (trim) {
+    if (trim || castToNumber) {
       addEventListener(el, 'change', () => {
-        el.value = el.value.trim()
+        let v = el.value
+        if (trim) v = v.trim()
+        if (castToNumber) v = looseToNumber(v)
+        el.value = v
       })
     }
 
@@ -967,7 +959,7 @@ export const vModelText = {
 }
 ```
 
-> **面试加分**：为什么 `v-model` 不会在中文输入法拼写时把拼音打进数据？因为内置指令监听了 `compositionstart / end`，`composing` 期间跳过更新。这解释了「为什么自己手写 `:value` + `@input` 会有输入法问题」。
+> `v-model` 不会在中文输入法拼写时把拼音写进数据：内置指令监听 `compositionstart / end`，`composing` 期间跳过更新。手写 `:value` + `@input` 没有这层处理，拼写过程就会同步。
 
 ### 5.7 Vue 2 与 Vue 3 的差异
 
@@ -984,11 +976,9 @@ export const vModelText = {
 
 **30 秒版：**
 
-> `v-model` 本质是个语法糖，就是「一个 prop + 一个事件」。
->
-> 在原生元素上，它编译成 `:value` 加 `@input`，由内置指令 `vModelText` 处理，所以能支持 `.lazy`、`.number`、`.trim`，也内置了中文输入法的 `composition` 处理。
->
-> 在组件上，Vue 3 编译成 `modelValue` prop 和 `update:modelValue` 事件，父组件把值传下去、子组件通过事件通知父组件改，所以子组件不能直接改 prop——这是单向数据流的要求。多个 v-model 就是 `v-model:name` 对应 `name` prop 和 `update:name`；修饰符会通过 `modelModifiers` 传给子组件。Vue 3.4 之后可以用 `defineModel` 一行搞定。
+- **本质**：一个 prop + 一个事件。
+- **原生元素**：编译成 `:value` + `@input`，由 `vModelText` 处理，所以支持 `.lazy` / `.number` / `.trim`，也内置了中文输入法的 `composition` 处理。
+- **组件**：编译成 `modelValue` prop + `update:modelValue` 事件，子组件不能直接改 prop（单向数据流）；多个 v-model 对应 `v-model:name` → `name` + `update:name`，修饰符通过 `modelModifiers` 传给子组件，3.4+ 可用 `defineModel`。
 
 ### 5.9 追问
 
@@ -996,9 +986,9 @@ export const vModelText = {
 | --- | --- |
 | `v-model` 和 `.sync` 的关系？ | `.sync` 是 Vue 2 的多值绑定语法糖，Vue 3 统一成 `v-model:xxx` |
 | 为什么子组件不能直接改 prop？ | 单向数据流：数据源在父组件，改了会导致数据流向不可追踪；且 prop 是浅只读的 |
-| `defineModel` 是怎么实现的？ | 编译器生成一个 `useModel` 调用，内部用 `customRef`（或 ref + watch）读写 props 并 emit |
+| `defineModel` 是怎么实现的？ | 编译器生成 `useModel(...)`，内部用 `customRef` + `watchSyncEffect` 跟踪 prop，写入时 `emit('update:xxx')` |
 | 多个 v-model 会冲突吗？ | 不会，每个 v-model 对应独立的 prop 和事件名 |
-| 怎么让 v-model 支持防抖？ | 子组件内部对 emit 做防抖；或用 `v-model.lazy` |
+| 怎么让 v-model 支持防抖？ | 子组件内部对 emit 做防抖；`.lazy` 只是把 `input` 换成 `change`，不是防抖 |
 | `v-model` 能用在自定义指令场景吗？ | 不能，v-model 只对表单元素和组件生效；`v-model` 在组件上是 props 编译，不是指令 |
 | 表单校验库为什么能配合 v-model？ | 它们一般监听 `update:modelValue` 或 `change` 事件，在事件里触发校验 |
 | 手写 `:value` + `@input` 和 `v-model` 有什么差别？ | 少了中文输入法处理、`.trim / .number / .lazy` 支持、以及组件场景的事件名约定 |
@@ -1085,7 +1075,7 @@ export function defineAsyncComponent(source) {
 
       const loaded = ref(false)
       const error = ref(null)
-      const delayed = ref(!!delay) // delay 之后才显示 loading
+      const delayed = ref(!!delay) // delay 内 delayed 为 true，先不显示 loading
 
       if (delay) setTimeout(() => (delayed.value = false), delay)
       if (timeout != null) {
@@ -1102,8 +1092,8 @@ export function defineAsyncComponent(source) {
       return () => {
         if (loaded.value && resolvedComp) return createInnerComp(resolvedComp)
         if (error.value && errorComponent) return createVNode(errorComponent, { error: error.value })
-        if (delayed.value && loadingComponent) return createVNode(loadingComponent)
-        return createVNode(Comment) // 什么也不渲染（占位注释节点）
+        if (loadingComponent && !delayed.value) return createVNode(loadingComponent)
+        return null // 什么也不渲染
       }
     },
   })
@@ -1143,20 +1133,18 @@ export function defineAsyncComponent(source) {
 
 ### 6.6 四个坑
 
-1. **`loadingComponent` 闪一下就消失**：因为 `delay` 默认 200ms，加载很快时 loading 根本不该出现。但也别把 delay 设太长（用户会觉得卡）。
+1. **`loadingComponent` 只在 `delay` 之后出现**：默认 200ms，加载很快时 loading 不会显示；delay 设太长用户会觉得卡。
 2. **`timeout` 到了不会自动取消请求**：只是渲染 error 组件，`import()` 的 chunk 仍在下载（没法取消）。
-3. **和 `keep-alive` 的 `include` 不匹配**：因为缓存的是 `AsyncComponentWrapper`，`include` 按名字匹配时会失败。要么给包装组件命名，要么避免在缓存页里用异步组件。
-4. **异步组件不能用于 SSR 首屏强依赖的内容**：服务端渲染时它会立即 `load()`，等于把「异步」变回「同步」，首屏并不会因此变快。SSR 场景下要配合 `Suspense` + 流式渲染。
+3. **`keep-alive` 的 `include` 可能匹配不到**：KeepAlive 取 `__asyncResolved` 的真实组件名来匹配；解析完成前 name 为空，`include` 会判不中，第一次切走可能不缓存。
+4. **异步组件不适合 SSR 首屏强依赖的内容**：服务端渲染时它会立即 `load()`，等于把「异步」变回「同步」，首屏并不会因此变快。SSR 场景下要配合 `Suspense` + 流式渲染。
 
 ### 6.7 面试怎么答
 
 **30 秒版：**
 
-> `defineAsyncComponent` 是用来做**组件级代码分割**的。它接收一个返回 `import()` Promise 的 loader，返回一个「包装组件」：真正要渲染时才去加载真实组件，加载中显示 `loadingComponent`、失败显示 `errorComponent`，还能配 `delay`、`timeout` 和 `onError` 重试。
->
-> 内部实现上，包装组件在 `setup` 里调用 loader，用 `ref` 记录 loading / error / resolved 状态，渲染函数按状态返回不同的 vnode；加载成功后把真实组件缓存起来，避免重复加载。
->
-> 它和路由懒加载是一回事，只是作用层级不同：路由懒加载是整页，`defineAsyncComponent` 是页面内的某一块，比如弹窗里的图表、富文本编辑器、地图。目的都是让首屏不必下载用不到的代码。
+- **做组件级代码分割**：接收返回 `import()` Promise 的 loader，返回「包装组件」；真正渲染时才加载真实组件，加载中显示 `loadingComponent`、失败显示 `errorComponent`，可配 `delay`、`timeout`、`onError` 重试。
+- **内部状态驱动**：包装组件在 `setup` 里调用 loader，用 `ref` 记录 loading / error / resolved，渲染函数按状态返回不同 vnode；加载成功后缓存真实组件，避免重复加载。
+- **和路由懒加载的分工**：路由懒加载是整页，`defineAsyncComponent` 是页面内某一块（弹窗里的图表、富文本编辑器、地图），目的都是首屏不下载用不到的代码。
 
 ### 6.8 追问
 
@@ -1164,8 +1152,8 @@ export function defineAsyncComponent(source) {
 | --- | --- |
 | `defineAsyncComponent` 和 `import()` 的区别？ | `import()` 只是动态导入，返回 Promise；`defineAsyncComponent` 把 Promise 包装成「能渲染的组件」，还带 loading / error / 超时 |
 | 异步组件加载失败怎么办？ | `errorComponent` 展示错误；`onError` 里 `retry()` 重试、`fail()` 放弃 |
-| 和 `Suspense` 什么关系？ | `suspensible: true` 时由 `Suspense` 统一管理 loading / error，异步组件自身不显示 loading |
-| 异步组件会不会重复加载？ | 不会，`resolvedComp` 缓存 + 模块系统缓存 |
+| 和 `Suspense` 什么关系？ | `suspensible: true` 且外层有 `Suspense` 时，加载态交给 `#fallback`，异步组件自身不显示 `loadingComponent`；错误仍走 `onErrorCaptured` |
+| 异步组件会不会重复加载？ | 不会，`resolvedComp` 缓存 + 模块系统缓存（见 6.3） |
 | 服务端渲染时异步组件怎么处理？ | SSR 时会立即加载（`load()`），配合 `Suspense` 可以做流式渲染；否则等于同步加载 |
 | 异步组件能用在 `v-for` 里吗？ | 可以，但注意每个实例共享同一个包装组件，loader 只会执行一次 |
 | 为什么首屏没变小反而变慢？ | 拆得太碎会产生很多小 chunk，HTTP/2 下影响不大，但每个 chunk 都有解析成本；建议按「路由 + 大依赖」两个维度拆 |
@@ -1174,9 +1162,9 @@ export function defineAsyncComponent(source) {
 
 ## 7. Vue 性能优化怎么做
 
-> **答题策略**：这题最忌「想到哪说到哪」。**按层次说**（加载 → 首屏 → 渲染 → 响应式 → 内存 → 工程），每层给 2~3 个具体手段 + 一个项目实例，就能拿高分。
+> **答题结构**：按层说（加载 → 首屏 → 渲染 → 响应式 → 内存 → 工程），每层给 2~3 个具体手段 + 一个实例。
 
-### 7.1 分层框架（先给面试官一个结构）
+### 7.1 分层框架
 
 ```mermaid
 flowchart TD
@@ -1194,8 +1182,8 @@ flowchart TD
 | --- | --- | --- |
 | **路由懒加载** | `component: () => import()` | 首屏只加载当前路由 |
 | **组件异步化** | `defineAsyncComponent` 拆大依赖（图表、编辑器、地图） | 首屏体积明显下降 |
-| **分包** | `splitChunks` 把 `vue` / `vue-router` / `element-plus` 拆出来 | 利用缓存，避免业务改动导致 vendor 失效 |
-| **Tree-shaking** | 按需引入组件库（`unplugin-vue-components`）、避免全量 `import ElementPlus` | 组件库从 700KB → 100KB 级 |
+| **分包** | 用 `manualChunks`（Vite）把 `vue` / `vue-router` / `element-plus` 拆出来 | 利用缓存，避免业务改动导致 vendor 失效 |
+| **Tree-shaking** | 按需引入组件库（`unplugin-vue-components`）、避免全量 `import ElementPlus` | 只打包实际用到的组件 |
 | **构建产物** | `vue.runtime.esm-bundler.js`（runtime-only，不带模板编译器）；生产构建去掉 devtools | 少 30KB+ |
 | **压缩** | gzip / brotli（nginx `brotli on`） | JS 体积再降 20%~30% |
 | **CDN** | 静态资源上 CDN，配 `preconnect` | 降低 RTT |
@@ -1221,10 +1209,10 @@ Vue 3 编译器已经做了很多，但**写法不对会破坏优化**：
 | 手段 | 说明 | 注意 |
 | --- | --- | --- |
 | **`v-once`** | 只渲染一次的静态内容 | 内容真的不变才用 |
-| **`v-memo`**（3.2+） | 依赖数组不变就跳过整个子树更新 | `v-memo="[id, selected]"`，长列表神器 |
+| **`v-memo`**（3.2+） | 依赖数组不变就跳过整个子树更新 | `v-memo="[id, selected]"`，适合长列表 |
 | **`v-if` 与 `v-show`** | 频繁切换用 `v-show`，条件很少成立用 `v-if` | `v-show` 首屏仍会渲染 |
 | **`v-for` 的 key** | 用稳定唯一 id，**不要用 index**（列表会重排时） | 用 index 会导致状态错位 + 多余 patch |
-| **`v-for` 不要和 `v-if` 同级** | Vue 3 里 `v-if` 优先级更高，会先判断再循环（拿不到 item） | 用 `computed` 过滤 |
+| **`v-for` 不要和 `v-if` 同级** | Vue 3 里 `v-if` 先求值，拿不到循环变量（见 8.3） | 用 `computed` 过滤 |
 | **避免超细粒度组件** | 每个组件都有 instance 开销 | 但 Vue 3 的 Block Tree 已大幅降低这个成本 |
 | **`computed` 代替模板里的方法** | 方法每次渲染都执行，computed 有缓存 | `{{ formatDate(x) }}` 是常见性能坑 |
 | **拆分更新范围** | 把频繁变化的部分抽成子组件 | 减少 patch 范围 |
@@ -1276,27 +1264,25 @@ async function load() {
 
 ### 7.7 ⑥ 工程层：先度量再优化
 
-- **指标**：LCP、FCP、CLS、INP（TTI）、TBT
+- **指标**：LCP、FCP、CLS、INP、TBT；TTI 作为独立指标看
 - **工具**：Lighthouse、Chrome Performance 面板、`web-vitals`、Vue DevTools（Performance / Component 渲染次数）
 - **原则**：**先定位瓶颈再动手**，不要盲目加 `v-once`
 
-> **面试金句**：性能优化不是「把所有技巧都用一遍」，而是「**先测量、找到瓶颈、针对性优化、再验证**」。我一般先看 Lighthouse 的分数和 Performance 火焰图，确认是加载慢还是渲染慢，再决定往哪层优化。
+> 性能优化不是把所有技巧用一遍，而是**先测量、找到瓶颈、针对性优化、再验证**：先看 Lighthouse 指标和 Performance 火焰图，确认是加载慢还是渲染慢，再决定往哪层优化。
 
 ### 7.8 面试怎么答
 
 **30 秒版：**
 
-> 我会分几层看。**加载层**主要是减体积：路由懒加载、大依赖用 `defineAsyncComponent` 异步化、组件库按需引入、分包 + gzip / brotli + CDN。**首屏层**用 SSR 或骨架屏，让用户先看到东西。**渲染层**用好 Vue 3 的 `v-memo`、`v-once`、稳定的 `v-for` key、`computed` 代替模板方法，长列表上虚拟滚动。**响应式层**是最容易被忽略的：大对象和第三方实例用 `shallowRef`、`markRaw`、`Object.freeze` 避免深度代理。
+> 按层看。**加载层**减体积：路由懒加载、大依赖 `defineAsyncComponent`、组件库按需引入、分包 + gzip / brotli + CDN。**首屏层**用 SSR / SSG 或骨架屏。**渲染层**用 `v-memo`、`v-once`、稳定的 `v-for` key、`computed` 代替模板方法，长列表上虚拟滚动。**响应式层**最容易被忽略：大对象和第三方实例用 `shallowRef`、`markRaw`、`Object.freeze` 避免深度代理。
 >
-> 但前提是**先测量**，用 Lighthouse 和 Performance 面板确认瓶颈在加载还是渲染，再针对性优化。
+> 前提是**先测量**，用 Lighthouse 和 Performance 面板确认瓶颈在加载还是渲染，再针对性优化。
 
-**2 分钟版（补一个项目实例）：**
+**2 分钟版（补排查顺序）：**
 
-> 举个例子，我们之前有个数据看板，首屏 6 秒多。排查发现三个问题：一是 ECharts 和富文本编辑器打进了主包，首屏多下了 800KB；二是表格接口返回 1 万条数据，直接 `ref` 包了一层，Proxy 代理耗时明显；三是模板里用了 `formatTime(row.time)` 这种调用，每次渲染都重算几千次。
->
-> 对应改了三处：图表和编辑器改成 `defineAsyncComponent`，主包减了一半；表格数据换成 `shallowRef` 整体替换，ECharts 实例用 `markRaw`；时间格式化改成在接口层预处理 + `computed` 缓存。最后首屏降到 2 秒左右，滚动也顺了。
->
-> 所以我的经验是：**先看火焰图和数据，别猜**。
+1. **先定位**：看 bundle 分析和火焰图，区分「包大 / 首屏数据慢 / 渲染慢」。
+2. **对应处理**：大依赖（图表、编辑器）改 `defineAsyncComponent`；大数组改 `shallowRef` 整体替换，第三方实例 `markRaw`；模板里的函数调用改 `computed` 或接口层预处理。
+3. **收尾验证**：改完再看同一组指标，确认瓶颈转移，而不是凭感觉判断。
 
 ### 7.9 追问
 
@@ -1315,8 +1301,7 @@ async function load() {
 
 ## 8. Vue3 升级了哪些功能
 
-> **注意**：第 8 题和第 9 题经常一起问，**但角度不同**。
-> 第 8 题答「**从 Vue 2 迁到 Vue 3，变了什么、要注意什么**」；第 9 题答「**Vue 3 新增了哪些能力、底层做了什么重构**」。分开答才显得清楚。
+> 第 8 题答「**从 Vue 2 迁到 Vue 3，变了什么、要注意什么**」；第 9 题答「**Vue 3 新增了哪些能力、底层做了什么重构**」。
 
 ### 8.1 一句话结论
 
@@ -1360,7 +1345,7 @@ app.component('Foo', Foo)
 app.mount('#app')
 ```
 
-**好处**：① **多个应用实例互不干扰**（微前端、SSR 每请求一个实例必须这样）；② **tree-shaking 友好**（没用到 `app.component` 就不打包）；③ 测试时可以创建隔离实例。
+**好处**：① **多个应用实例互不干扰**（微前端、SSR 每请求一个实例必须这样）；② **tree-shaking 友好**（全局 API 不再挂在 `Vue` 静态对象上，未使用的功能可以被摇掉）；③ 测试时可以创建隔离实例。
 
 **② 为什么移除 `filters`？**
 
@@ -1381,7 +1366,7 @@ app.mount('#app')
 
 Vue 2 里 `v-for` 优先，所以 `v-if` 能访问到循环变量，但**性能差**（每次循环都判断一次）。
 
-Vue 3 改成 `v-if` 优先，逻辑上更符合直觉（先判断要不要渲染这个块），但**拿不到 `item`**，会直接报错。正确写法：
+Vue 3 改成 `v-if` 优先：先判断要不要渲染这个块，但 **`v-if` 拿不到 `item`**。编译器把它生成成 `_ctx.item.active`，落在 `_renderList` 回调之外，运行时取不到 `item` 会抛错（编译期不报错）。正确写法：
 
 ```vue
 <!-- ❌ Vue 3 里 item 未定义 -->
@@ -1412,15 +1397,15 @@ Vue 3 改成 `v-if` 优先，逻辑上更符合直觉（先判断要不要渲染
 
 **30 秒版：**
 
-> Vue 3 的升级分几块。**API 上**，引入了 Composition API，全局 API 从 `Vue.xxx` 改成 `createApp()` 创建的 app 实例，解决了多实例隔离和 tree-shaking 的问题。**架构上**，响应式从 `Object.defineProperty` 换成 `Proxy`，能监听新增 / 删除属性、数组索引，也不再需要递归初始化；编译器重写成支持静态提升、Patch Flag 的版本。**能力上**，新增了 `Teleport`、`Suspense`、多根节点 Fragment，还有 `v-memo`、`defineModel` 这些。
->
-> 同时也有一些破坏性变更，比如 `filters` 移除、`$listeners` 合并进 `$attrs`、`v-model` 从 `value` / `input` 改成 `modelValue` / `update:modelValue`、`v-if` 和 `v-for` 优先级反转、`beforeDestroy` 改名 `beforeUnmount`。迁移时官方提供了 `@vue/compat` 兼容构建，会提示不兼容的地方。
+- **API**：引入 Composition API；全局 API 从 `Vue.xxx` 改成 `createApp()` 创建的 app 实例，解决多实例隔离和 tree-shaking。
+- **架构**：响应式从 `Object.defineProperty` 换成 `Proxy`，能监听新增 / 删除属性、数组索引，也不再递归初始化；编译器支持静态提升、Patch Flag。能力上新增 `Teleport`、`Suspense`、多根节点 Fragment、`v-memo`、`defineModel`。
+- **破坏性变更**：`filters` 移除、`$listeners` 合并进 `$attrs`、`v-model` 改成 `modelValue` / `update:modelValue`、`v-if` 与 `v-for` 优先级反转、`beforeDestroy` 改名 `beforeUnmount`；迁移时用 `@vue/compat` 检测不兼容点。
 
 ### 8.6 追问
 
 | 追问 | 要点 |
 | --- | --- |
-| `Proxy` 相比 `defineProperty` 好在哪？ | ① 能监听新增 / 删除属性、数组索引和 length；② 不需要递归遍历初始化（惰性代理，性能更好）；③ 支持 Map / Set / WeakMap；④ 能拦截 `in`、`delete` 等操作。缺点：不支持 IE，且需要保持对原对象的引用 |
+| `Proxy` 相比 `defineProperty` 好在哪？ | 见 9.1 对比表：新增 / 删除属性、数组索引、Map / Set 都能监听，且是惰性代理；缺点是不支持 IE |
 | `Proxy` 有什么缺点？ | 不兼容 IE11；对 `Proxy` 的引用要一致（解构 / 整体替换会断链）；某些场景需要 `Reflect` 配合 |
 | Vue 3 为什么移除 `$on`？ | 组件实例上的事件总线容易造成内存泄漏、数据流向不清晰；官方建议用 `mitt` 或状态管理 |
 | `@vue/compat` 是什么？ | Vue 3 的「兼容构建」，运行时检测 Vue 2 的写法并给出警告，用于渐进迁移 |
@@ -1431,8 +1416,7 @@ Vue 3 改成 `v-if` 优先，逻辑上更符合直觉（先判断要不要渲染
 
 ## 9. 说说 Vue3 的新特性
 
-> 这题和第 8 题互补：第 8 题讲「变了什么」，第 9 题讲「**多了什么、底层强在哪**」。
-> 建议按「**性能 → 能力 → 开发体验 → 生态**」四条线说，条理最清晰。
+> 第 9 题讲「**多了什么、底层强在哪**」，按「**性能 → 能力 → 开发体验 → 生态**」四条线展开。
 
 ### 9.1 性能：三个层面的提升
 
@@ -1449,9 +1433,9 @@ Vue 3 改成 `v-if` 优先，逻辑上更符合直觉（先判断要不要渲染
 
 **面试要点**：`Proxy` 最大的收益不只是「能监听更多」，而是**惰性**——大对象不需要初始化时全量递归，首次渲染明显更快。
 
-#### ② 编译优化：从「运行时瞎比对」到「编译期标记」
+#### ② 编译优化：从运行时全量比对到编译期标记
 
-Vue 2 的 diff 是「全量递归比对」，Vue 3 让编译器提前告诉运行时「哪里会变」：
+Vue 2 没有编译期标记，patch 时要遍历整棵 vnode 树（同层比较 + 双端 keyed diff）；Vue 3 让编译器提前告诉运行时「哪里会变」：
 
 | 优化 | 做了什么 | 效果 |
 | --- | --- | --- |
@@ -1487,7 +1471,7 @@ function render() {
 }
 ```
 
-**官方基准**（面试说数量级即可，别背精确数字）：初始渲染约快 1.3~2 倍，更新约快 2~3 倍，内存占用减少约一半。
+**官方基准**（数量级）：初始渲染约快 1.3~2 倍，更新约快 2~3 倍，内存占用减少约一半。
 
 #### ③ 包体积：更好的 tree-shaking
 
@@ -1512,7 +1496,7 @@ function render() {
 
 #### ② Teleport（传送门）
 
-把内容渲染到 `body` 或其他 DOM 节点下，**但保持 Vue 的组件关系**（props、事件、响应式都正常）。
+把内容渲染到 `body` 或其他 DOM 节点下，**但保持 Vue 的组件关系**（props、组件事件、响应式都正常）。
 
 ```vue
 <Teleport to="body">
@@ -1525,7 +1509,7 @@ function render() {
 </Teleport>
 ```
 
-**解决什么**：弹窗 / 抽屉 / 通知被父级的 `overflow: hidden`、`transform`、`z-index` 层级困住的问题。以前要用 `position: fixed` 硬刚或者手动 `appendChild`（那样会脱离 Vue 的响应式）。
+**解决什么**：弹窗 / 抽屉 / 通知被父级的 `overflow: hidden`、`transform`、`z-index` 层级困住的问题。以前要用 `position: fixed` 硬刚，或者手动 `appendChild`（绕过 Vue 的 DOM 管理）。
 
 #### ③ Suspense（异步依赖的兜底）
 
@@ -1540,7 +1524,7 @@ function render() {
 </Suspense>
 ```
 
-配合 `defineAsyncComponent` 或 `setup` 里的顶层 `await`，**统一处理异步加载的 loading / error**。
+配合 `defineAsyncComponent` 或 `setup` 里的顶层 `await`，**用 `#fallback` 统一处理加载态**；错误仍由 `onErrorCaptured` / `errorCaptured` 处理。
 
 > 注意：`Suspense` 至今仍是 **experimental（实验性）**，API 可能变，生产项目谨慎使用。
 
@@ -1567,14 +1551,12 @@ function render() {
 | **`v-bind` 同名简写** | 3.4 | `<img :src>` 等价于 `<img :src="src">` |
 | **`vapor mode`** | 3.6 实验 | 无虚拟 DOM 的编译模式（性能导向，仍在演进） |
 
-> **提醒**：答题时不要把所有版本号都报一遍，说「3.3 加了 `defineOptions` / `defineSlots`，3.4 加了 `defineModel`，3.5 加了响应式 props 解构和 `useId`」就够了，报太多反而像背书。
-
 ### 9.4 生态与工程
 
 | 方面 | 变化 |
 | --- | --- |
 | **TypeScript** | Vue 3 用 TS 重写，类型定义更完整；`vue-tsc` 做模板类型检查 |
-| **构建工具** | 官方推荐 Vite（基于 esbuild + Rollup），冷启动和 HMR 快一个量级 |
+| **构建工具** | 官方推荐 Vite（开发期原生 ESM，构建基于 Rolldown），冷启动和 HMR 明显更快 |
 | **状态管理** | Vuex → **Pinia**（Composition API 风格、无 mutations、TS 友好、支持多 store） |
 | **路由** | Vue Router 4（`createRouter`、`createWebHistory`） |
 | **SSR** | Nuxt 3（基于 Nitro，支持多种部署目标） |
@@ -1596,15 +1578,12 @@ function render() {
 
 **30 秒版：**
 
-> Vue 3 的新特性我一般分四块说。
->
-> **性能**：响应式从 `defineProperty` 换成 `Proxy`，能监听新增 / 删除和数组索引，而且改成惰性代理，大对象初始化更快；编译器做了静态提升、Patch Flag 和 Block Tree，diff 只遍历动态节点；API 都是独立函数，tree-shaking 更好，包体积更小。
->
-> **新能力**：多根节点 Fragment、`Teleport` 解决弹窗层级问题、`Suspense` 处理异步依赖、还有自定义渲染器和 `defineCustomElement` 做 Web Components。
->
-> **开发体验**：Composition API 和 `<script setup>`，加上 `defineProps`、`defineModel`、`defineOptions` 这些编译宏，TS 支持好了很多。
->
-> **生态**：Vite、Pinia、Vue Router 4、Nuxt 3，整体比 Vue 2 时代的工具链现代很多。
+Vue 3 的新特性按四块说：
+
+- **性能**：响应式从 `defineProperty` 换成 `Proxy`，能监听新增 / 删除和数组索引，且改成惰性代理，大对象初始化更快；编译器做了静态提升、Patch Flag、Block Tree，diff 只遍历动态节点；API 都是独立函数，tree-shaking 更好。
+- **新能力**：多根节点 Fragment、`Teleport` 解决弹窗层级、`Suspense` 处理异步依赖，还有自定义渲染器和 `defineCustomElement`。
+- **开发体验**：Composition API + `<script setup>`，加上 `defineProps`、`defineModel`、`defineOptions` 等编译宏，TS 支持更完整。
+- **生态**：Vite、Pinia、Vue Router 4、Nuxt 3。
 
 ### 9.7 追问
 
@@ -1618,7 +1597,7 @@ function render() {
 | 多根组件有什么限制？ | `$attrs` 不会自动透传（要 `inheritAttrs: false` 手动绑）、自定义指令会警告 |
 | 为什么 Vue 3 不再支持 IE？ | `Proxy` 无法 polyfill；官方理由是 IE 已停止支持，且保留兼容会阻碍优化 |
 | Vapor mode 是什么？ | 3.6 起的实验特性，编译成无虚拟 DOM 的代码，直接操作真实 DOM，性能更高 |
-| Vue 3 的 diff 还是双端比较吗？ | 基本思路类似（同层比较 + key 复用），但因为有 Block Tree 和 PatchFlag，需要比对的节点大幅减少 |
+| Vue 3 的 diff 还是双端比较吗？ | 仍然同层比较、不跨层级。keyed 列表先做首尾双端预判，再用 `getSequence`（最长递增子序列）决定哪些节点需要移动；Block Tree 和 PatchFlag 减少了参与比对的节点 |
 
 ---
 
@@ -1726,10 +1705,10 @@ const { data: orders, run: reloadOrders } = useRequest(api.getOrders, { immediat
 
 > **一句话**：Vue 的 composable 是「**初始化时执行一次的函数**」，React 的 Hook 是「**每次渲染都执行的函数**」——这个差异导致 Vue 不需要 `useMemo` / `useCallback` / 依赖数组这一套。
 
-### 10.5 写 Composable 的六条规范（能说出来显得有经验）
+### 10.5 写 Composable 的六条规范
 
 1. **命名以 `use` 开头**：`useTable`、`useModal`、`usePermission`，符合社区约定，也便于 lint 规则识别。
-2. **只在 `setup` 中同步调用**：因为要绑定当前组件实例（`onUnmounted` 等需要 `currentInstance`）。异步回调里调用会拿不到实例。
+2. **只在组件上下文的同步阶段调用（通常在 `setup`）**：因为要绑定当前组件实例（`onUnmounted` 等需要 `currentInstance`）。异步回调里调用会拿不到实例。
 3. **参数用 `ref` 或 getter**：想保持响应性，别直接传普通值。
 
 ```js
@@ -1777,15 +1756,13 @@ useFetch(() => `/api/user/${id.value}`)
 
 **30 秒版：**
 
-> Composables 解决的是「**跨组件复用有状态逻辑**」的问题。Vue 2 时代只能靠 mixin，但 mixin 有来源不清晰、命名冲突、隐式依赖、不能传参、不能组合、TS 推导差这些毛病；HOC 和 render props 又会带来嵌套和可读性问题。
->
-> Composable 就是一个 `use` 开头的函数，内部用 Composition API 组织状态和副作用，最后 `return` 出 ref 和方法。用的时候 `import` 进来解构，来源清晰、可以重命名、可以传参、可以在一个页面开多份互不干扰的实例，而且自己负责清理副作用。
->
-> 它和 Pinia 的分工是：**组件内的逻辑用 composable，跨组件 / 跨页面共享的状态用 Pinia**。
+- 解决的问题：**跨组件复用有状态逻辑**。Vue 2 只能用 mixin，而 mixin 有来源不清晰、命名冲突、隐式依赖、不能传参、不能组合、TS 推导差等问题；HOC 和 render props 会带来嵌套和可读性问题。
+- 形态：一个 `use` 开头的函数，内部用 Composition API 组织状态和副作用，`return` 出 ref 和方法；使用时 import 解构，可重命名、可传参、可开多份互不干扰的实例，副作用自己清理。
+- 与 Pinia 分工：**组件内逻辑用 composable，跨组件 / 跨页面共享的状态用 Pinia**。
 
-**2 分钟加分版（补三个细节）：**
+**2 分钟版（补三个细节）：**
 
-1. **必须在 `setup` 里同步调用**，因为它依赖 `currentInstance` 来绑定生命周期；异步回调里调用会导致 `onUnmounted` 不生效、清理逻辑丢失。
+1. **必须在组件上下文的同步阶段调用**，因为它依赖 `currentInstance` 来绑定生命周期；异步回调里调用会导致 `onUnmounted` 不生效、清理逻辑丢失。
 2. **参数要传 `ref` 或 getter**，不然依赖不会更新。这是从 mixin 迁移过来最容易错的地方。
 3. **副作用要自己清理**（`onUnmounted` / `onDeactivated`），否则组件卸载后定时器还在跑——这是 composable 变成「内存泄漏源」的最主要原因。
 
@@ -1814,26 +1791,17 @@ useFetch(() => `/api/user/${id.value}`)
 
 一句话记：**`data` 是对象 → 相当于把属性写在原型上；`data` 是函数 → 相当于写在构造函数里。**
 
-### 11.2 先看一个「事故现场」
+### 11.2 对象 data 的后果
 
 ```js
-// ❌ 错误写法：对象
+// ❌ 对象写法（Vue 3 会警告并要求函数，这里用来说明共享后果）
 export default {
   data: { count: 0 },
   template: `<button @click="count++">{{ count }}</button>`,
 }
 ```
 
-页面上放两个：
-
-```vue
-<Counter />
-<Counter />
-```
-
-点第一个按钮 → **两个数字同时加 1**。
-
-原因是两个组件实例的 `vm._data` 指向同一个对象：
+页面上放两个 `<Counter />`。如果框架接受对象写法，两个实例的 `vm._data` 指向同一个对象，点第一个按钮就会**两个数字同时加 1**：
 
 ```mermaid
 flowchart LR
@@ -1859,7 +1827,7 @@ flowchart LR
   O2 --> D2["独立依赖"]
 ```
 
-### 11.3 三个层面的解释（由浅入深，面试按需取用）
+### 11.3 三个层面的解释
 
 **① JS 层面：对象是引用**
 
@@ -1965,7 +1933,7 @@ if (dataOptions) {
 
 Vue 3 的官方说明就是：*"Plain object usage is no longer supported"*——因为「只有一个根实例」的假设不再成立。
 
-> 加分点：这也和「SSR 每个请求要新建一个 app 实例」是同一个理由。**凡是有可能多实例的东西，状态就不能放在模块级共享对象里。**
+> 这也和「SSR 每个请求要新建一个 app 实例」是同一个理由：**凡是有可能多实例的东西，状态就不能放在模块级共享对象里。**
 
 ### 11.6 由这题衍生的四个小问题（常连着问）
 
@@ -2022,19 +1990,17 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
 
 **`setup()` 和 `data()` 是同一个角色**：都是「每个实例执行一次的工厂」。所以 `ref` 写在里面天然隔离，不需要像 Options API 那样靠「函数返回对象」来保证。
 
-> 反过来说，如果在 `<script setup>` 外面写 `const count = ref(0)`（模块作用域），就等价于「对象 data」，所有实例会共享——这也是 Vue 3 里一个常见的翻车点。
+> 反过来说，在 `<script setup>` 外面写 `const count = ref(0)`（模块作用域）等价于「对象 data」，所有实例共享。
 
 ### 11.7 面试怎么答
 
 **30 秒版：**
 
-> 因为**组件会被实例化多次**，而 JS 里对象是引用类型。如果 `data` 写成对象，所有实例的 `data` 都指向同一个对象，Vue 也只会给它做一份响应式包装、一份依赖收集，结果就是**一个实例改数据，所有实例跟着变**。
->
-> 写成函数，Vue 在每次创建实例时调用一次 `data()`，`return {}` 产生新对象，每个实例就有自己独立的状态。Vue 2 是在 `initData` 里用 `getData` 调用函数，Vue 3 是 `dataOptions.call(publicThis)` 之后再 `reactive()` 包一层。
->
-> Vue 2 的根实例可以是对象，因为只 `new` 一次；Vue 3 因为支持多个 app 实例，连根组件也必须用函数。
+- **根因**：组件会被实例化多次，而 JS 对象是引用类型。`data` 写成对象时所有实例指向同一个对象，Vue 只给它做一份响应式包装和依赖收集，结果是一个实例改数据、所有实例跟着变。
+- **函数写法**：Vue 在每次创建实例时调用一次 `data()`，`return {}` 产生新对象。Vue 2 是 `initData` 里用 `getData` 调用，Vue 3 是 `dataOptions.call(publicThis)` 后再 `reactive()`。
+- **根实例**：Vue 2 根实例可以写对象，因为只 `new` 一次；Vue 3 支持多个 app 实例，连根组件也必须用函数。
 
-**2 分钟加分版（多讲这三点）：**
+**2 分钟版（补三点）：**
 
 1. **本质是「实例隔离」**：这跟 `ref` 在每个实例里独立、composable 每次调用新建状态是同一个道理，都是「把状态放进每个实例自己的作用域里」。
 2. **共享的后果不只是「值一样」**：连依赖都是共享的——Vue 3 的 `reactive` 对同一个 target 返回同一个 Proxy，所以触发更新时会同时触发多个实例重渲染。
@@ -2074,7 +2040,7 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
    代价：.value 心智负担、靠自律拆分、副作用要手工清
 
 ③ ref vs reactive
-   ref：任意类型 / .value / RefImpl get-set / 可整体替换 / 解构不丢
+   ref：任意类型 / .value / RefImpl get-set / 可整体替换 / 从普通对象解构不丢
    reactive：仅对象 / 直接访问 / Proxy / 整体替换断链 / 解构丢（要 toRefs）
    ref(对象) 内部就是 reactive；模板自动解包；reactive 数组/Map 里 ref 不解包
    建议：统一 ref
@@ -2083,7 +2049,7 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
    watch：显式依赖 / 懒执行 / 有新旧值 / deep-immediate-flush
    watchEffect：自动收集 / 立即执行 / 无旧值
    坑：watch(reactive) 的 oldVal === newVal；watch(ref对象) 默认不 deep
-   加分：onCleanup 清竞态
+   清理：onCleanup 取消竞态请求
 
 ⑤ v-model
    语法糖 = 一个 prop + 一个事件
@@ -2096,7 +2062,7 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
    返回「包装组件」，渲染时才 import()，状态驱动 loading/error/真实组件
    配 delay/timeout/onError(retry)/suspensible
    vs 路由懒加载：层级不同，路由是整页
-   坑：keep-alive include 匹配不到；SSR 会立即加载
+   坑：keep-alive include 在组件解析前匹配不到；SSR 会立即加载
 
 ⑦ 性能优化（六层）
    加载：懒加载 / 异步组件 / 按需引入 / 分包 / gzip / CDN / modulepreload
@@ -2142,17 +2108,17 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
 - [ ] 说清 CSR / SSR / SSG 的区别和适用场景
 - [ ] 画出 SSR 的完整链路（渲染 → 直出 → hydrate）
 - [ ] 解释 hydration 是什么、为什么会 mismatch
-- [ ] 说出 SSR 的 4 个代价
-- [ ] 解释为什么 SSR 里不能用 `window`，给 3 种解法
+- [ ] 说出 SSR 的主要代价
+- [ ] 解释为什么 SSR 里不能用 `window`，给出几种解法
 - [ ] 说清服务端生命周期执行到哪一步
 
 **Composition API**
 
-- [ ] 说出 Options API 的 3 个痛点
-- [ ] 说出 Composition API 的 5 个好处
-- [ ] 说清它和 React Hooks 的 4 个差异
+- [ ] 说出 Options API 的主要痛点
+- [ ] 说出 Composition API 的主要好处
+- [ ] 说清它和 React Hooks 的差异（见 10.4）
 - [ ] 解释为什么 `setup` 只执行一次还能保证响应式
-- [ ] 说出它的 2 个代价
+- [ ] 说出它的主要代价
 
 **ref / reactive**
 
@@ -2164,7 +2130,7 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
 
 **watch / watchEffect**
 
-- [ ] 说清 5 个区别
+- [ ] 说清主要区别
 - [ ] 说出 `watch(reactive)` 的 `oldVal` 坑
 - [ ] 说清 `deep` 在 `ref` 和 `reactive` 上的默认差异
 - [ ] 会用 `onCleanup` 解决请求竞态
@@ -2184,36 +2150,36 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
 - [ ] 讲清包装组件的状态机（loading / error / resolved）
 - [ ] 说出 `delay` / `timeout` / `onError` 的作用
 - [ ] 说清和路由懒加载的区别
-- [ ] 说出 2 个坑（keep-alive include、SSR）
+- [ ] 说出主要坑（keep-alive include、SSR）
 
 **性能优化**
 
 - [ ] 能按 6 层说出至少 12 个手段
 - [ ] 说清 `v-memo` / `v-once` / `shallowRef` / `markRaw` 的适用场景
 - [ ] 说出虚拟列表的原理
-- [ ] 讲一个自己项目的优化实例（有数字最好）
+- [ ] 讲一个优化实例的排查与验证过程
 - [ ] 说清「先度量再优化」的方法
 
 **升级 / 新特性**
 
-- [ ] 说出 6 个破坏性变更
-- [ ] 说清 `Proxy` 相比 `defineProperty` 的 4 个优势
+- [ ] 说出主要破坏性变更
+- [ ] 说清 `Proxy` 相比 `defineProperty` 的主要优势
 - [ ] 说清静态提升 / PatchFlag / Block Tree
 - [ ] 说出 `Teleport` / `Suspense` / Fragment 的用途和限制
 - [ ] 说出 `defineModel` / `defineOptions` / `useId` 分别是干什么的
 
 **Composables**
 
-- [ ] 说出 mixin 的 5 个问题
+- [ ] 说出 mixin 的主要问题
 - [ ] 说清 composable 的 6 条编写规范
 - [ ] 说清和 Pinia 的分工
-- [ ] 解释为什么必须在 `setup` 内同步调用
+- [ ] 解释为什么必须在组件上下文的同步阶段调用
 - [ ] 说清和 React Hooks 的本质差异
 
 **data 为什么是函数**
 
 - [ ] 说出「组件实例化多次 + 对象是引用类型」这个根因
-- [ ] 能描述对象 `data` 在两个实例下的具体表现（点一个两个都变）
+- [ ] 能描述对象 `data` 被多个实例共享时的表现
 - [ ] 说出 Vue 2（`getData`）/ Vue 3（`reactive`）的初始化过程
 - [ ] 解释为什么 `reactive` 对同一对象返回同一 Proxy
 - [ ] 说出为什么不能用箭头函数
@@ -2230,7 +2196,7 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
 | 3 | SSR 时接口慢怎么办？ | 接口缓存、并行请求、流式渲染先吐骨架 |
 | 4 | 为什么 SSR 每请求要新建 app？ | 共享实例会串用户状态、内存泄漏 |
 | 5 | `setup` 里为什么不能用 `this`？ | 执行时机在 `beforeCreate` 前，刻意不暴露实例 |
-| 6 | `<script setup>` 性能更好吗？ | 是，编译期展开、不用 return 大对象、闭包更少 |
+| 6 | `<script setup>` 性能更好吗？ | 编译期展开、不用 `return` 一个大对象，运行时开销更小 |
 | 7 | 为什么 `ref` 不能省 `.value`？ | JS 拦不住变量读写，只能拦对象属性 |
 | 8 | `reactive` 能包数组吗？ | 能，数组也是对象 |
 | 9 | `reactive` 对象被 `Object.freeze` 后还响应吗？ | 不响应，Vue 会跳过冻结对象 |
@@ -2249,7 +2215,7 @@ const count = ref(0) // setup 每次创建实例时执行一次 → 每个实例
 | 22 | `markRaw` 之后还能改吗？ | 能改，只是不触发视图更新 |
 | 23 | `Proxy` 有什么性能代价？ | 每次属性访问都有 trap 开销，但比递归 defineProperty 整体更优 |
 | 24 | Vue 3 为什么不支持 IE？ | `Proxy` 无法 polyfill |
-| 25 | `Teleport` 之后事件还能冒泡到原父级吗？ | 能，逻辑上的组件树没变 |
+| 25 | `Teleport` 之后事件还能冒泡到原父级吗？ | 组件事件（`emit`）仍沿组件树；原生 DOM 事件按传送后的实际 DOM 位置冒泡，不回到原父级 |
 | 26 | 多根组件上能用 `v-bind="$attrs"` 自动透传吗？ | 不能，要 `inheritAttrs: false` 手动指定 |
 | 27 | `Suspense` 能嵌套吗？ | 能，就近捕获 |
 | 28 | composable 里能用 `provide/inject` 吗？ | 能，但要在 setup 同步阶段调用 |

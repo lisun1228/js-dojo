@@ -1,6 +1,6 @@
 # 响应式原理：track / trigger 与 effect
 
-Vue 3 响应式的核心是三个角色：
+Vue 3 依赖收集与触发链路上的三个角色：
 
 - **activeEffect**：当前正在执行的副作用函数
 - **targetMap**：`WeakMap<target, Map<key, Set<effect>>>`，记录「哪个对象的哪个属性」被「哪些 effect」依赖
@@ -89,4 +89,4 @@ state.name = 'vue3'  // 只重新执行第一个 effect
 state.age = 20       // 只重新执行第二个 effect
 ```
 
-> 关键：**精确到属性级**的依赖收集。`name` 变化不会带着 `age` 的 effect 一起跑，这就是细粒度响应式的来源。
+> 依赖精确到属性级：`name` 变化不会带着 `age` 的 effect 一起跑。以上是最小模型：`trigger` 直接重跑原始 `fn`，不重设 `activeEffect` 也不清理旧依赖，因此重跑读不到新依赖、嵌套时会丢外层 `activeEffect`、effect 内改自身依赖会递归；Vue 每次 `run` 会重建依赖集合并恢复外层 `activeEffect`。

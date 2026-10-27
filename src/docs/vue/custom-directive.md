@@ -1,7 +1,6 @@
 # Vue 自定义指令详解与面试回答
 
 > 适用版本：Vue 2.x / Vue 3.x（含 `<script setup>`）
-> 阅读建议：第 1~4 节是「怎么用」，第 5 节是「原理（面试加分）」，第 6 节是手写实现，第 8 节是「面试直接背」
 
 ---
 
@@ -65,8 +64,6 @@
 | 只是数据转换 | 不需要碰 DOM | computed / 普通函数 |
 | 只是封装请求逻辑 | 不需要碰 DOM | composable（`useXxx`） |
 | 需要跨元素协同 | 指令只知道自己那个 `el` | 组件 + provide / inject |
-
-> 一句总结：**指令是「给元素加行为」，组件是「造一块 UI」，composable 是「复用逻辑」。**
 
 ### 2.4 几种复用手段怎么选
 
@@ -146,39 +143,17 @@ Vue.directive('focus', {
 
 | 时机 | Vue 3 | Vue 2 |
 | --- | --- | --- |
-| 元素创建前（属性 / 事件未应用） | `created` | — |
+| 元素属性 / 事件应用前（子节点已挂载） | `created` | — |
 | 挂载到父节点前 | `beforeMount` | `bind` |
 | 挂载到父节点后 | `mounted` | `inserted` |
-| 元素自身更新前 | `beforeUpdate` | `update` |
-| 元素及子组件更新后 | `updated` | `componentUpdated` |
+| 所在组件更新前 | `beforeUpdate` | `update` |
+| 所在组件及子节点更新后 | `updated` | `componentUpdated` |
 | 卸载前 | `beforeUnmount` | — |
 | 卸载后 | `unmounted` | `unbind` |
 
-参数签名：
+参数签名：Vue 3 每个钩子都是 `(el, binding, vnode, prevVNode)`，Vue 2 是 `(el, binding, vnode)`，只有 `update` / `componentUpdated` 多一个 `oldVnode`。`prevVNode` 也只在 `beforeUpdate` / `updated` 时指向上一个 vnode，其余时机为 `null`。
 
-```js
-// Vue 3
-{
-  created(el, binding, vnode, prevVNode) {},
-  beforeMount(el, binding, vnode, prevVNode) {},
-  mounted(el, binding, vnode, prevVNode) {},
-  beforeUpdate(el, binding, vnode, prevVNode) {},
-  updated(el, binding, vnode, prevVNode) {},
-  beforeUnmount(el, binding, vnode, prevVNode) {},
-  unmounted(el, binding, vnode, prevVNode) {},
-}
-
-// Vue 2
-{
-  bind(el, binding, vnode, oldVnode) {},
-  inserted(el, binding, vnode, oldVnode) {},
-  update(el, binding, vnode, oldVnode) {},
-  componentUpdated(el, binding, vnode, oldVnode) {},
-  unbind(el, binding, vnode, oldVnode) {},
-}
-```
-
-> 面试点：Vue 3 把指令钩子**和组件生命周期对齐命名**（`mounted` / `updated` / `unmounted`），降低心智负担；同时把 Vue 2 含义模糊的 `update` / `componentUpdated` 改成了语义更清晰的 `beforeUpdate` / `updated`。
+> Vue 3 用 `mounted` / `updated` / `unmounted` 对齐组件生命周期；Vue 2 的 `update` / `componentUpdated` 分别对应 `beforeUpdate` / `updated`，`bind` / `inserted` / `unbind` 对应 `beforeMount` / `mounted` / `unmounted`。
 
 ### 3.3 简写形式
 
@@ -216,8 +191,8 @@ app.directive('color', (el, binding) => {
 | `oldValue` | 上次的 `value` | 做 diff，只在更新阶段有意义 |
 | `arg` | `:foo` | 静态 / 动态参数，区分行为分支 |
 | `modifiers` | `.bar` | 开关式配置，比多传一个对象更简洁 |
-| `instance` | 组件实例 | 访问 `instance.$el`、`instance.ctx` 等 |
-| `dir` | 指令对象 | 指令级共享数据（多数场景不建议用，见 4.3） |
+| `instance` | 组件实例 | 访问 `$el`、`$props` 或 setup 暴露的属性 |
+| `dir` | 指令对象 | 指令级共享数据（多数场景不建议用，见 4.2） |
 
 ### 4.1 动态参数
 
@@ -266,7 +241,7 @@ const vResize = {
 | `binding.dir.xxx` | 指令级共享 | 全局配置、缓存池 | 多元素互相覆盖，导致泄漏 |
 | 模块级变量 | 全局 | 单例（极少用） | 多实例互相污染 |
 
-> 面试如果被问「指令怎么在多元素下安全工作」，答这一条就够了：**状态挂在 `el` 上，一个元素一份，`unmounted` 里用同一个引用清理。**
+> 多元素下安全工作的规则：**状态挂在 `el` 上，一个元素一份，`unmounted` 里用同一个引用清理。**
 
 ---
 
@@ -279,42 +254,42 @@ const vResize = {
 ```
 
 ```js
-// 编译产物（简化），数组元素即 [指令对象, value, arg, modifiers]
-_withDirectives(_createElementVNode('input', null, null, 512), [[_directive_focus]])
+// 编译产物（省略 import），数组元素即 [指令对象, value, arg, modifiers]
+const _directive_focus = _resolveDirective('focus')
+_withDirectives((_openBlock(), _createElementBlock('input', null, null, 512)), [[_directive_focus]])
 ```
 
 `withDirectives` 把指令信息挂到 vnode 的 `dirs` 属性上：
 
 ```js
 export function withDirectives(vnode, directives) {
-  const internalInstance = currentRenderingInstance
+  const instance = getComponentPublicInstance(currentRenderingInstance)
   const dirs = vnode.dirs || (vnode.dirs = [])
   for (let i = 0; i < directives.length; i++) {
     let [dir, value, arg, modifiers = EMPTY_OBJ] = directives[i]
+    if (!dir) continue
     if (isFunction(dir)) dir = { mounted: dir, updated: dir } // 简写形式
-    dirs.push({ dir, instance: internalInstance, value, oldValue: void 0, arg, modifiers })
+    dirs.push({ dir, instance, value, oldValue: void 0, arg, modifiers })
   }
   return vnode
 }
 ```
 
-> 这里能看出两件事：
->
-> 1. 指令是**编译期**挂到 vnode 上的，所以指令名必须能在编译期识别，运行时字符串拼接的指令名不可用；
-> 2. 简写函数会被自动包装成 `{ mounted, updated }`。
+> 指令名在编译期就被固化成字面量（`resolveDirective("focus")` 或 `<script setup>` 下的 `$setup.vFocus`），运行时拼接出的名字无法通过模板表达。
 
 ### 5.2 渲染阶段的调用顺序
 
 ```mermaid
 flowchart TD
   A["mountElement"] --> B["创建 el"]
-  B --> C["invokeDirectiveHook：created"]
-  C --> D["挂 props / 事件 / children"]
-  D --> E["invokeDirectiveHook：beforeMount"]
-  E --> F["insert 到父节点"]
-  F --> G["queuePostRenderEffect → mounted"]
-  G --> H["patchElement：beforeUpdate → patch props → updated"]
-  H --> I["unmount：beforeUnmount → 移除 el → unmounted"]
+  B --> C["挂 children"]
+  C --> D["invokeDirectiveHook：created"]
+  D --> E["挂 props / 事件"]
+  E --> F["invokeDirectiveHook：beforeMount"]
+  F --> G["insert 到父节点"]
+  G --> H["queuePostRenderEffect → mounted"]
+  H --> I["patchElement：beforeUpdate → patch props → updated"]
+  I --> J["unmount：beforeUnmount → 移除 el →（post）unmounted"]
 ```
 
 核心函数：
@@ -348,27 +323,13 @@ function invokeDirectiveHook(vnode, prevVNode, instance, name) {
 ### 5.3 四个关键点
 
 1. 钩子是在 **patch 元素时**调用的，所以 `el` 是**真实 DOM**，不是 vnode。
-2. `mounted` 走的是 `queuePostRenderEffect`，即**整棵组件树 patch 完之后**才执行，所以这时能拿到布局信息（`offsetWidth`、`getBoundingClientRect`）。
+2. `mounted` / `updated` 走 `queuePostRenderEffect`，在**整棵组件树 patch 完之后**执行；`mounted` 时元素已在容器里，容器也已在 document 中才能量到 `offsetWidth`、`getBoundingClientRect`。
 3. 执行钩子前后有 `pauseTracking` / `resetTracking`：**指令里的数据访问不会被收集为渲染依赖**，防止意外触发重渲染。
-4. 指令和组件共用同一套渲染管线，所以元素上的 `mounted` 一定在它自己的 `beforeMount` 之后；`unmounted` 一定在元素被移除之后。
+4. 元素上的 `mounted` 一定在它自己的 `beforeMount` 之后；无 `<Transition>` 时 `unmounted` 在元素移除之后执行，有过渡时 `unmounted` 会先于真正的 DOM 移除。
 
 ### 5.4 Vue 2 的差异
 
-Vue 2 在 `patch` 的 `create` / `insert` / `update` / `destroy` 阶段调用对应钩子：
-
-```js
-// create
-if (isDef(dir)) callHook(dir, 'bind')
-// insert
-callHook(vnode, 'inserted')
-// update
-callHook(vnode, 'update')
-callHook(vnode, 'componentUpdated')
-// destroy
-callHook(vnode, 'unbind')
-```
-
-命名不同，但时机和 Vue 3 是一一对应的。
+Vue 2 在 `patch` 的 `create` / `insert` / `update` / `destroy` 阶段分别调用 `bind` / `inserted` / `update` + `componentUpdated` / `unbind`。除 `created` 与 `beforeUnmount` 外，其余五个与 Vue 3 一一对应。
 
 ---
 
@@ -443,7 +404,7 @@ const vLazy = {
 }
 ```
 
-> 加分点：真实项目还要处理**加载失败的占位图**、**已加载 URL 的缓存（避免重复请求和闪烁）**、**SSR 兜底**。
+> 生产环境还要处理**加载失败的占位图**、**已加载 URL 的缓存（避免重复请求和闪烁）**、**SSR 兜底**。
 
 ### 6.4 v-permission：权限控制
 
@@ -461,7 +422,7 @@ const vPermission = {
 }
 ```
 
-> 坑：用 `display: none` 隐藏后，元素还在 DOM 里，`v-if` 切回来时指令不会重新 `mounted`，不要指望它能自动恢复。更推荐把权限判断写成函数（`hasPerm('x')`）+ `v-if`，指令只作为语法糖。
+> 坑：用 `display: none` 隐藏后元素仍在 DOM 里，`v-show` 来回切换不会重新触发 `mounted`，权限变化后不会重新判断。更推荐把权限判断写成函数（`hasPerm('x')`）+ `v-if`，指令只作为语法糖。
 
 ### 6.5 v-click-outside：点击外部关闭
 
@@ -536,23 +497,23 @@ const vDraggable = {
 
 | 坑 | 现象 | 说明 / 解决 |
 | --- | --- | --- |
-| 用在组件上 | 指令不生效 / 警告 | 指令作用于**根元素**；多根节点时 Vue 3 会警告 `Runtime directive used on component with non-element root node` |
+| 用在组件上 | 透传到根元素；非元素根时警告 | 单根时作用于**根元素**；多根 / 文本根时 Vue 3 警告 `Runtime directive used on component with non-element root node` |
 | 用在 `v-if` 为 false 的元素上 | 指令不执行 | 元素不存在；重新显示会重新走 `mounted` |
 | 用在 `v-show` 隐藏的元素上 | 指令仍执行 | 元素还在 DOM 里，只是 `display: none` |
-| `mounted` 里拿不到宽度 | 是 0 | 元素可能还没在 document 中，用 `nextTick` / `requestAnimationFrame` |
+| `mounted` 里拿不到宽度 | 是 0 | 元素已在容器里，但容器可能不在 document 中，用 `nextTick` / `requestAnimationFrame` |
 | 事件没移除 | 内存泄漏、重复触发 | 在 `unmounted` 里 `removeEventListener`，句柄挂 `el` 上 |
 | 指令里访问响应式数据 | 意外重渲染 | Vue 内部已 `pauseTracking`，但仍不建议在指令里改状态 |
 | 想用指令改子组件内部 | 改不到 | 只能操作 `el` 及其子树 DOM，不能碰组件实例状态 |
 | SSR 中指令报错 | 服务端无 DOM | SSR 不执行指令钩子，只支持 `getSSRProps` |
-| 指令名带大写 | 不生效 | 模板里统一写 `v-my-dir`（kebab-case），JS 里定义 `myDir` |
-| 动态指令名 | 不支持 | `v-[name]` 是**动态参数**，不是动态指令名；指令名必须编译期确定 |
-| 多个指令的钩子顺序 | 不确定 | 按模板书写顺序（`dirs` 数组顺序）执行 |
-| 指令里写 `await` | 后续逻辑不受控 | 钩子可以返回 Promise，但建议同步逻辑 + 内部异步 |
+| 指令名大小写 | in-DOM 模板对不上 | SFC 会 camelize（`v-my-dir` ↔ `myDir`）；in-DOM 模板的属性名会被 HTML 转小写 |
+| 动态指令名 | 不支持 | `v-[name]` 编译成 `resolveDirective("[name]")`，按字面量名字解析，取不到指令 |
+| 多个指令的钩子顺序 | 按书写顺序 | `dirs` 按模板中指令出现顺序 push，同一时机依次执行 |
+| 指令里写 `await` | 钩子返回值不会被等待 | 返回的 Promise 只用于捕获异步错误，后续流程要自己在钩子内部管理 |
 
 ### 7.1 指令能用在组件上吗
 
 - **技术上可以写**，Vue 会把它透传到组件根元素上。
-- **但有两个限制**：① 组件必须是**单根**，多根节点时 Vue 3 会警告且完全不生效；② 你拿到的是根元素的 DOM，无法触及组件内部。
+- **但有两个限制**：① 组件必须是**单根**，多根 / 文本根时 Vue 3 会警告 `non-element root node`，指令不执行；② 你拿到的是根元素的 DOM，无法触及组件内部。
 - **所以**：想控制组件行为，用 props / 事件 / `expose`；只有「给根元素加个 DOM 行为」（比如拖拽整个 Card）时，才在组件上用指令。
 
 ### 7.2 SSR 中的指令
@@ -578,23 +539,16 @@ const vShow = {
 
 ### 8.1 30 秒版
 
-> 自定义指令是 Vue 提供的**可复用 DOM 操作**机制。它没有模板也没有独立实例，只拿到一个真实 DOM 元素和 `binding`（value / oldValue / arg / modifiers / instance），在元素的生命周期节点上执行逻辑。
->
-> 用途很明确：当逻辑**必须直接操作 DOM**、又需要在多处复用时才用它，比如自动聚焦、图片懒加载、防抖点击、权限移除、拖拽、点击外部关闭。数据转换、逻辑复用应该用 computed 或 composable。
->
-> API 上 Vue 3 有 7 个钩子：`created`、`beforeMount`、`mounted`、`beforeUpdate`、`updated`、`beforeUnmount`、`unmounted`，和组件生命周期命名对齐；Vue 2 是 `bind / inserted / update / componentUpdated / unbind`。
->
-> 原理上，模板编译时 `withDirectives` 会把指令描述挂到 vnode 的 `dirs` 上，renderer 在 `mountElement` / `patchElement` / `unmount` 的对应阶段调用 `invokeDirectiveHook`，把 `vnode.el` 作为第一个参数传进去。
+- **定义**：可复用的底层 DOM 操作，没有模板和独立实例，只拿到 `el` 和 `binding`。
+- **边界**：必须直接操作 DOM、与元素强绑定、需要复用时才用；数据转换和逻辑复用交给 computed / composable。
+- **原理**：模板编译出 `withDirectives(vnode, [[dir, value, arg, modifiers]])`，渲染时挂到 `vnode.dirs`；`mountElement` / `patchElement` / `unmount` 各阶段调用 `invokeDirectiveHook`，首参是 `vnode.el`（真实 DOM）。钩子与 `binding` 字段见 3.2 / 4。
 
 ### 8.2 2 分钟结构化版
 
-1. **是什么**：复用底层 DOM 操作的机制，无模板、无独立实例，只有一个 `el` 和 `binding`。
-2. **什么时候用**：需要碰真实 DOM + 与元素强绑定 + 需要复用；否则用组件或 composable。
-3. **怎么写**：全局 `app.directive('x', {...})` / 局部 `directives: { x }` / `<script setup>` 里的 `vXxx` 变量；只关心挂载和更新可以写成函数。
-4. **钩子**：Vue 3 七个，重点 `mounted`（元素已插入、可测量）和 `unmounted`（清理监听）；更新阶段可以拿 `oldValue` 做 diff。
-5. **binding**：`value` / `oldValue` / `arg` / `modifiers` / `instance`；`arg` 和 `modifiers` 让一个指令支持多种行为，比如 `v-debounce:500`。
-6. **原理**：编译期 `withDirectives` → `vnode.dirs`；运行时 renderer 在元素生命周期节点调 `invokeDirectiveHook`，参数是 `[el, binding, vnode, prevVNode]`，且前后 `pauseTracking` 避免依赖收集。
-7. **坑**：多根组件不生效、`mounted` 里元素可能还不在 document 中、事件必须在 `unmounted` 清理、SSR 需要 `getSSRProps`。
+1. **是什么、什么时候用**：复用底层 DOM 操作，无模板、无实例；必须碰真实 DOM + 与元素强绑定 + 需要复用，否则用组件或 composable。
+2. **怎么注册**：全局 `app.directive('x', {...})` / 局部 `directives: { x }` / `<script setup>` 的 `vXxx` 变量；只关心挂载和更新时可直接传函数，等价于 `{ mounted, updated }`。
+3. **钩子与参数**：Vue 3 七个钩子与组件生命周期同名；`el` 是真实 DOM，`binding` 里取 `value` / `oldValue` / `arg` / `modifiers`，`binding.instance` 取组件实例。重点 `mounted`（元素已插入、可测量）与 `unmounted`（清理监听）。
+4. **原理与坑**：`withDirectives` → `vnode.dirs` → `invokeDirectiveHook`；多根组件不生效、`mounted` 时容器可能不在 document、监听必须在 `unmounted` 清理、SSR 只有 `getSSRProps`。
 
 ### 8.3 高频追问速答
 
@@ -602,33 +556,13 @@ const vShow = {
 
 组件有模板、有实例、有状态、能组合；指令没有模板和独立实例，只操作宿主元素，是「给元素加行为」。组件是「造 UI」，指令是「改 DOM」。
 
-**Q：指令能代替组件吗？**
-
-不能。指令拿不到响应式状态容器、不能渲染结构、不能在多元素间协同。凡是需要模板或状态的，都应该用组件。
-
 **Q：`mounted` 和 Vue 2 的 `inserted` 有什么区别？**
 
-两者都表示元素已插入父节点，但不保证父节点在 document 中（所以在 `transition` 里 `el.focus()` 可能失败）。Vue 3 的 `mounted` 走 post-render 队列，整棵组件树 patch 完之后执行，能安全测量尺寸；更保险的做法是加 `nextTick` 或判断 `document.contains(el)`。
-
-**Q：指令在更新时怎么拿到旧值？**
-
-`binding.oldValue`，只在 `beforeUpdate` / `updated` 阶段有值（首次 `mounted` 时是 `undefined`）。
-
-**Q：指令里的响应式数据变化会触发重渲染吗？**
-
-指令钩子执行前后 Vue 会 `pauseTracking()` / `resetTracking()`，所以指令内部**读取**响应式数据不会成为渲染依赖。但如果你在指令里**修改**响应式数据，仍然会触发更新（可能死循环），要避免。
-
-**Q：能动态切换指令名吗？**
-
-不能。`v-[arg]` 是动态**参数**，指令名本身必须在编译期确定。想动态，就用一个指令 + `arg` / `value` 区分行为。
+两者都表示元素已插入父节点，但不保证祖先已在 document 中（`transition` 里 `el.focus()` 可能失败）。`mounted` 走 post-render 队列，整棵树 patch 完才执行；此时容器已在 document 中才能测到尺寸，否则用 `document.contains(el)` 判断。
 
 **Q：指令能拿到组件实例吗？**
 
-可以，`binding.instance` 就是使用该指令的组件实例（Vue 3 里还有 `vnode` 参数，但官方建议用 `binding.instance` 而不是 `vnode.context`）。
-
-**Q：怎么保证指令不内存泄漏？**
-
-所有在 `mounted` 里注册的全局监听（`window` / `document` / `IntersectionObserver` / `ResizeObserver` / 定时器）都要在 `unmounted` 里注销，句柄挂在 `el` 上（每个元素独立），不要挂在模块级变量或 `binding.dir` 上。
+可以，`binding.instance` 是使用该指令的组件实例（公开实例代理），能读 `$el`、`$props` 和 setup 暴露的属性。
 
 ---
 

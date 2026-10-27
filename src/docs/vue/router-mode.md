@@ -1,7 +1,6 @@
 # Vue 路由模式详解与面试回答
 
 > 适用版本：Vue 2 + Vue Router 3 / Vue 3 + Vue Router 4
-> 阅读建议：第 1~2 节是「本质」，第 8 节是必问的 404 根因，第 10 节可以直接背
 > 相关教程：路由跳转流程中的拦截逻辑见「Vue 路由守卫详解与面试回答」
 
 ---
@@ -27,7 +26,7 @@
 
 Vue Router 有 **hash** 和 **history** 两种主要模式（外加用于 SSR / 测试的 **memory**），区别在于「**用什么方式改变 URL 而不刷新页面**」：
 
-- **hash 模式**：利用 URL 的 `#` 片段，`#` 后面的内容不发往服务端，通过监听 `hashchange` 事件感知变化——**不需要服务端配置**，但 URL 带 `#`。
+- **hash 模式**：利用 URL 的 `#` 片段，`#` 后面的内容不发往服务端，通过 hash 变化感知（原生实现监听 `hashchange`）——**不需要服务端配置**，但 URL 带 `#`。
 - **history 模式**：利用 HTML5 **History API**（`pushState` / `replaceState` + `popstate`）改变路径——**URL 更好看、SEO 更好**，但**刷新或直接访问子路径需要服务端 fallback 到 `index.html`**，否则 404。
 
 一句话记：**hash 靠「锚点不请求服务端」，history 靠「改地址栏但不发请求」。**
@@ -79,16 +78,16 @@ https://example.com/index.html#/user/1?tab=info
 
 ```mermaid
 flowchart TD
-  A["用户点击 router-link 或代码 push"] --> B["location.hash = '#/user/1'"]
+  A["用户点击 router-link 或代码 push"] --> B["URL 变为 /#/user/1"]
   B --> C["浏览器只修改 hash<br/>不发请求、不刷新页面"]
   C --> D["触发 hashchange 事件"]
-  D --> E["Vue Router 的 history 监听器收到通知"]
+  D --> E["路由实例读取 location.hash"]
   E --> F["匹配路由表 → 更新 currentRoute → 渲染组件"]
 ```
 
 三个关键事实：
 
-1. **`#` 及其后面的内容不会发送到服务端**。浏览器发请求时只发 `https://example.com/`，服务端永远只返回同一个 `index.html`，天然不会 404。
+1. **`#` 及其后面的内容不会发送到服务端**。浏览器发请求时只发 `#` 前的部分，服务端永远只返回同一个 `index.html`，天然不会 404。
 2. **改 hash 不刷新页面**，这是浏览器的原生行为（hash 的设计初衷就是页内锚点定位）。
 3. **hash 变化会触发 `hashchange` 事件**；浏览器前进后退时，`hashchange` 和 `popstate` 都会触发。
 
@@ -113,13 +112,13 @@ window.addEventListener('hashchange', () => {
 
 | 缺点 | 说明 |
 | --- | --- |
-| **URL 带 `#`，不美观** | `example.com/#/user/1`，看起来像「没做完」 |
+| **URL 带 `#`** | `example.com/#/user/1`，分享或粘贴时会保留片段 |
 | **SEO 不友好** | 搜索引擎大多不索引 `#` 后的内容（历史上的 `#!` 爬取方案已废弃） |
 | **锚点定位失效** | `#` 被路由占用了，没法用 `#section1` 做页内跳转（需要额外方案，比如 `scrollBehavior`） |
 | **hash 有编码问题** | 中文 / 特殊字符会被编码，`location.hash` 拿到的可能是 `%E4%B8%AD` |
 | **部分统计 / 埋点** | 默认只上报 `#` 前的部分，需要额外配置 |
 
-> 补充：hash 模式下 `history.pushState` 其实也能用，但没必要。Vue Router 的 hash 模式内部就是 `location.hash` + `hashchange`，再用 `history.replaceState` 兜底。
+> 补充：Vue Router 4 的 `createWebHashHistory()` 内部委托给 `createWebHistory()`，同样是 `pushState` / `replaceState` + `popstate`，只是 URL 多一个 `#`；`location.hash` + `hashchange` 是原生 hash 路由的最小实现。
 
 ---
 
@@ -186,7 +185,7 @@ history.pushState({}, '', '/user/1') // 只改历史栈 → 不刷新（HTML5 �
 | **必须服务端配合** | 刷新 / 直接访问子路径会 404，需要 fallback 到 `index.html` |
 | **兼容性** | 依赖 History API，IE9 及以下不支持 |
 | **需要正确配置 base** | 部署到子目录时忘了配 `base`，路由和资源都会 404 |
-| **不能直接双击打开** | `file://` 协议下 `pushState` 会报跨域错误 |
+| **不能直接双击打开** | `file://` 受同源策略限制，`pushState` 通常不可用（可能抛 `SecurityError`） |
 
 ---
 
@@ -195,7 +194,7 @@ history.pushState({}, '', '/user/1') // 只改历史栈 → 不刷新（HTML5 �
 | 维度 | hash | history | memory（abstract） |
 | --- | --- | --- | --- |
 | URL 形态 | `/#/user/1` | `/user/1` | 无 URL |
-| 底层 API | `location.hash` + `hashchange` | `pushState` + `popstate` | 纯内存栈 |
+| 底层 API | `location.hash` + `hashchange`（Vue Router 4 内部用 `pushState` + `popstate`） | `pushState` + `popstate` | 纯内存栈 |
 | 是否发请求 | 否（`#` 后不发） | 否（`pushState` 不发） | 否 |
 | 刷新是否 404 | 不会 | **会**（需服务端 fallback） | 不适用 |
 | 服务端配置 | 不需要 | **必需** | 不需要 |
@@ -230,7 +229,7 @@ const router = createRouter({
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: NotFound },
   ],
 
-  // 滚动行为（history 模式下才有意义）
+  // 滚动行为（hash / history 模式都生效）
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) return savedPosition // 前进后退：还原位置
     if (to.hash) return { el: to.hash, behavior: 'smooth' } // 锚点
@@ -248,8 +247,8 @@ createWebHistory('/admin/') // 应用部署在 https://example.com/admin/
 ```
 
 - 它决定了 `router.push('/user')` 实际变成 `/admin/user`
-- Vite 项目一般用 `import.meta.env.BASE_URL`（来自 `vite.config.js` 的 `base`）
-- **漏配 base 的典型症状**：路由跳转正常，但刷新后 404、静态资源 404
+- Vite 用 `import.meta.env.BASE_URL`（来自 `vite.config.js` 的 `base`）；Vue CLI 用 `process.env.BASE_URL`（来自 `vue.config.js` 的 `publicPath`），两者是同一含义
+- **base 配错的典型症状**：路由前缀和实际部署路径不一致，刷新后 404、静态资源 404
 
 ### 6.2 路由跳转的两种方式
 
@@ -279,7 +278,7 @@ router.go(-1) // 后退
 
 ## 7. history 模式的服务端配置
 
-核心就一句：**所有「非静态资源」的路径，都返回 `index.html`，交给前端路由处理。**
+核心就一句：**所有未命中真实文件的路径，都返回 `index.html`，交给前端路由处理。**
 
 ### 7.1 Nginx
 
@@ -400,10 +399,10 @@ sequenceDiagram
 
 **根因一句话**：
 
-> hash 模式下，浏览器请求的永远是 `/`，服务端一定能返回 `index.html`；
+> hash 模式下，浏览器请求的永远是 `#` 前的路径，服务端一定能返回 `index.html`；
 > history 模式下，浏览器请求的是**完整路径** `/user/1`，服务端没有这个文件就 404。
 
-### 8.3 三种「看似能解决但其实不行」的方案
+### 8.3 三种替代方案及问题
 
 | 方案 | 问题 |
 | --- | --- |
@@ -416,8 +415,6 @@ sequenceDiagram
 ---
 
 ## 9. 手写迷你路由器
-
-> 面试如果问「前端路由怎么实现」，能手写出这两个核心，基本就稳了。
 
 ### 9.1 hash 版
 
@@ -519,7 +516,7 @@ class HistoryRouter {
 | 首屏 | 读 `location.hash` | 读 `location.pathname` |
 | 服务端 | 无关 | 必须 fallback |
 
-> Vue Router 做的事情比这多得多：嵌套路由、动态参数、命名路由、守卫队列、异步组件解析、滚动行为、`router-view` 的深度解析……但**内核就是上面这几十行**。
+> Vue Router 在此基础上增加了嵌套路由、动态参数、命名路由、守卫队列、异步组件解析、滚动行为和 `router-view` 深度解析。
 
 ---
 
@@ -527,53 +524,34 @@ class HistoryRouter {
 
 ### 10.1 30 秒版
 
-> Vue Router 有两种主要模式：hash 和 history，区别是**怎么改 URL 而不刷新页面**。
->
-> hash 模式利用 URL 里的 `#`，`#` 后面的内容不会发给服务端，所以刷新永远只请求 `/`，不可能 404；它通过监听 `hashchange` 事件感知变化。优点是零服务端配置、兼容性好；缺点是 URL 带 `#` 不美观、SEO 不友好、`#` 被占用后没法做锚点。
->
-> history 模式用 HTML5 的 `pushState` / `replaceState` 改地址栏，配合 `popstate` 监听前进后退。优点是 URL 干净、SEO 好、能用锚点；缺点是**刷新或直接访问子路径会 404**，因为浏览器真的会向服务端请求 `/user/1`，而服务器上没有这个文件，所以必须配置 fallback 把所有非静态资源请求都返回 `index.html`。
->
-> 另外还有一个 memory 模式（`createMemoryHistory`），没有 URL，主要用于 SSR 和单元测试。
+- Vue Router 主要有 **hash** 和 **history** 两种模式，外加无 URL 的 **memory**；区别是「怎么改 URL 而不刷新页面」。
+- **hash**：`#` 后的内容不发往服务端，刷新只请求 `#` 前的路径，因此不需要服务端配置；hash 变化可被感知（原生实现靠 `hashchange`）。代价是 URL 带 `#`、SEO 差、`#` 被占用后无法做锚点。
+- **history**：用 `pushState` / `replaceState` 改地址栏，`popstate` 监听前进后退；URL 干净、SEO 好、锚点可用。刷新或直接访问子路径时浏览器会真实请求该路径，服务端必须 fallback 到 `index.html`，否则 404。
+- **memory**（`createMemoryHistory`）：路由状态存在内存里，用于 SSR 和单元测试。
 
 ### 10.2 2 分钟结构化版
 
 1. **本质**：前端路由 = 改 URL 不发请求 + 监听变化 + 匹配路由表 + 渲染组件。
-2. **hash**：`#` 后的内容不发服务端 → 天然不 404；`hashchange` 监听；零配置、兼容 IE8；URL 丑、SEO 差、锚点冲突。
-3. **history**：`pushState` 只改历史栈不发请求 → 需要自己手动 render；`popstate` 监听前进后退；URL 美观、SEO 好；必须服务端 fallback，否则刷新 404。
-4. **404 根因**：刷新时浏览器对 `/user/1` 发起真实 HTTP 请求，服务端找不到文件。解决：Nginx `try_files $uri $uri/ /index.html`，注意静态资源优先。
+2. **hash**：`#` 后不发服务端，刷新只请求 `#` 前的路径；hash 变化可被感知（原生靠 `hashchange`）；零配置、兼容 IE8；URL 带 `#`、SEO 差、锚点冲突。
+3. **history**：`pushState` 只改历史栈不发请求，需要自己手动 render；`popstate` 监听前进后退；URL 干净、SEO 好、锚点可用；必须服务端 fallback。
+4. **404 根因**：刷新时浏览器对 `/user/1` 发起真实 HTTP 请求，服务端找不到该文件。
 5. **memory**：无 URL，SSR / 测试用。
 6. **选型**：面向 C 端、能改服务端 → history；无服务端权限 / 微前端 / 内嵌 → hash。
 7. **实现细节**：`push` 新增历史记录、`replace` 替换；`pushState` 不触发 `popstate`；`base` 是部署子路径。
-
-### 10.3 经典对比表
-
-| | hash | history |
-| --- | --- | --- |
-| 长相 | `/#/a` | `/a` |
-| 原理 | `location.hash` + `hashchange` | `pushState` + `popstate` |
-| 刷新 404 | 不会 | 会 |
-| 服务端配置 | 不需要 | 需要 fallback |
-| 兼容 | IE8+ | IE10+ |
-| SEO | 差 | 好 |
-| 锚点 | 冲突 | 可用 |
-| 典型场景 | 后台 / 内嵌 / 无权限改服务端 | C 端正式项目 |
 
 ---
 
 ## 11. 高频追问
 
-1. **hash 和 history 的区别？**——见第 5 节表格，重点说原理、404、服务端配置、SEO。
-2. **为什么 history 刷新 404？**——刷新时浏览器对完整路径发起真实请求，服务端没有这个文件。
-3. **为什么 hash 刷新不 404？**——`#` 后的内容不发往服务端，请求的永远是 `/`。
-4. **`pushState` 会触发 `popstate` 吗？**——不会。只有前进 / 后退（`go/back/forward`）才触发。
-5. **那 Vue Router 怎么知道 `push` 之后要渲染？**——自己手动调匹配渲染，不等事件。
-6. **`push` 和 `replace` 的区别？**——是否新增历史记录；登录后跳首页用 `replace`。
-7. **`history.go(-1)` 和 `router.back()` 一样吗？**——`router.back()` 内部就是 `history.go(-1)`；两者都会触发 `popstate`，Vue Router 仍能接管。
-8. **`base` 有什么用？**——指定应用部署的子路径，影响路由前缀和静态资源路径。
-9. **history 模式能部署到 CDN / 对象存储吗？**——需要支持 fallback 重写；纯静态对象存储一般做不到，只能用 hash 模式。
-10. **前端路由的原理是什么？**——改 URL 不发请求（`hash` / `pushState`）+ 监听变化（`hashchange` / `popstate`）+ 匹配路由表 + 渲染组件。
-11. **memory 模式干什么用？**——无 URL，SSR 每个请求独立路由实例、单元测试。
-12. **`scrollBehavior` 有什么用？**——控制跳转后的滚动位置（顶部 / 锚点 / 还原历史位置），配合 keep-alive 的 `savedPosition`。
+1. **`pushState` 会触发 `popstate` 吗？**——不会。只有前进 / 后退（`go/back/forward`）才触发。
+2. **那 Vue Router 怎么知道 `push` 之后要渲染？**——自己手动调匹配渲染，不等事件。
+3. **`push` 和 `replace` 的区别？**——是否新增历史记录；登录后跳首页用 `replace`。
+4. **`history.go(-1)` 和 `router.back()` 一样吗？**——`router.back()` 内部就是 `router.go(-1)`，最终调用 `history.go(-1)`；两者都会触发 `popstate`，Vue Router 仍能接管。
+5. **`base` 有什么用？**——指定应用部署的子路径，影响路由前缀和静态资源路径。
+6. **history 模式能部署到 CDN / 对象存储吗？**——需要支持 fallback 重写；纯静态对象存储一般做不到，只能用 hash 模式。
+7. **memory 模式干什么用？**——无 URL，SSR 每个请求独立路由实例、单元测试。
+8. **`scrollBehavior` 有什么用？**——控制跳转后的滚动位置：`savedPosition` 还原前进 / 后退位置，`{ el: to.hash }` 定位锚点，`{ top: 0 }` 回到顶部。
+9. **前端路由的原理是什么？**——改 URL 不发请求（`hash` / `pushState`）+ 监听变化（`hashchange` / `popstate`）+ 匹配路由表 + 渲染组件。
 
 ---
 
@@ -583,22 +561,14 @@ class HistoryRouter {
 
 ```text
 【路由模式】
-本质：改 URL 不刷新 + 监听变化 + 匹配路由表 + 渲染组件
-
-hash    ：location.hash + hashchange
-          # 后不发服务端 → 永不 404、零配置
-          缺点：丑、SEO 差、锚点冲突
+hash    ：location.hash + hashchange（原生最小实现）
+          Vue Router 4 内部仍走 pushState + popstate，URL 多一个 #
           创建：createWebHashHistory()
-
-history ：pushState/replaceState + popstate
-          只改历史栈不发请求；pushState 不触发 popstate
-          刷新/直达子路径 → 真发请求 → 404
-          解决：nginx try_files $uri $uri/ /index.html
-          优点：好看、SEO 好、可用锚点
+history ：pushState / replaceState + popstate
+          pushState 不触发 popstate
           创建：createWebHistory(base)
-
-memory  ：无 URL，SSR / 单测用
-          createMemoryHistory()
+memory  ：无 URL，SSR / 单测
+          创建：createMemoryHistory()
 ```
 
 ### 12.2 自测清单
@@ -609,7 +579,7 @@ memory  ：无 URL，SSR / 单测用
 - [ ] 画出 history 模式刷新的完整链路（浏览器 → 服务器 → 前端）
 - [ ] 写出 Nginx 的 `try_files` 配置，并解释为什么要先找文件
 - [ ] 说出 `push` 和 `replace` 的区别及使用场景
-- [ ] 说出 `base` 的作用，以及漏配的症状
+- [ ] 说出 `base` 的作用，以及配错时的症状
 - [ ] 说出 memory 模式的两个用途
 - [ ] 手写 hash 版和 history 版迷你路由
-- [ ] 说出 hash / history 在 8 个维度上的差异
+- [ ] 说出 hash / history / memory 三种模式的主要差异
