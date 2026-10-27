@@ -2,7 +2,7 @@
 
 > 覆盖题号：**7、11、22**
 > 对应原题：《Webpack 性能优化》《谈谈你对 webpack 打包原理的理解》《谈谈你对 webpack 热更新原理的理解》
-> 三题是一条线：**懂原理（11）→ 才能优化（7）→ 而 HMR（22）是原理的最佳应用**。
+> 版本基准：本仓库为 Vite 8 / Rolldown（`vite@8.3.4`、`rolldown@1.2.13`），**未安装 webpack**；下文配置与产物形态按 webpack 5 文档描述，未在本仓库复测。
 
 ---
 
@@ -35,8 +35,8 @@
 flowchart TD
   A["① 初始化<br/>读配置 → 创建 Compiler<br/>注册所有 Plugin"] --> B["② 编译<br/>从 entry 开始<br/>调用 loader 转译模块"]
   B --> C["③ 构建依赖图<br/>AST 分析 import/require<br/>递归处理依赖"]
-  C --> D["④ 生成 Chunk<br/>seal 阶段<br/>tree-shaking / splitChunks / 压缩"]
-  D --> E["⑤ 输出<br/>emit 阶段<br/>写文件到 output.path"]
+  C --> D["④ 生成 Chunk<br/>seal 阶段<br/>tree-shaking 标记 / splitChunks / scope hoisting"]
+  D --> E["⑤ 输出<br/>processAssets 压缩<br/>emit 写盘"]
   E --> F["watch 模式则回到 ②"]
 ```
 
@@ -47,10 +47,10 @@ flowchart TD
 | **① 初始化** | 合并 CLI + 配置文件；`new Compiler()`；遍历 `plugins` 数组调用 `plugin.apply(compiler)` 注册钩子 | `Compiler` |
 | **② 编译** | `compiler.run()` → 创建 `Compilation`；`addEntry` 把入口加入队列；对每个模块调用 `loader` 转译（**从右到左、从下到上**） | `Compilation` |
 | **③ 建图** | 用 `acorn` 把 JS 解析成 AST，找出 `import`/`require`/`import()`；把依赖加入队列递归处理；形成 `ModuleGraph` | `Module` / `Dependency` |
-| **④ 生成** | `seal` 阶段：根据入口与动态导入生成 chunk；执行优化（tree-shaking、splitChunks、minify）；生成最终代码 | `Chunk` / `ChunkGroup` |
-| **⑤ 输出** | `emit` 钩子（可在这里改产物），写文件到磁盘；`afterEmit` + `done` | `assets` |
+| **④ 生成** | `seal` 阶段：根据入口与动态导入生成 chunk；执行 tree-shaking 标记、`splitChunks`、scope hoisting；生成最终代码 | `Chunk` / `ChunkGroup` |
+| **⑤ 输出** | `processAssets` 阶段压缩并加工资源；`emit` 写文件到磁盘；`afterEmit` + `done` | `assets` |
 
-> **`Compiler` 与 `Compilation` 的区别**（高频追问）：
+> **`Compiler` 与 `Compilation` 的区别**：
 > - `Compiler`：**全局唯一**，代表整个构建过程，持有配置、文件系统、watch 等
 > - `Compilation`：**每次构建创建一个**（watch 模式下每轮都新建），代表"这一次"的模块图与产物
 
@@ -75,28 +75,35 @@ Webpack 的所有扩展点都是 tapable 的钩子：
 
 | 钩子类型 | 特点 | 例子 |
 |---|---|---|
-| `SyncHook` | 同步串行 | `emit` |
-| `SyncBailHook` | 同步串行，返回非 `undefined` 就中断 | — |
-| `AsyncSeriesHook` | 异步串行 | `beforeRun`、`done` |
-| `AsyncParallelHook` | 异步并行 | `run` |
+| `SyncHook` | 同步串行，不收集返回值 | `environment`、`compilation` |
+| `SyncBailHook` | 返回非 `undefined` 即中断后续 tap | `shouldEmit` |
+| `AsyncSeriesHook` | 异步串行 | `beforeRun`、`emit`、`done` |
+| `AsyncParallelHook` | 异步并行 | `make` |
 
 ```js
 // 一个 plugin 的最小结构
 class MyPlugin {
   apply(compiler) {
-    // 注册到某个钩子
-    compiler.hooks.emit.tapAsync('MyPlugin', (compilation, callback) => {
-      // compilation.assets 里是本次所有产物
-      const content = '/* injected by MyPlugin */'
-      compilation.assets['banner.txt'] = {
-        source: () => content,
-        size: () => content.length,
-      }
-      callback()
+    compiler.hooks.thisCompilation.tap('MyPlugin', (compilation) => {
+      compilation.hooks.processAssets.tap(
+        {
+          name: 'MyPlugin',
+          stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL,
+        },
+        () => {
+          const content = '/* injected by MyPlugin */'
+          compilation.emitAsset(
+            'banner.txt',
+            new compiler.webpack.sources.RawSource(content),
+          )
+        },
+      )
     })
   }
 }
 ```
+
+webpack 5 中直接改 `compilation.assets` 已废弃（`DEP_WEBPACK_COMPILATION_ASSETS`），新增资源走 `processAssets` + `emitAsset`。
 
 **常用钩子时序：**
 
@@ -108,36 +115,21 @@ entryOption → beforeRun → run → watchRun（watch 模式）
 → afterOptimizeChunks → emit → afterEmit → done
 ```
 
-> 面试时能说出 `make`（构建模块）、`seal`（生成 chunk）、`emit`（输出）三个关键节点，就足够体现理解了。
+### 1.5 口述要点
 
-### 1.5 30 秒版
+- 从 entry 出发，loader 链自右向左转译，`acorn` 解析 AST 得到依赖，递归形成 `ModuleGraph`。
+- `seal` 阶段按入口与 `import()` 划分 chunk，执行 tree-shaking 标记、`splitChunks`、scope hoisting。
+- `processAssets` 压缩资源，`emit` 写盘；plugin 通过 tapable 钩子介入任意阶段。
+- `Compiler` 全局唯一，`Compilation` 每次构建新建；watch 模式下每轮一个。
 
-> "五步：初始化时创建 Compiler 并注册所有 plugin；然后从 entry 开始，用 loader 把每个文件转成 JS 模块，用 acorn 解析 AST 找出依赖，递归构建依赖图；seal 阶段把模块分组成 chunk 并做 tree-shaking、拆包、压缩；最后 emit 写文件。核心是 loader 负责转换文件、plugin 通过 tapable 钩子介入各个生命周期。"
-
-### 1.6 2 分钟版
-
-> "Webpack 本质是个'依赖图打包器'，我按五个阶段讲。
->
-> **初始化**：合并 CLI 参数和配置文件，创建全局唯一的 Compiler 对象，然后遍历 plugins 数组，调用每个 plugin 的 `apply(compiler)`，把它们的逻辑注册到 tapable 的钩子上。这是个事件流机制，所以 plugin 能介入任何阶段。
->
-> **编译**：从 entry 开始，每个文件进来先过 loader 链。loader 是**从右到左、从下到上**执行的，本质是把上一个 loader 的输出喂给下一个。比如 `style-loader` 接收 `css-loader` 的输出。转译成 JS 后，用 acorn 解析成 AST，遍历找 `import`、`require`、`import()` 这些依赖。
->
-> **建图**：把找到的依赖加入队列递归处理，最终形成 ModuleGraph——记录了谁依赖谁、谁被谁引用。这个图是后面 tree-shaking 和拆包的基础。
->
-> **生成**：seal 阶段。根据入口和动态导入把模块分配到 chunk，然后跑一系列优化：tree-shaking 标记未使用导出、splitChunks 拆分公共代码、terser 压缩。
->
-> **输出**：emit 阶段，把 chunk 写成文件。这里 plugin 还能改产物，比如 `html-webpack-plugin` 就是在这里把 script 标签注入 HTML。
->
-> 有两个对象要区分：Compiler 是全局唯一的，代表整个构建；Compilation 是每次构建新建的，代表这一次的模块图和产物。watch 模式下每轮都新建一个 Compilation。"
-
-### 1.7 追问
+### 1.6 追问
 
 | 追问 | 要点 |
 |---|---|
 | Compiler 和 Compilation 区别？ | 前者全局唯一，后者每次构建新建 |
 | loader 为什么从右到左？ | 函数组合（compose），`compose(a, b)(x) = a(b(x))` |
 | loader 和 plugin 区别？ | loader 转换单个文件、在模块加载时执行；plugin 在生命周期钩子上做任意事 |
-| Webpack 怎么解析依赖？ | acorn 解析 AST + `@babel/parser`，找 ImportDeclaration 等节点 |
+| Webpack 怎么解析依赖？ | `acorn` 解析 AST，把 `import`/`require`/`import()` 转成 Dependency 对象 |
 | 什么是 chunk？ | 一组模块的集合，对应一个输出文件 |
 | 动态导入变成什么？ | 生成独立 chunk + `__webpack_require__.e(chunkId)` 异步加载 |
 | tapable 是什么？ | Webpack 作者写的事件流库，支撑 plugin 钩子 |
@@ -156,7 +148,7 @@ entryOption → beforeRun → run → watchRun（watch 模式）
 | 配置位置 | `module.rules` | `plugins` 数组 |
 | 例子 | `babel-loader`、`css-loader`、`ts-loader` | `HtmlWebpackPlugin`、`MiniCssExtractPlugin`、`DefinePlugin` |
 
-**loader 的两个阶段（高分点）：**
+**loader 的两个阶段：**
 
 ```js
 // 一个 loader 可以导出 normal 和 pitch
@@ -173,13 +165,13 @@ pitch:  loader1 → loader2 → loader3
 normal: loader3 → loader2 → loader1
 ```
 
-> **典型应用**：`style-loader` 用 pitch 阶段直接返回一段 JS 代码（运行时插入 style），从而**跳过**后面的 `css-loader` 读取文件的流程。这就是"pitch 能短路"的实际用途。
+> **典型应用**：`vue-loader` 的 pitch 把 `.vue` 拆成 template / script / style 三个虚拟模块；`style-loader` 的 pitch 把剩余 loader 链改写成内联 `require`，两者都不依赖 normal 阶段的固定顺序。
 
 ---
 
 ## 3. 手写一个 60 行的迷你打包器（加分项）
 
-> 面试时说"我手写过简化版打包器，就是三步：读取入口 → 递归找依赖 → 生成一个能在浏览器跑的启动函数"，然后能画出结构，非常加分。
+三步：读取入口 → 递归找依赖 → 生成带 `require` 运行时的自执行函数。
 
 ```js
 // mini-webpack.js —— 理解原理用，不追求完备
@@ -287,7 +279,7 @@ bundle.js =
 
 ## 4. Webpack 性能优化
 
-> **这题必须分两条线答**：**构建立得更快**（开发体验）和**产物更小更快**（用户体验）。80% 的人只答第一条，这是最常见的失分点。
+优化分两条线：**构建更快**（开发体验）与**产物更小、加载更快**（用户体验），两边的配置互相独立。
 
 ### 4.1 总览
 
@@ -313,7 +305,7 @@ flowchart LR
 
 ### 4.2 构建速度优化（8 个手段）
 
-**(1) 开启持久化缓存（Webpack 5 最有效的一招）**
+**(1) 开启持久化缓存**
 
 ```js
 module.exports = {
@@ -327,7 +319,7 @@ module.exports = {
 }
 ```
 
-> **一次冷启动 90s → 二次启动 12s** 是常见效果。**这一条比其它所有优化加起来都值**，面试先说它。
+> `type: 'filesystem'` 把模块转译结果缓存到磁盘，二次构建跳过已缓存模块；`buildDependencies.config` 让配置变更时缓存失效。
 
 **(2) 多进程/多线程转译**
 
@@ -348,7 +340,7 @@ module.exports = {
 }
 ```
 
-> 更快的选择是**换工具**：`esbuild-loader`（比 babel 快 10~100 倍）、`swc-loader`。**Vite 默认用 esbuild，这是它快的重要原因**。
+> 更快的做法是换原生实现的转译器：`esbuild-loader`、`swc-loader`。Vite 8 的开发转译用 Oxc，依赖预构建与生产打包用 Rolldown，esbuild 已不在默认链路。
 
 **(3) 缩小处理范围**
 
@@ -440,8 +432,8 @@ module.exports = {
 
 | 版本 | 关键提升 |
 |---|---|
-| Webpack 4 → 5 | 持久化缓存、更好的 tree-shaking、`asset modules` 替代 file-loader、构建速度提升 20%+ |
-| Webpack → Vite | 开发环境用原生 ESM，**冷启动从 30s 降到 1s** |
+| Webpack 4 → 5 | 持久化缓存、更完整的 tree-shaking、`asset modules` 替代 file-loader |
+| Webpack → Vite | dev 不打包业务代码，启动成本从 O(模块数) 降到 O(依赖数)（见第 8 节） |
 
 ### 4.3 产物质量优化（8 个手段）
 
@@ -508,10 +500,10 @@ module.exports = {
 }
 ```
 
-> **`contenthash` vs `hash` vs `chunkhash`**（高频追问）：
+> **`contenthash` vs `hash` vs `chunkhash`**：
 > - `hash`：整个构建一个 hash，**改任何文件全都变**
 > - `chunkhash`：按 chunk 算，改一个 chunk 只变那个
-> - `contenthash`：按**文件内容**算，最精确，**生产必用**
+> - `contenthash`：按**文件内容**算，粒度最细，生产环境用这个
 
 **(6) 按需加载 + 预取**
 
@@ -542,11 +534,8 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin')
 
 ```js
 // webpack.prod.js
-const path = require('path')
 const { merge } = require('webpack-merge')
 const MiniCssExtractPlugin = require('mini-css-extract-plugin')
-const CssMinimizerPlugin = require('css-minimizer-webpack-plugin')
-const TerserPlugin = require('terser-webpack-plugin')
 
 module.exports = merge(require('./webpack.base'), {
   mode: 'production',
@@ -568,66 +557,32 @@ module.exports = merge(require('./webpack.base'), {
     new MiniCssExtractPlugin({ filename: 'css/[name].[contenthash:8].css' }),
   ],
   optimization: {
-    minimize: true,
-    minimizer: [
-      new TerserPlugin({ parallel: true, extractComments: false }),
-      new CssMinimizerPlugin(),
-    ],
+    minimize: true,                   // minimizer 见 4.3(4)
     concatenateModules: true,
-    runtimeChunk: 'single',            // runtime 单独抽，避免业务 hash 抖动
-    splitChunks: {
-      chunks: 'all',
-      cacheGroups: {
-        vue: {
-          test: /[\\/]node_modules[\\/](vue|vue-router|pinia)[\\/]/,
-          name: 'vendor-vue',
-          priority: 30,
-        },
-        ui: {
-          test: /[\\/]node_modules[\\/](element-plus|ant-design-vue)[\\/]/,
-          name: 'vendor-ui',
-          priority: 20,
-        },
-        vendor: {
-          test: /[\\/]node_modules[\\/]/,
-          name: 'vendor',
-          priority: 10,
-        },
-      },
-    },
+    runtimeChunk: 'single',           // runtime 单独抽，避免业务 hash 抖动
+    splitChunks: { chunks: 'all' },   // cacheGroups 见第 6 节
   },
   performance: {
     maxEntrypointSize: 400 * 1024,
-    maxAssetSize: 400 * 1024,          // 超预算时构建警告
+    maxAssetSize: 400 * 1024,         // 超预算时构建警告
   },
 })
 ```
 
-### 4.5 30 秒版
+### 4.5 口述要点
 
-> "分两条线。**构建速度**：开 Webpack 5 的 filesystem 缓存、用 esbuild 或 swc 替代 babel、用 include/oneOf 缩小范围、resolve 少写 extensions、开发环境用 eval-cheap-source-map 并关掉 splitChunks。**产物质量**：splitChunks 拆公共代码、tree-shaking 去掉未使用导出、scope hoisting 合并模块、terser 压缩、contenthash 配长缓存、路由懒加载加预取。"
+- 构建速度：`cache: filesystem` → 原生转译器（esbuild / swc）→ `include` / `exclude` / `oneOf` 缩小范围 → 精简 `resolve` → 开发环境降级 `devtool`。
+- 产物质量：`splitChunks` 分层 + `contenthash` 长缓存 → tree-shaking（ESM + `usedExports` + 压缩；`sideEffects` 控制整块跳过）→ scope hoisting → 按需加载。
+- 用 `performance.maxAssetSize` 把体积预算变成构建警告。
 
-### 4.6 2 分钟版
-
-> "Webpack 优化我分两条线：构建速度和产物质量。
->
-> **构建速度**第一招一定是开 `cache: filesystem`，Webpack 5 的持久化缓存能让二次启动从 90 秒降到十几秒，性价比最高。第二招是换转译工具，babel 慢，用 esbuild-loader 或 swc-loader 能快十倍以上，或者 thread-loader 开多进程。第三招是缩小范围：loader 加 `include: src` 和 `exclude: node_modules`，用 `oneOf` 让每个文件匹配第一个规则就停，不要每个文件都过一遍所有规则。第四招是 resolve 优化，extensions 只留两三个，配 alias 减少深层查找。开发环境还要降级：devtool 用 eval-cheap-module-source-map，关掉 splitChunks，开 lazyCompilation。
->
-> **产物质量**第一是拆包，splitChunks 把 vue 全家桶、UI 库、业务代码分开，配合 contenthash 让不常变的库长期缓存。第二是 tree-shaking，要求 ESM、`sideEffects: false`、生产模式。第三是 scope hoisting，把模块合并到同一作用域，减少 `__webpack_require__` 调用。第四是压缩，terser 开 parallel，CSS 用 css-minimizer。第五是按需加载，路由 `import()` 加 prefetch。
->
-> 最后加一道防线：`performance.maxAssetSize` 设 400KB，超了构建就警告，把性能预算变成工程约束。"
-
-### 4.7 追问
+### 4.6 追问
 
 | 追问 | 要点 |
 |---|---|
 | 最有效的构建加速是什么？ | Webpack 5 的 `cache: { type: 'filesystem' }` |
 | `DllPlugin` 还用吗？ | 不用了，官方定位为遗留方案，用 filesystem cache 替代 |
 | `externals` 有什么代价？ | 失去 tree-shaking、版本管理分散、多一个请求、CDN 挂了就白屏 |
-| `contenthash` 和 `chunkhash` 区别？ | 前者按文件内容，后者按 chunk；前者更精确 |
-| `runtimeChunk: 'single'` 有什么用？ | 把 runtime（模块映射表）单独抽，避免业务代码改动导致 vendor hash 变化 |
 | 为什么开发环境关掉 splitChunks？ | 拆包有计算成本，开发环境不需要长期缓存 |
-| `sideEffects: false` 有什么风险？ | 如果代码真有副作用（如 polyfill、CSS 引入）会被摇掉 |
 | 构建慢怎么定位？ | `speed-measure-webpack-plugin` 看每个 loader/plugin 耗时；`--profile` 生成 stats 分析 |
 
 ---
@@ -654,16 +609,18 @@ used()
 
 Webpack 只是**标记**，真正删除代码是压缩工具（Terser）根据标记做的。所以：
 
-> **不开压缩，tree-shaking 不生效**（代码还在，只是标记了）。
+> **webpack 下不开压缩，tree-shaking 不生效**（代码还在，只是标记了）；Rolldown / Rollup 在打包阶段就删除，与 `minify` 无关。
 
-### 5.2 生效的四个必要条件
+### 5.2 生效条件
 
 | 条件 | 说明 |
 |---|---|
-| ① 使用 **ESM** | CJS 的 `module.exports` 是运行时赋值，无法静态分析 |
-| ② `optimization.usedExports: true` | 生产模式默认开 |
-| ③ `optimization.minimize: true` | 由 Terser 执行删除 |
-| ④ 包的 `package.json` 有 `"sideEffects": false` | 允许删除"看起来没用到但可能有副作用"的模块 |
+| ① 使用 **ESM** | `import` / `export` 是静态声明；CJS 的 `module.exports` 运行时赋值，无法静态分析 |
+| ② `optimization.usedExports: true` | 生产模式默认开，标记未被使用的导出 |
+| ③ `optimization.minimize: true` | webpack 只标记，由 Terser 按标记删除 |
+| ④ `sideEffects` 声明正确 | 决定「没有导出被使用」的模块能否整块跳过，不是删除未使用导出的前提 |
+
+前三条决定未使用导出能否被删，第四条决定副作用模块能否整块跳过。
 
 ```json
 // 库的作者要这样写
@@ -689,8 +646,8 @@ Webpack 只是**标记**，真正删除代码是压缩工具（Terser）根据�
 import _ from 'lodash'
 _.debounce(fn, 300)
 
-// 为什么？因为 `_` 是一个对象，Webpack 无法确定 `_.debounce` 之后会不会
-// 通过动态方式访问 `_[key]`，所以整个对象都要保留
+// 为什么？lodash 主包是 CJS，且 `_` 是对象；Webpack 无法确定后续是否
+// 通过 `_[key]` 动态访问，只能整包保留
 ```
 
 ```js
@@ -706,7 +663,7 @@ import debounce from 'lodash/debounce'
 |---|---|---|
 | `import * as x from 'lib'` 然后 `x.foo` | 命名空间对象可能被动态访问 | 用具名导入 |
 | 库只有 CJS 产物 | 无法静态分析 | 找 ESM 版本（`lodash-es`） |
-| `sideEffects` 未声明 | Webpack 保守保留 | 在库的 package.json 声明 |
+| `sideEffects` 未声明 | 无导出使用的模块被保守保留 | 在库的 package.json 声明 |
 | 类的方法 | 类整体被引入就全保留 | 拆成独立函数 |
 | 循环依赖 | 依赖图不确定 | 重构消除循环 |
 | 装饰器/动态 `require` | 无法静态分析 | 避免 |
@@ -796,9 +753,9 @@ cacheGroups: {
 |---|---|
 | **按变更频率拆**，不按大小拆 | 框架不变 → 单独长期缓存；业务天天变 → 单独高频更新 |
 | **首屏只加载首屏要的** | 图表、编辑器这类不进首屏 |
-| **别拆太碎** | 每个 chunk 都是一次请求 + 一次解析；HTTP/1.1 下尤其致命 |
+| **别拆太碎** | 每个 chunk 都是一次请求 + 一次解析；HTTP/1.1 下更明显 |
 
-> **一个反面案例**：某项目按"每个页面一个 vendor"拆，结果首屏加载了 40 多个小 chunk，HTTP/1.1 下排队严重，反而更慢。**拆分不是越细越好。**
+> **拆分不是越细越好**：按页面拆 vendor 会把首屏依赖分散到多个 chunk，HTTP/1.1 下请求排队，反而比合并加载更慢。
 
 ### 6.5 追问
 
@@ -861,7 +818,7 @@ Watch 模式（`watchOptions`）监听文件变化，只重新编译**受影响�
 {
   "c": ["main"],          // 变化的 chunk 名
   "h": "a1b2c3d4",        // 新 hash
-  "r": ["vendor"]         // 需要重新加载的 chunk
+  "r": ["vendor"]         // 被移除的 chunk
 }
 ```
 
@@ -875,7 +832,7 @@ ws.send(JSON.stringify({ type: 'hash', data: newHash }))
 ws.send(JSON.stringify({ type: 'ok' }))
 ```
 
-> **为什么用 WebSocket 而不是轮询？** 实时性 + 省资源。这也是 Vite 采用同样方案的原因。
+> **为什么用 WebSocket 而不是轮询？** 实时推送，且没有轮询的空请求开销。
 
 **⑥ 拉取变更清单**
 
@@ -918,7 +875,7 @@ hotEmitter.on('webpackHotUpdate', (hash) => {
 **⑨ hotApply：核心算法**
 
 ```
-1. 从"变更的模块"出发，向上遍历依赖树
+1. 从"变更的模块"出发，沿父模块（import 它的模块）链向上遍历
 2. 找到第一个"自我接受"（self-accepted）的模块
    —— 即该模块自己调用了 module.hot.accept()
 3. 如果一路到入口都没找到接受者 → 整页刷新（full reload）
@@ -931,7 +888,7 @@ hotEmitter.on('webpackHotUpdate', (hash) => {
 
 **⑩ 谁在"接受"更新**
 
-业务代码一般不写 `module.hot.accept`，是**框架的 loader 帮你写了**：
+业务代码通常不写 `module.hot.accept`，由框架 loader 注入：
 
 | 框架 | 谁在做 accept |
 |---|---|
@@ -974,30 +931,20 @@ if (module.hot) {
 | 是否保留状态 | ✅ 保留（表单输入、组件 state） | ❌ 全丢 |
 | 实现 | WebSocket + 补丁 + runtime 替换 | 文件变化 → 浏览器 `location.reload()` |
 
-### 7.6 30 秒版
+### 7.6 口述要点
 
-> "Webpack 用 watch 监听文件变化，增量编译后生成两类补丁：变更模块的 hot-update.js 和变更清单 hot-update.json，同时算出新 hash。Dev Server 通过 WebSocket 把 hash 推给浏览器，浏览器用 HMR runtime 请求清单、用 JSONP 加载新模块代码，然后 `module.hot.check` 走 hotApply：从变更模块向上找 accept 接受者，找到就 dispose 旧模块、替换 factory、执行回调，整个过程不刷新页面；找不到接受者就回退整页刷新。"
+- 服务端 watch 到变更后增量编译，生成 `{chunk}.{hash}.hot-update.js`（新模块代码）与 `{hash}.hot-update.json`（变更清单）。
+- dev-server 用 WebSocket 推送新 hash；浏览器 client 请求清单，再用 JSONP 加载补丁，`webpackHotUpdate` 注册新模块。
+- `module.hot.check` 触发 hotApply：沿父模块链向上找第一个调用 `module.hot.accept` 的接受者。
+- 找到后 dispose 旧模块 → 清缓存 → 换 factory → 执行 accept 回调；找不到则整页刷新。
+- 框架 loader 代写 accept：`vue-loader` 重新渲染组件，`react-refresh` 保留 state。
 
-### 7.7 2 分钟版
-
-> "分服务端和浏览器两端。
->
-> **服务端**：webpack-dev-server 启动时用 watch 监听文件。文件一改，只做增量编译，重编受影响的模块。编译完生成两个东西：一个是 `{chunk}.{hash}.hot-update.js`，里面是变更模块的新代码；另一个是 `{hash}.hot-update.json`，是变更清单，说明哪些 chunk 变了、新 hash 是多少。然后通过 WebSocket 把新 hash 推给浏览器。
->
-> **浏览器端**：dev-server 的 client 收到 hash 后交给 HMR runtime。runtime 先请求 hot-update.json 拿到变更的 chunk 列表，再用 JSONP 的方式动态插 script 标签加载对应的 hot-update.js。这些文件执行时会调用 `webpackHotUpdate` 把新模块注册进 `__webpack_require__.c` 的待更新表里。然后调用 `module.hot.check`。
->
-> **check 的核心是 hotApply**：从变更的模块向上遍历依赖树，找第一个调用了 `module.hot.accept` 的模块作为接受者。找到后先调用旧模块的 dispose 处理器清理副作用，从模块缓存里删掉，换上新的 factory，最后执行 accept 回调。如果一路上到入口都没找到接受者，就只能整页刷新。
->
-> 业务代码一般不自己写 accept，是 loader 代劳的：vue-loader 在 SFC 编译产物里注入了 accept，react-refresh 也是类似机制，所以改 Vue 组件能保留 data、改 React 组件能保留 state。
->
-> 它和 Live Reload 的区别就在这：Live Reload 是改了就 `location.reload()`，状态全丢；HMR 是只换模块，页面不刷新。"
-
-### 7.8 追问
+### 7.7 追问
 
 | 追问 | 要点 |
 |---|---|
 | HMR 为什么用 WebSocket？ | 实时推送、双向、省资源（比轮询） |
-| `hot-update.json` 里有什么？ | 变更的 chunk 列表 + 新 hash + 需重载的 chunk |
+| `hot-update.json` 里有什么？ | 变更的 chunk 列表 + 新 hash + 被移除的 chunk |
 | HMR 一定不刷新页面吗？ | 不一定，找不到 accept 者会回退整页刷新 |
 | 为什么 Vue 组件改动能保留状态？ | vue-loader 注入了 `module.hot.accept`，重新渲染而不是重建 |
 | React Fast Refresh 和 HMR 关系？ | Fast Refresh 是 React 官方的 HMR 实现，能保留 state 和 hooks |
@@ -1009,29 +956,27 @@ if (module.hot) {
 
 ## 8. Webpack vs Vite（现代视角）
 
-> 现在面试如果只讲 Webpack，会被认为"停留在 2020 年"。**主动对比 Vite 是加分项**。
-
 | | Webpack | Vite（开发） | Vite（生产） |
 |---|---|---|---|
-| 启动方式 | 全量打包后起服务 | **不打包**，浏览器直接请求 ESM | Rollup 打包 |
-| 冷启动 | 慢（与项目规模线性相关） | **极快**（与规模几乎无关） | 与 Webpack 相当 |
-| 模块处理 | 所有模块都过 loader | 按需转译 + esbuild 预构建依赖 | Rollup + esbuild |
+| 启动方式 | 全量打包后起服务 | **不打包业务代码**，浏览器直接请求 ESM | Rolldown 打包 |
+| 启动成本 | O(模块数) | O(依赖数)，与业务模块数无关 | — |
+| 模块处理 | 所有模块都过 loader | Oxc 按需转译 + Rolldown 预构建依赖 | Rolldown + Oxc |
 | HMR | 生成补丁包 + runtime 替换 | 只让浏览器重新请求该模块 | — |
-| 生态 | 极成熟，插件多 | 较成熟，部分 Webpack 插件无替代 | — |
+| 生态 | loader / plugin 体系完整 | 兼容 Rollup 插件 API，webpack loader 不能直接复用 | — |
 | 适合 | 老项目、复杂定制 | 新项目 | 新项目 |
 
-**Vite 快的两个原因：**
+**Vite dev 快的两个原因：**
 
-1. **依赖预构建（Pre-bundling）**：用 esbuild 把 `node_modules` 里的 CJS 转 ESM 并合并成少量文件，解决"几百个请求"问题
-2. **按需编译**：浏览器请求哪个模块才编译哪个，启动时不编译整个项目
+1. **依赖预构建（Pre-bundling）**：Rolldown 把 `node_modules` 里的 CJS/UMD 转成 ESM 并合并成少量文件，消除请求瀑布
+2. **按需编译**：浏览器请求哪个模块才用 Oxc 转译哪个，启动时不构建完整依赖图
 
 **Vite 的代价：**
 
 | 代价 | 说明 |
 |---|---|
-| 开发/生产用两套工具 | 开发 esbuild + 生产 Rollup，行为可能有差异 |
-| 首屏请求数多 | 大项目首次访问可能发出上千个请求（有 HTTP/2 缓解） |
-| 生态兼容 | 部分 Webpack 专属能力（如复杂 loader）无替代 |
+| dev 与 build 边界差异 | dev 按模块转译、build 整体打包，循环依赖与 CJS `default` interop 仍可能不同 |
+| 首屏请求数多 | 业务模块逐个请求，HTTP/2 下可接受，HTTP/1.1 下明显 |
+| 生态兼容 | webpack 专属 loader 与插件无法直接复用 |
 
 ---
 
@@ -1039,48 +984,29 @@ if (module.hot) {
 
 | # | 坑 | 纠正 |
 |---|---|---|
-| 1 | 只说"构建速度"不说"产物质量" | 必须两条线 |
-| 2 | 把 `DllPlugin` 当推荐方案 | Webpack 5 用 filesystem cache 替代 |
-| 3 | `include`/`exclude` 不写 | 所有文件（含 node_modules）都过 loader |
-| 4 | `resolve.extensions` 写一堆 | 每个 import 都要按顺序尝试，拖慢解析 |
-| 5 | 用 `hash` 而不是 `contenthash` | 改一个文件全部缓存失效 |
-| 6 | 没抽 `runtimeChunk` | runtime 变化导致 vendor hash 抖动 |
-| 7 | `sideEffects: false` 全局声明 | 误删有副作用的模块（CSS、polyfill） |
-| 8 | splitChunks 拆得过细 | 请求数爆炸，HTTP/1.1 下更糟 |
-| 9 | 开发环境也开 splitChunks | 无意义且拖慢构建 |
-| 10 | 认为 tree-shaking 是 Webpack 删的代码 | 是 Terser 删的，Webpack 只标记 |
-| 11 | 认为 HMR 一定不刷新页面 | 找不到 accept 者会回退全量刷新 |
-| 12 | 手写 `module.hot.accept` 却忘了清理副作用 | 需要配 `module.hot.dispose` |
-| 13 | 生产环境开 HMR | 不应该，只在 dev 启用 |
-| 14 | 用 `externals` 后忘了在 HTML 引 CDN | 运行时 `Vue is not defined` |
+| 1 | 把 `DllPlugin` 当推荐方案 | Webpack 5 用 filesystem cache 替代 |
+| 2 | `include`/`exclude` 不写 | 所有文件（含 node_modules）都过 loader |
+| 3 | `resolve.extensions` 写一堆 | 每个 import 都要按顺序尝试，拖慢解析 |
+| 4 | 用 `hash` 而不是 `contenthash` | 改一个文件全部缓存失效 |
+| 5 | 没抽 `runtimeChunk` | runtime 变化导致 vendor hash 抖动 |
+| 6 | `sideEffects: false` 全局声明 | 误删有副作用的模块（CSS、polyfill） |
+| 7 | splitChunks 拆得过细 | 请求数增加，HTTP/1.1 下排队更明显 |
+| 8 | 开发环境也开 splitChunks | 无意义且拖慢构建 |
+| 9 | 认为 tree-shaking 是 Webpack 删的代码 | 是 Terser 删的，Webpack 只标记 |
+| 10 | 认为 HMR 一定不刷新页面 | 找不到 accept 者会回退全量刷新 |
+| 11 | 手写 `module.hot.accept` 却忘了清理副作用 | 需要配 `module.hot.dispose` |
+| 12 | 生产环境开 HMR | 不应该，只在 dev 启用 |
+| 13 | 用 `externals` 后忘了在 HTML 引 CDN | 运行时 `Vue is not defined` |
 
 ---
 
 ## 10. 答题模板
 
-### 10.1 「Webpack 打包原理」——30 秒
-
-> （用 1.5 节 30 秒版。）
-
-### 10.2 「Webpack 打包原理」——2 分钟
-
-> （用 1.6 节 2 分钟版，最后补一句 Compiler/Compilation 的区别。）
-
-### 10.3 「Webpack 性能优化」——30 秒
-
-> "分两条线。构建速度：开 filesystem 缓存、用 esbuild/swc 换掉 babel、include+oneOf 缩小范围、开发环境降级 devtool。产物质量：splitChunks 按变更频率拆包、tree-shaking、scope hoisting、terser 压缩、contenthash 配长缓存、路由懒加载加预取。"
-
-### 10.4 「Webpack 性能优化」——2 分钟
-
-> （用 4.6 节 2 分钟版。）
-
-### 10.5 「HMR 原理」——30 秒
-
-> （用 7.6 节 30 秒版。）
-
-### 10.6 「HMR 原理」——2 分钟
-
-> （用 7.7 节 2 分钟版，重点讲清 hotApply 的"向上找 accept 者"和"找不到就刷新"。）
+| 题目 | 30 秒 | 2 分钟 |
+|---|---|---|
+| Webpack 打包原理 | 1.1 + 1.5 | 1.2 表格 + 1.5 |
+| Webpack 性能优化 | 4.1 + 4.5 | 4.2 / 4.3 细节 + 4.5 |
+| HMR 原理 | 7.1 + 7.6 | 7.2 / 7.3 + 7.6 |
 
 ---
 
@@ -1092,25 +1018,25 @@ if (module.hot) {
 | 2 | Compiler 和 Compilation 区别？ | 全局唯一 vs 每次构建新建 |
 | 3 | loader 和 plugin 区别？ | 转换单文件 vs 生命周期钩子 |
 | 4 | loader 执行顺序？ | normal 从右到左；pitch 从左到右 |
-| 5 | pitch 有什么用？ | 可短路后续 loader，`style-loader` 就靠它 |
-| 6 | Webpack 怎么找依赖？ | acorn 解析 AST，遍历 ImportDeclaration |
+| 5 | pitch 有什么用？ | 可提前返回、改写后续请求；`vue-loader` / `style-loader` 都用它 |
+| 6 | Webpack 怎么找依赖？ | `acorn` 解析 AST，按 `import`/`require`/`import()` 生成 Dependency |
 | 7 | chunk 和 bundle 区别？ | chunk 是模块集合的逻辑概念，bundle 是输出的物理文件 |
 | 8 | tapable 是什么？ | 事件流库，plugin 的基础 |
 | 9 | 最有效的构建加速？ | Webpack 5 持久化缓存 |
 | 10 | tree-shaking 谁做的？ | Webpack 标记 + Terser 删除 |
-| 11 | tree-shaking 生效条件？ | ESM + usedExports + minimize + sideEffects |
+| 11 | tree-shaking 生效条件？ | ESM + usedExports + minimize；sideEffects 决定整块跳过 |
 | 12 | `hash`/`chunkhash`/`contenthash` 区别？ | 全局 / 按 chunk / 按文件内容 |
 | 13 | `runtimeChunk` 为什么抽？ | 隔离 runtime 变化，稳定 vendor 缓存 |
 | 14 | scope hoisting 是什么？ | 模块合并到同一作用域，去掉 `__webpack_require__` |
 | 15 | splitChunks 怎么配？ | 按变更频率分组：framework / ui / vendors / common |
 | 16 | HMR 的补丁文件有几种？ | 两种：`hot-update.js`（代码）+ `hot-update.json`（清单） |
 | 17 | HMR 用什么通信？ | WebSocket |
-| 18 | hotApply 的核心逻辑？ | 向上找 accept 者，dispose 旧模块 → 替换 → 执行回调 |
+| 18 | hotApply 的核心逻辑？ | 沿父模块链找 accept 者，dispose 旧模块 → 替换 → 执行回调 |
 | 19 | 找不到 accept 者会怎样？ | 整页刷新 |
 | 20 | Vue/React 为什么能保留状态？ | vue-loader / react-refresh 注入了 accept |
 | 21 | HMR 和 Live Reload 区别？ | 是否刷新页面、是否保留状态 |
-| 22 | Vite 为什么快？ | 不打包 + 原生 ESM + esbuild 预构建依赖 |
-| 23 | Vite 有什么代价？ | 开发生产两套工具、首屏请求数多、生态兼容 |
+| 22 | Vite 为什么快？ | 不打包业务代码 + 原生 ESM + Rolldown 预构建依赖 + Oxc 按需转译 |
+| 23 | Vite 有什么代价？ | dev / build 边界差异、首屏请求数多、webpack loader 不可复用 |
 | 24 | `externals` 的代价？ | 失去 tree-shaking、版本分散、CDN 依赖 |
 
 ---
@@ -1132,27 +1058,28 @@ plugin：apply(compiler) + tap 钩子，介入任意生命周期
 关键钩子：make（建模块）/ seal（生成 chunk）/ emit（输出）
 
 【构建提速】
-filesystem 缓存（最有效）> esbuild/swc 换 babel > include + oneOf
+filesystem 缓存 > esbuild/swc 换 babel > include + oneOf
 > resolve 精简 > 开发环境降级 devtool > lazyCompilation
 DllPlugin 已过时
 
 【产物优化】
-splitChunks 按变更频率拆 > tree-shaking（ESM + sideEffects + minimize）
+splitChunks 按变更频率拆 > tree-shaking（ESM + usedExports + minimize）
 > scope hoisting > terser > contenthash 长缓存 > 懒加载 + prefetch
+sideEffects 决定无导出使用的模块是否整块跳过
 
 【hash 三兄弟】
 hash        全局，改一处全变
 chunkhash   按 chunk
-contenthash 按文件内容 ← 生产必用
+contenthash 按文件内容 ← 生产用
 
 【HMR 链路】
 watch 变化 → 增量编译 → 生成 hot-update.js + hot-update.json + 新 hash
 → WebSocket 推 hash → client 请求 json 清单 → JSONP 加载 js 补丁
-→ module.hot.check → hotApply：向上找 accept 者
+→ module.hot.check → hotApply：沿父模块链找 accept 者
    → 找到：dispose 旧模块 → 替换 factory → 执行回调（不刷新）
    → 找不到：整页刷新
 
 【Vite】
-开发不打包 + 原生 ESM + esbuild 预构建依赖 → 冷启动秒级
-生产 Rollup
+开发：不打包业务代码 + 原生 ESM + Rolldown 预构建依赖 + Oxc 按需转译
+生产：Rolldown + Oxc
 ```

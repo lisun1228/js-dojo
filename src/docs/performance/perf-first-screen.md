@@ -1,8 +1,7 @@
 # 性能 · 03 首屏优化：从 SSR 到关键路径
 
-> 覆盖题号：**5、10、19**（三题同源，合并讲透）
-> 对应原题：《首屏优化的常用方案》《首屏优化》《SPA 项目首屏加载太慢怎么办》
-> 这一册是性能题里**最常被问、也最容易答得空泛**的一题。核心是先把"慢在哪"拆开，再对号入座给手段。
+> 覆盖：首屏口径、SPA 三段时序、四类手段、SSR/SSG/预渲染、骨架屏与关键 CSS
+> 主线：先定位慢在哪一段，再按时段选手段
 
 ---
 
@@ -28,7 +27,7 @@
 
 ## 1. 先搞清"首屏"到底指什么
 
-面试官问"首屏优化"，很多人直接开始报手段。**更好的开场是先定义**——因为"首屏"在技术上有三种口径，对应三种优化目标：
+"首屏"有三种口径，对应不同指标，优化手段也不同：
 
 | 口径 | 含义 | 对应指标 |
 |---|---|---|
@@ -36,7 +35,7 @@
 | **内容首屏** | 视口内主要内容都渲染完 | **LCP**（最常用） |
 | **可交互首屏** | 页面能响应点击 | INP / TBT / TTI |
 
-> 一句可以加分的开场："首屏优化我会先确认是哪个口径。多数业务场景关心的是 LCP——用户看到主要内容；但如果是表单类页面，'能点了'更关键，那要盯 TBT 和 INP。这两者的优化手段不完全一样。"
+内容型页面盯 LCP；表单类页面"能点了"更关键，盯 TBT 与 INP。
 
 ---
 
@@ -54,20 +53,19 @@ sequenceDiagram
   U->>N: 输入 URL
   N->>S: 请求 index.html
   S-->>B: 返回空壳 HTML（只有 <div id="app"></div>）
-  Note over B: TTFB ✅（此时页面还是白的）
+  Note over B: TTFB，页面仍白屏
   B->>B: 解析 HTML，发现 <script src="app.js">
-  B->>N: 下载 app.js（可能 500KB~2MB）
-  Note over B: ⚠️ 第一段浪费：下载时间
-  B->>B: 解析 + 执行 JS（创建 Vue 实例、注册路由、跑所有模块）
-  Note over B: ⚠️ 第二段浪费：执行时间（主线程被占）
-  B->>N: 首屏接口请求（串行！JS 执行完才知道要请求什么）
-  Note over B: ⚠️ 第三段浪费：串行等待
+  B->>N: 下载 app.js
+  Note over B: 第一段：下载
+  B->>B: 解析并执行 JS（创建 Vue 实例、注册路由、执行所有模块）
+  Note over B: 第二段：执行，主线程被占
+  B->>N: 首屏接口请求（串行，JS 执行完才知道要请求什么）
+  Note over B: 第三段：串行等待
   N-->>B: 返回数据
-  B->>B: 渲染 DOM → 首次绘制
-  Note over B: FCP 终于发生 😩
+  B->>B: 渲染 DOM，首次绘制（FCP）
 ```
 
-### 2.2 三段"浪费"（这就是答题骨架）
+### 2.2 三段"浪费"
 
 | 阶段 | 问题本质 | 优化方向 |
 |---|---|---|
@@ -75,7 +73,7 @@ sequenceDiagram
 | ② JS 太大且必须执行完才有内容 | 体积 + 执行成本 | **少给**（分割、tree-shaking、按需） |
 | ③ 数据请求串行在 JS 之后 | 瀑布流 | **提前**（SSR 直出、preload 接口、并行请求） |
 
-**这就是为什么"路由懒加载 + gzip + CDN"这套标准答案往往效果有限**——它们优化的是 ②，但真正的瓶颈可能是 ①（空壳）和 ③（串行请求）。
+路由懒加载 + gzip + CDN 优化的是 ②；瓶颈若在 ① 或 ③，这类手段收效有限。
 
 ---
 
@@ -88,7 +86,7 @@ sequenceDiagram
 | **C 换方式** | 别让浏览器从零渲染 | ⑨ SSR ⑩ SSG/预渲染 ⑪ 流式 SSR + 渐进水合 | LCP、FCP |
 | **D 抢先感知** | 让用户觉得快 | ⑫ 骨架屏 + 关键 CSS 内联 + 字体优化 + 渐进式图片 | FCP、CLS、主观体验 |
 
-> **答题时的黄金句式**："首屏优化我会分四类：少给、快给、换渲染方式、抢先感知。前两类是常规优化，第三类要看项目类型决定是否值得，第四类只改善感知不改善真实指标。"
+四类的分工：A、B 改善真实指标；C 取决于项目类型；D 主要改善 FCP、CLS 与主观体验，对 LCP 影响有限。
 
 ---
 
@@ -141,7 +139,7 @@ export default {
 }
 ```
 
-> **判断拆分粒度的原则**：按「**变更频率**」和「**首屏是否需要**」两个维度拆，而不是按文件大小。`vue` 全家桶几乎不变 → 单独 chunk 长期缓存；业务代码天天变 → 单独 chunk 高频更新。
+> **拆分粒度**按「变更频率」和「首屏是否需要」两个维度决定，而不是按文件大小。`vue` 全家桶几乎不变 → 单独 chunk 长期缓存；业务代码频繁变更 → 单独 chunk 高频更新。
 
 ### 4.2 tree-shaking 与按需引入
 
@@ -185,44 +183,44 @@ export default {
 }
 ```
 
-> **一个真实数字**：Element Plus 全量引入约 800KB（gzip 后 280KB）；按需 + 只用一个 Table 组件，可降到 60KB 左右。
+> **量级参考**：Element Plus 全量引入在数百 KB（gzip 后仍在百 KB 级）；按需只引一个 Table 组件可降到几十 KB。
 
-### 4.3 第三方脚本治理（最容易被忽略，收益最大）
+### 4.3 第三方脚本治理
 
-第三方脚本（统计、客服、广告、A/B 测试、地图）通常是**首屏性能的最大杀手**：
+第三方脚本（统计、客服、广告、A/B 测试、地图）是首屏性能的主要干扰项：
 
-| 问题 | 数据 |
+| 现象 | 说明 |
 |---|---|
-| 第三方脚本常占主线程 30%~50% | 移动端更严重 |
-| 一个聊天客服 SDK 可能 300KB+ | 且常常同步加载 |
-| 广告脚本会引发额外布局偏移 | 直接拉高 CLS |
+| 第三方脚本占主线程比例高 | 移动端更明显 |
+| 客服 / 地图 SDK 常达数百 KB | 且常常同步加载 |
+| 广告脚本引发额外布局偏移 | 直接拉高 CLS |
 
 **治理手段：**
 
 ```html
-<!-- ① 非关键脚本全部延后 -->
+<!-- ① 非关键脚本延后到解析完成之后 -->
 <script src="https://analytics.example.com/a.js" defer></script>
 
-<!-- ② 交互后才加载（如客服、评论） -->
+<!-- ② 交互后才加载（客服、评论），用一个标志位防止重复注入 -->
 <script>
-  ['scroll', 'click', 'keydown'].forEach(evt =>
-    window.addEventListener(evt, loadThirdParty, { once: true, passive: true })
-  )
+  let loaded = false
   function loadThirdParty() {
+    if (loaded) return
+    loaded = true
     const s = document.createElement('script')
     s.src = 'https://chat.example.com/sdk.js'
     s.async = true
     document.head.appendChild(s)
-    // 记得移除监听
-    ;['scroll', 'click', 'keydown'].forEach(evt =>
-      window.removeEventListener(evt, loadThirdParty))
   }
+  ;['scroll', 'pointerdown', 'keydown'].forEach((evt) =>
+    window.addEventListener(evt, loadThirdParty, { once: true, passive: true }),
+  )
 </script>
 
-<!-- ③ 用 iframe / Web Worker 隔离（重脚本放沙箱，不占主线程） -->
+<!-- ③ 重脚本用 iframe / Web Worker 隔离，不占主线程 -->
 ```
 
-**面试加分**：说"我会用 Performance 面板看 Third-party 占比，如果第三方脚本主线程时间超过 30%，优先治理它，收益往往比折腾 bundle 更大"。
+用 Performance 面板的 Third-party 归因查看主线程占比；超过 30% 时优先治理第三方脚本，收益通常大于继续压 bundle。
 
 ### 4.4 移除无用 polyfill
 
@@ -232,23 +230,25 @@ export default {
 // webpack: 用 babel-preset-env 的 useBuiltIns: 'usage'
 ```
 
-> 很多项目为了兼容 IE，引入了 `core-js` 全量 + `regenerator-runtime`，体积 100KB+。如果已经不支持 IE，**删掉就能白赚 100KB**。这是"零成本优化"。
+> 很多项目为兼容 IE 引入了 `core-js` 全量与 `regenerator-runtime`，体积 100KB+。已不支持 IE 时删掉即可减少上百 KB。
 
 ---
 
 ## 5. B 类：快给 —— 缩短传输时间
 
-这部分与分册 02 重叠，这里只列首屏相关的要点：
+与 02 加载与网络重叠，这里只列首屏相关项：
 
 | 手段 | 首屏相关要点 |
 |---|---|
-| **CDN** | 静态资源上 CDN，命中率 > 90%；HTML 也可走 CDN（但要 `no-cache`） |
-| **brotli** | 首屏 JS/CSS 收益最大，通常 -70%~-80% |
-| **preconnect** | 对首屏要用的 API 域名提前建连，省 2~4 RTT |
+| **CDN** | 静态资源上 CDN，命中率 > 90%；HTML 也可走 CDN（配 `no-cache`） |
+| **brotli** | 文本资源通常可压掉 70% 以上，首屏 JS/CSS 收益最大 |
+| **preconnect** | 对首屏要用的 API / 字体域名提前建连，省 2~4 RTT |
 | **preload** | 首屏 LCP 图、字体、关键 CSS/JS |
-| **HTTP/2** | 单连接多路复用，避免 6 并发排队 |
-| **减少重定向** | 每个 301 多一次 RTT；`http→https` + `不带 www→带 www` 串起来就是 2 次 |
-| **HTML 直出** | 配合 SSR 或至少把关键数据内联（`window.__INITIAL_STATE__`） |
+| **HTTP/2** | 单连接多路复用，避免 HTTP/1.1 的 6 并发排队 |
+| **减少重定向** | 每个 301 多一次 RTT；`http→https` 与 `不带 www→带 www` 串联即 2 次 |
+| **HTML 直出** | 配合 SSR，或至少把关键数据内联（`window.__INITIAL_STATE__`） |
+
+首屏图用 `fetchpriority="high"` 标注，并用 `<link rel="preload" as="image">` 提前发现；**不要**加 `loading="lazy"`——lazy 会把图片发现推迟到布局完成之后。非首屏图才用 `loading="lazy"` + `fetchpriority="low"`。
 
 ### 5.1 一个具体例子：内联初始数据，砍掉一次串行请求
 
@@ -268,13 +268,13 @@ if (window.__INITIAL_STATE__) {
 }
 ```
 
-**收益**：省掉"JS 执行 → 发请求 → 等响应"这一整段串行，通常 300~800ms。
+**收益**：省掉「JS 执行 → 发请求 → 等响应」这一整段串行，节省量等于该接口的耗时。
 
 ---
 
 ## 6. C 类：改变渲染方式 —— SSR / SSG / 流式 / 预渲染
 
-### 6.1 四种渲染模式对比（必背表）
+### 6.1 四种渲染模式对比
 
 | | CSR | SSR | SSG | ISR / 增量静态 |
 |---|---|---|---|---|
@@ -286,22 +286,21 @@ if (window.__INITIAL_STATE__) {
 | 服务端成本 | 无 | **高**（每请求渲染） | 无 | 低 |
 | 适合 | 后台管理、强交互应用 | 内容需实时 + 要 SEO | 博客、文档、营销页 | 电商列表、资讯 |
 
-> **关键认知**：SSR **不是"更快"，而是"更早"**。它把渲染工作从客户端挪到服务端，让用户更早看到内容；但总 JS 体积没减少（还要加上 hydration 成本），TTFB 反而可能变差。**如果首屏不需要 SEO 且用户是登录后的内部系统，SSR 基本不值得。**
+> **SSR 不是"更快"，而是"更早"**：渲染从客户端挪到服务端，用户更早看到内容；总 JS 体积不减少，还要额外付 hydration 成本，TTFB 可能变差。
 
 ### 6.2 SSR 的完整流程与代价
 
 ```mermaid
 flowchart TD
   A["浏览器请求"] --> B["服务端创建 Vue 实例"]
-  B --> C["渲染成 HTML 字符串<br/>renderToString"]
-  C --> D["返回完整 HTML<br/>用户立刻看到内容 ✅"]
+  B --> C["renderToString 生成 HTML 字符串"]
+  C --> D["返回完整 HTML<br/>用户立刻看到内容"]
   D --> E["浏览器下载同一份 JS"]
-  E --> F["客户端再次执行，<br/>hydrate 绑定事件"]
-  F --> G["页面可交互 ✅"]
-  E -.-> H["⚠️ 代价：JS 白下载一遍<br/>⚠️ 代价：hydration 占主线程<br/>⚠️ 代价：TBT 可能变差"]
+  E --> F["客户端执行并 hydrate<br/>绑定事件"]
+  F --> G["页面可交互"]
 ```
 
-**SSR 的 5 项代价（这题的高分点，很多人只说好处）：**
+**SSR 的 5 项代价：**
 
 | 代价 | 说明 |
 |---|---|
@@ -323,23 +322,20 @@ flowchart TD
 
 ### 6.3 流式 SSR（Streaming SSR）
 
-传统 SSR 要等**整个页面渲染完**才返回，TTFB 被最慢的接口拖住。流式 SSR 边渲染边发送：
+`renderToString` 要等整个页面渲染完才返回，TTFB 被最慢的接口拖住；流式渲染边渲染边发送：
 
 ```js
-// Vue 3 + Node
-import { renderToPipeableStream } from 'vue/server-renderer'
+// Vue 3.5 的流式 API 是 renderToNodeStream / renderToWebStream
+import { createSSRApp } from 'vue'
+import { renderToNodeStream } from 'vue/server-renderer'
 
 app.get('*', (req, res) => {
-  const { pipe } = renderToPipeableStream(createApp(), {
-    onShellReady() {
-      res.statusCode = 200
-      res.setHeader('Content-Type', 'text/html')
-      pipe(res)                 // 外壳先发出去，用户立刻看到骨架
-    },
-    onError(err) {
-      console.error(err)
-      res.statusCode = 500
-    },
+  res.setHeader('Content-Type', 'text/html')
+  const stream = renderToNodeStream(createSSRApp(App))
+  stream.pipe(res)                 // 外壳先发出去，慢区块随后补流
+  stream.on('error', () => {
+    res.statusCode = 500
+    res.end()
   })
 })
 ```
@@ -355,7 +351,7 @@ app.get('*', (req, res) => {
 </template>
 ```
 
-**收益**：TTFB 从"等所有接口"降到"外壳渲染完"，LCP 通常改善 30%~50%。React 18 的 `renderToPipeableStream` 同理。
+**收益**：TTFB 从"等所有接口"降到"外壳渲染完成"，慢区块随后补流。React 18 的对应 API 是 `renderToPipeableStream`。
 
 ### 6.4 预渲染（Prerender）：只给首屏做一次静态化
 
@@ -372,7 +368,7 @@ export default {
 **适合**：页面数量少、内容变化不频繁（营销页、官网、活动页）。
 **不适合**：内容实时变化、页面数量成百上千。
 
-### 6.5 选型的现实建议（体现工程判断）
+### 6.5 选型建议
 
 | 项目类型 | 建议 | 理由 |
 |---|---|---|
@@ -386,51 +382,42 @@ export default {
 
 ## 7. D 类：感知优化 —— 让用户"觉得"快
 
-> 这一类**不改善真实指标，但极大改善主观体验**。面试时要说清这个区别，否则会被追问"这不是没优化吗"。
-
-### 7.1 骨架屏
-
-见第 8 节详述。
-
-### 7.2 关键 CSS 内联
-
-见第 9 节详述。
-
-### 7.3 字体优化
+### 7.1 字体优化
 
 | 手段 | 说明 |
 |---|---|
-| `font-display: swap` | 先用系统字体显示，字体到了再换（会有闪烁，但不白屏） |
-| `font-display: optional` | 字体没在 100ms 内到就用系统字体，本次不换（**CLS 最好**） |
-| **子集化** | 只保留用到的字符（中文可从 5MB 降到 200KB） |
-| **`unicode-range` 分片** | 中文字体按字符集切片，按需加载 |
-| **预加载首屏字体** | `<link rel="preload" as="font" crossorigin>` |
-| **`size-adjust` 匹配度量** | 减少字体切换时的布局抖动 |
+| `font-display: swap` | block 期极短、swap 期无限：先用系统字体，字体到了再换；可能闪烁，但不会长时间空白 |
+| `font-display: optional` | block 期 100ms、swap 期为 0：100ms 内没到就用系统字体，本次访问不再替换（CLS 最小） |
+| `font-display: block` | block 期 3s：文本最长 3s 不可见，文本型 LCP 直接受损 |
+| **子集化** | 只保留用到的字符（中文可从数 MB 降到数百 KB） |
+| **`unicode-range` 分片** | 按字符集切成多个字体文件，按需下载 |
+| **预加载首屏字体** | `<link rel="preload" as="font" type="font/woff2" crossorigin>`；字体请求是 CORS 模式，缺 `crossorigin` 会下载两份 |
+| **`size-adjust`** | 校准回退字体与 Web 字体的度量，减小切换时的布局抖动 |
 
 ```css
 @font-face {
   font-family: 'PingFang Custom';
   src: url('/fonts/pingfang-subset.woff2') format('woff2');
-  font-display: swap;                /* 或 optional，看业务 */
+  font-display: swap;                /* 或 optional，按业务选择 */
   unicode-range: U+4E00-9FFF;        /* 只加载中文字符范围 */
   size-adjust: 105%;                 /* 与系统字体度量对齐，减小 CLS */
 }
 ```
 
-### 7.4 渐进式图片
+### 7.2 渐进式图片
 
 ```html
-<!-- 先给模糊小图（LQIP），再换高清 -->
+<!-- LQIP：先显示模糊小图，高清图加载完再替换；dataset 置空防止重复触发 -->
 <img src="/hero-tiny.jpg"
      data-src="/hero.webp"
-     style="filter: blur(20px); transition: filter .3s"
-     onload="this.src=this.dataset.src; this.style.filter='none'"
-     width="1200" height="600" alt="">
+     width="1200" height="600" alt=""
+     style="filter: blur(20px)"
+     onload="if (this.dataset.src) { this.src = this.dataset.src; this.dataset.src = ''; this.style.filter = 'none' }">
 ```
 
-或者用 CSS 背景色 + `aspect-ratio` 占位，避免布局抖动。
+或用 CSS 背景色 + `aspect-ratio` 占位，避免布局抖动。
 
-### 7.5 交互反馈（改善 INP 体感）
+### 7.3 交互反馈（改善 INP 体感）
 
 | 手段 | 说明 |
 |---|---|
@@ -444,7 +431,7 @@ export default {
 
 ### 8.1 核心原则：**骨架的形状必须和真实内容一致**
 
-骨架屏最大的坑是：**骨架高度 ≠ 真实内容高度**，导致内容到达时页面跳动，**CLS 反而变差**。
+骨架高度与真实内容高度不一致时，内容到达会触发布局偏移，**CLS 反而变差**。
 
 ```vue
 <!-- ✅ 正确：骨架和真实结构的尺寸对齐 -->
@@ -466,12 +453,12 @@ export default {
 | **构建时自动生成** | 一次配置全站可用（`vue-skeleton-webpack-plugin`） | 生成的骨架可能不准 | 多页面项目 |
 | **HTML 内置首屏骨架** | 0 JS 即可显示（写在 `index.html` 里） | 需要手动维护 | **对 FCP 收益最大** |
 
-**最有价值的是第三种**——把骨架直接写进 `index.html`：
+第三种把骨架写在 `index.html` 里，JS 执行前即可绘制，是 FCP 收益最直接的形态：
 
 ```html
 <!-- index.html -->
 <div id="app">
-  <!-- 这个骨架会在 JS 加载前就显示，把 FCP 从 3s 拉到 300ms -->
+  <!-- 骨架在 JS 加载前就显示；Vue 挂载时会替换 #app 的内容，骨架自动消失 -->
   <div class="app-skeleton">
     <div class="sk-header"></div>
     <div class="sk-banner"></div>
@@ -481,16 +468,15 @@ export default {
     </div>
   </div>
 </div>
-<!-- Vue 挂载时会替换 #app 的内容，骨架自动消失 -->
 ```
 
 ### 8.3 骨架屏的常见坑
 
 | 坑 | 说明 |
 |---|---|
-| 骨架显示太久 | 如果接口只要 100ms，骨架一闪而过反而像"闪屏"；可加 200ms 延迟再显示骨架 |
-| 骨架和真实内容高度不一致 | 导致 CLS 变差（前面说过） |
-| 骨架动画太重 | `shimmer` 用 `background-position` 动画，别用 `width/height` 动画（会触发 Layout） |
+| 骨架显示太久 | 接口只要 100ms 时骨架一闪而过，反而像闪屏；可延迟 200ms 再显示骨架 |
+| 骨架和真实内容高度不一致 | 内容到达时布局偏移，CLS 变差 |
+| 骨架动画太重 | `shimmer` 用 `background-position` 动画，别动 `width/height`（触发 Layout） |
 | 骨架没无障碍处理 | 加 `aria-busy="true"`，屏幕阅读器才不读空内容 |
 
 ---
@@ -499,13 +485,13 @@ export default {
 
 ### 9.1 为什么 CSS 是"渲染阻塞资源"
 
-浏览器必须拿到 CSSOM 才能构建 Render Tree → **CSS 不加载完，页面一片空白**。而一个 200KB 的 CSS 里，首屏真正用到的可能只有 14KB。
+HTML 解析到 `<link rel="stylesheet">` 后，首屏绘制要等 CSSOM 就绪——Render Tree 需要 DOM 与 CSSOM 同时可用。而首屏真正用到的规则通常只占样式表的一小部分。
 
 ### 9.2 标准做法：内联关键 CSS + 异步剩余 CSS
 
 ```html
 <head>
-  <!-- ① 首屏关键样式直接内联（目标：< 14KB，见下方说明） -->
+  <!-- ① 首屏关键样式直接内联（控制在 14KB 量级，见下方说明） -->
   <style>
     /* header / banner / 首屏列表的样式 */
     .header{height:56px;display:flex;...}
@@ -519,11 +505,11 @@ export default {
 </head>
 ```
 
-> **为什么是 14KB？** TCP 慢启动的初始拥塞窗口约 10 个 MSS ≈ 14.6KB。**首屏 HTML（含内联 CSS）如果能装进第一个 RTT，就能省掉一个往返**。这是一个非常漂亮的加分点。
+> **为什么是 14KB？** TCP 慢启动的初始拥塞窗口约 10 个 MSS ≈ 14.6KB。首屏 HTML（含内联 CSS）能装进第一个 RTT，就省掉一个往返。
 
 ### 9.3 自动化方案
 
-手写关键 CSS 不现实，一般用工具：
+手写并维护关键 CSS 成本高，一般用工具生成：
 
 ```js
 // critical（npm）+ 构建钩子
@@ -546,7 +532,7 @@ Vite 生态可用 `vite-plugin-critical`。
 | 坑 | 说明 |
 |---|---|
 | 内联了全量 CSS | HTML 变大、无法缓存，反而更慢 |
-| 用 `media="print" onload` 老技巧 | 仍可用但不如 `rel=preload` 语义清晰；注意 `noscript` 兜底 |
+| 用 `media="print" onload` 老技巧 | 可用，但要自行处理 `rel` 切换与 `noscript` 兜底 |
 | 忘了 `noscript` | 禁用 JS 时页面完全没样式 |
 | 内联 CSS 里引用了字体 | 字体加载仍会阻塞文本渲染，要配 `font-display` |
 
@@ -556,7 +542,7 @@ Vite 生态可用 `vite-plugin-critical`。
 
 ### 10.1 懒加载只是"推迟"，不是"消灭"
 
-路由懒加载让首屏只加载当前路由，但如果用户下一步就点"关于我们"，那 200ms 的等待就转移到了路由切换时。所以**必须配预加载**。
+路由懒加载让首屏只加载当前路由，但如果用户下一步就点"关于我们"，这段等待就转移到了路由切换时。所以**必须配预加载**。
 
 ### 10.2 三级预加载策略
 
@@ -613,7 +599,7 @@ const Home = () => import(/* webpackPreload: true */ './views/Home.vue')
 const Detail = () => import(/* webpackChunkName: "detail" */ './views/Detail.vue')
 ```
 
-> Vite 不支持这些注释，需要用 `vite-plugin-prefetch-chunk` 或手写策略 2。
+> Vite / Rollup 不支持这些魔法注释；预取要按策略 1/2 手写，或直接输出 `<link rel="modulepreload">`。
 
 ---
 
@@ -637,54 +623,40 @@ flowchart TD
   J --> K
 ```
 
-**一段可以直接说给面试官的判断：**
-
-> "如果面试官问我这个项目该不该上 SSR，我会先问三个问题：有没有 SEO 需求、首屏数据是否必须实时、团队能不能承担 Node 服务的运维。三个都是 yes 才值得上。否则我会把钱花在图片治理、第三方脚本、缓存策略上——这三件事在任何项目上 ROI 都比 SSR 高。"
-
 ---
 
 ## 12. 常见坑
 
 | # | 坑 | 纠正 |
 |---|---|---|
-| 1 | 认为 SSR 一定更快 | SSR 改善 LCP，但 TTFB 可能变差，TBT 可能变差（hydration） |
-| 2 | 首屏图加 `loading="lazy"` | 直接劣化 LCP 1~2s |
-| 3 | 骨架屏高度与真实内容不一致 | CLS 变差，帮倒忙 |
-| 4 | 路由懒加载不配预加载 | 把等待转移到路由切换，体验割裂 |
-| 5 | 内联全量 CSS | HTML 变大且不可缓存 |
-| 6 | `manualChunks` 按大小拆 | 应按变更频率拆；过细会导致请求数爆炸（HTTP/1.1 下更糟） |
-| 7 | 预渲染用在实时数据页面 | 用户看到过期内容 |
-| 8 | SSR 里用 `window` | 服务端报错 `window is not defined` |
-| 9 | hydration mismatch 忽略 | 页面会闪一下重渲染，甚至事件失效 |
-| 10 | 第三方脚本同步加载 | 阻塞解析，直接拖垮 FCP |
-| 11 | `font-display: block` | 文本最长 3s 不可见，文本类 LCP 直接崩 |
-| 12 | 只优化首屏不管二次访问 | 二次访问靠缓存，别只盯首屏 |
+| 1 | `manualChunks` 拆得过细 | 请求数放大，HTTP/1.1 下更糟；按变更频率合并 |
+| 2 | 忽略 hydration mismatch | 客户端重渲染闪烁，事件可能失效 |
+| 3 | 第三方脚本同步加载 | 阻塞解析，直接拖慢 FCP |
+| 4 | 只优化首屏不管二次访问 | 二次访问靠缓存策略 |
 
 ---
 
 ## 13. 答题模板
 
-### 13.1 「首屏优化方案」——30 秒（及格线）
+### 13.1 「首屏优化方案」——30 秒
 
-> "分四类：**少给**——路由分割、按需引入、第三方脚本延后；**快给**——CDN、brotli、preload 关键资源、减少重定向；**换渲染方式**——有 SEO 需求就 SSR 或 SSG，没有就用骨架屏顶住；**抢先感知**——把骨架屏写进 HTML、关键 CSS 内联、字体用 swap。另外首屏图一定要 `fetchpriority=high` 且不能 lazy。"
+- **少给**：路由/组件分割、tree-shaking 与按需引入、第三方脚本延后、删除无用 polyfill
+- **快给**：CDN + brotli、preconnect、首屏关键资源 preload、HTTP/2、减少重定向
+- **换渲染方式**：有 SEO → SSR/SSG/预渲染；无 SEO → `index.html` 内置骨架保证 FCP
+- **抢先感知**：关键 CSS 内联、`font-display`、首屏图 `fetchpriority="high"`
 
-### 13.2 「SPA 首屏太慢怎么办」——2 分钟（高分线）
+### 13.2 「SPA 首屏太慢怎么办」——2 分钟
 
-> "SPA 首屏慢，我一般先拆成三段看。
->
-> **第一段是 HTML 是空壳。** 服务端返回的只有一个 `div#app`，用户在看到 JS 执行完之前完全是白屏。这一段只能靠改变渲染方式解决：如果项目有 SEO 需求，上 SSR 或 SSG；如果没有，至少把骨架屏直接写进 `index.html`，这样 FCP 能从 3 秒降到 300 毫秒，虽然没解决真实性能，但用户不再觉得白屏。
->
-> **第二段是 JS 太大、执行太慢。** 我会先看 bundle 分析，通常能发现三个问题：路由没分割、某个库全量引入、polyfill 冗余。对应做路由级代码分割、ECharts 这种按需注册、删掉不需要的 core-js。再进一步是第三方脚本，统计、客服、地图这些常常占主线程 30% 以上，我会把非关键的改成交互后加载，收益经常比折腾 bundle 更大。
->
-> **第三段是数据请求串行在 JS 之后。** 这是 SPA 独有的瀑布流——必须等 JS 执行完才知道要请求什么。解法是把首屏数据随 HTML 一起直出，比如后端模板注入 `window.__INITIAL_STATE__`，前端启动时直接读，省掉 300 到 800 毫秒。
->
-> 这三段做完，再做常规的网络优化：CDN、brotli、preconnect、preload 首屏图。最后是验证，看 LCP 的四段归因，确认瓶颈真的被移走了。
->
-> 至于要不要上 SSR，我的判断是：有 SEO 需求、数据要实时、团队能维护 Node 服务，三个都满足才上。否则性价比不如前面那几件事。"
+1. **空壳**：服务端只返回 `div#app`，JS 执行前白屏 → 有 SEO 上 SSR/SSG，否则把骨架写进 `index.html`
+2. **JS 体积与执行**：bundle 分析通常暴露路由未分割、库全量引入、polyfill 冗余；第三方脚本按交互延后
+3. **数据串行**：首屏数据随 HTML 直出（`window.__INITIAL_STATE__`），再接 CDN / brotli / preconnect / preload
+4. **验证**：按 LCP 四段归因确认瓶颈确实移走
 
 ### 13.3 「首屏优化」被追问"你怎么知道有效"时
 
-> "看 LCP 的四段拆分。如果 TTFB 大，说明问题在服务端或网络；如果资源加载延迟大，说明资源发现太晚，通常是图片写在 JS 里或者被 lazy 了；如果资源加载时长大，说明图太大；如果元素渲染延迟大，说明主线程被占。四段里哪段占比最大就优化哪段，改完再跑一次确认那一段降下来了。"
+- 看 LCP 四段：TTFB、资源加载延迟、资源加载时长、元素渲染延迟
+- TTFB 大 → 服务端或网络；加载延迟大 → 资源发现太晚（写在 JS 里或被 lazy）；加载时长大 → 资源过大；渲染延迟大 → 主线程被占
+- 优化占比最大的一段，改完复测同一段是否下降
 
 ---
 
@@ -692,57 +664,41 @@ flowchart TD
 
 | # | 追问 | 要点 |
 |---|---|---|
-| 1 | SSR 一定比 CSR 快吗？ | 不一定。改善 LCP，但 TTFB 可能更差（服务端渲染耗时），TBT 可能更差（hydration） |
-| 2 | 什么是 hydration？ | 客户端复用服务端 HTML，重新执行组件树以绑定事件，而不是重新创建 DOM |
-| 3 | hydration mismatch 怎么排查？ | 看控制台警告定位组件；常见原因是随机数、时间、浏览器 API、非法 HTML 嵌套 |
-| 4 | 流式 SSR 解决了什么？ | TTFB 不再被最慢接口拖住；外壳先发，慢区块用 Suspense 补流 |
-| 5 | SSG 和 SSR 怎么选？ | 内容是否随请求变化；SSG 无服务端成本、可全站 CDN；实时数据要 SSR 或 ISR |
-| 6 | 预渲染和 SSG 区别？ | 预渲染通常指给 SPA 的少数路由生成静态 HTML（工具驱动）；SSG 是框架级全站生成 |
-| 7 | 骨架屏会改善 LCP 吗？ | 会。如果骨架被视为 LCP 元素（通常不是最大内容），主要改善 FCP；核心价值是感知 |
-| 8 | 关键 CSS 为什么要控制在 14KB？ | TCP 初始拥塞窗口约 14.6KB，装进第一个 RTT 可省一次往返 |
-| 9 | 路由懒加载有什么副作用？ | 把加载延迟转移到路由切换；需要配 prefetch/hover 预取 |
-| 10 | `webpackPrefetch` 和 `webpackPreload` 区别？ | prefetch 空闲低优先，preload 与父 chunk 并行高优先（慎用） |
-| 11 | 首屏图片怎么优化？ | WebP/AVIF + srcset + `fetchpriority=high` + preload + 不 lazy + 预留尺寸 |
-| 12 | 为什么首屏图不能 lazy？ | 浏览器会等布局完成才判断是否在视口，导致请求延后 1~2s |
-| 13 | 怎么量化首屏优化效果？ | LCP p75 前后对比 + Lighthouse 多次采样 + 灰度 A/B |
-| 14 | 首屏优化做到什么程度停？ | LCP p75 < 2.5s 或达到业务目标；继续投入 ROI 明显下降 |
-| 15 | 大屏/低端机怎么兼顾？ | 响应式图片 + 按 `deviceMemory`/`connection` 降级（少图、关动画） |
-| 16 | SPA 首屏后切路由也慢怎么办？ | 路由级 prefetch、组件级缓存（keep-alive）、接口并行、骨架屏 |
-| 17 | 内联 `__INITIAL_STATE__` 有什么风险？ | XSS（要转义 `</script>`）、数据量大增 HTML、敏感信息泄露 |
-| 18 | 为什么不把所有代码都内联进 HTML？ | 无法缓存、HTML 变大、每次都要重新下载 |
-| 19 | Islands 架构是什么？ | 静态 HTML + 局部交互岛屿（Astro），只水合需要交互的部分，大幅减少 JS |
-| 20 | 边缘渲染（ESR）是什么？ | 在 CDN 边缘节点跑 SSR，兼顾"HTML 直出"和"低 TTFB"，如 Vercel Edge、Cloudflare Workers |
+| 1 | 什么是 hydration？ | 客户端复用服务端 HTML，重新执行组件树以绑定事件，而不是重新创建 DOM |
+| 2 | hydration mismatch 怎么排查？ | 看控制台警告定位组件；常见原因见 6.2 的表 |
+| 3 | 预渲染和 SSG 区别？ | 预渲染通常指给 SPA 的少数路由生成静态 HTML（工具驱动）；SSG 是框架级全站生成 |
+| 4 | 骨架屏会改善 LCP 吗？ | 纯色块骨架不是 LCP 候选（候选是图片、文本块、背景图等），主要改善 FCP 与感知；若骨架内含文本或背景图且成为视口内最大元素，LCP 时间点会前移到骨架绘制 |
+| 5 | 怎么量化首屏优化效果？ | LCP p75 前后对比 + Lighthouse 多次采样 + 灰度 A/B |
+| 6 | 首屏优化做到什么程度停？ | LCP p75 < 2.5s 或达到业务目标；继续投入 ROI 明显下降 |
+| 7 | 大屏/低端机怎么兼顾？ | 响应式图片 + 按 `deviceMemory`/`connection` 降级（少图、关动画） |
+| 8 | SPA 首屏后切路由也慢怎么办？ | 路由级 prefetch、组件级缓存（keep-alive）、接口并行、骨架屏 |
+| 9 | 内联 `__INITIAL_STATE__` 有什么风险？ | XSS（要转义 `</script>`）、数据量大增 HTML、敏感信息泄露 |
+| 10 | Islands 架构是什么？ | 静态 HTML + 局部交互岛屿（Astro），只水合需要交互的部分，大幅减少 JS |
+| 11 | 边缘渲染（ESR）是什么？ | 在 CDN 边缘节点跑 SSR，兼顾"HTML 直出"和"低 TTFB"，如 Vercel Edge、Cloudflare Workers |
 
 ---
 
 ## 15. 速记卡
 
 ```
-【三段浪费（答 SPA 首屏的骨架）】
-① HTML 是空壳 → 改渲染方式（SSR/SSG/预渲染/HTML 内骨架）
+【三段浪费】
+① HTML 是空壳 → 换渲染方式（SSR/SSG/预渲染/HTML 内骨架）
 ② JS 太大太慢 → 少给（路由分割/按需引入/第三方治理/删 polyfill）
 ③ 数据串行在 JS 后 → 提前（__INITIAL_STATE__ 直出 / 接口并行）
 
-【四类手段】
-少给 / 快给 / 换渲染方式 / 抢先感知
+【四类手段】少给 / 快给 / 换渲染方式 / 抢先感知
 
 【四种渲染模式】
 CSR：无 SEO，LCP 差，适合后台
 SSR：SEO 好，LCP 好，TTFB 差，成本高
-SSG：最好，构建时生成，适合静态内容
+SSG：构建时生成，最适合静态内容
 ISR：SSG + 定期重生成，适合电商/资讯
 
-【SSR 五代价】
-TTFB 变差 / hydration 成本 / 两套环境 / 部署复杂 / 状态一致性
+【SSR 五代价】TTFB 变差 / hydration 成本 / 两套环境 / 部署复杂 / 状态一致性
 
-【两个魔法数字】
-14KB —— 关键 CSS 内联上限（TCP 初始窗口）
-14.6KB / 10 MSS —— 同理，装进第一个 RTT
+【关键数字】14KB ≈ 10 MSS，TCP 初始拥塞窗口；HTML 装进第一个 RTT 即省一次往返
 
-【首屏图四件套】
-WebP + srcset + fetchpriority=high + preload（且绝对不能 lazy）
+【首屏图】fetchpriority=high + preload，不加 loading=lazy
 
-【骨架屏铁律】
-形状尺寸必须与真实内容一致，否则 CLS 反而变差
-写进 index.html 才对 FCP 有真实收益
+【骨架屏】尺寸与真实内容一致；写进 index.html 才对 FCP 有收益
 ```

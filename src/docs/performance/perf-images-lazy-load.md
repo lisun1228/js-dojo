@@ -1,8 +1,7 @@
 # 性能 · 05 图片与资源优化：懒加载
 
-> 覆盖题号：**13、15**
-> 对应原题：《懒加载是什么，有什么用》《图片优化的方案有哪些》
-> 图片通常占页面**总字节的 60%~70%**，是性价比最高的优化对象。这一册把图片从"格式、尺寸、加载时机、优先级、占位"五个维度讲全。
+> 覆盖题号：**13、15**，对应《懒加载是什么，有什么用》《图片优化的方案有哪些》
+> 图片是页面字节占比最高的资源之一，按"格式、尺寸、加载时机、优先级、占位"五个维度展开。
 
 ---
 
@@ -35,14 +34,12 @@
 
 | 收益 | 说明 |
 |---|---|
-| **减少首屏字节** | 首屏只加载首屏图，长页面的下方图片全部延后 |
+| **减少首屏字节** | 首屏只加载首屏图，长页面下方图片全部延后 |
 | **加快首屏渲染** | 带宽不被无关图片抢占，LCP 图下载更快 |
-| **节省用户流量** | 用户可能根本不往下滚，那些图不用下 |
-| **节省服务器成本** | CDN 流量显著下降（大站能省几十万/月） |
+| **节省用户流量** | 用户不往下滚，那些图就不用下 |
+| **节省服务器成本** | CDN 流量下降 |
 
-**一个具体数字**：一个 50 张图的商品列表页，首屏只加载 6 张，首屏字节从 8MB 降到 900KB，LCP 从 5.2s 降到 1.9s。
-
-### 1.3 懒加载的三种"层次"（答题要有层次感）
+### 1.3 懒加载的三种"层次"
 
 | 层次 | 对象 | 手段 |
 |---|---|---|
@@ -50,33 +47,31 @@
 | **模块级** | 路由、组件、第三方库 | `import()` 动态导入 |
 | **数据级** | 列表数据、分页 | 分页 / 无限滚动 / 虚拟列表 |
 
-> 面试时先说这三个层次，再挑一个展开，比只讲"图片懒加载"完整得多。
-
 ---
 
 ## 2. 图片懒加载的三种实现
 
-### 2.1 方案一：原生 `loading="lazy"`（最省事）
+### 2.1 方案一：原生 `loading="lazy"`
 
 ```html
 <img src="/photo.webp" loading="lazy" width="800" height="600" alt="...">
 <iframe src="..." loading="lazy"></iframe>
 ```
 
-**浏览器行为**：Chrome 会在图片距离视口约 1250px（4G 网络）时开始加载，具体距离由浏览器根据网络状况决定。
+**触发距离由浏览器决定，不能自定义**：Chrome 在 4G 下约提前 1250px、3G 及以下约 2500px，并随网络状况动态调整。
 
 | 优点 | 缺点 |
 |---|---|
-| 零 JS、零成本 | 阈值不可控（不能自定义 rootMargin） |
-| 浏览器可感知网络状况动态调整 | 老浏览器不支持（Safari 16.4 才支持，2023） |
-| 不占主线程 | 无法做淡入等过渡效果 |
+| 零 JS、不占主线程 | 阈值不可控（不能自定义 rootMargin） |
+| 浏览器按网络状况动态调整 | 无法做淡入等过渡效果 |
+| — | 旧浏览器不支持（Safari 15.4 起支持 `<img>`，`<iframe>` 到 16.4） |
 
-**⚠️ 绝对不能用的地方**：**首屏 LCP 图**。用了 `loading="lazy"` 会让 LCP 元素延后 1~2s 才被发现，直接劣化 LCP。
+**首屏 LCP 图不能加 `loading="lazy"`**：懒加载图不参与预加载扫描，请求发起晚于直接加载的 `<img>`，LCP 因此推后。
 
 ### 2.2 方案二：IntersectionObserver（推荐，可控）
 
 ```js
-// 通用懒加载器：支持自定义提前量、淡入、失败重试
+// 通用懒加载器：支持自定义提前量、淡入
 function lazyLoad({ rootMargin = '200px', fade = true } = {}) {
   const observer = new IntersectionObserver(
     (entries) => {
@@ -150,16 +145,14 @@ window.addEventListener('scroll', throttle(checkVisible, 200))
 | 代码量 | 0 | 20 行 | 40 行 |
 | 性能 | 最好（浏览器内部实现） | 好（异步回调） | 差（强制布局） |
 | 可控性 | 差 | **好** | 好 |
-| 兼容性 | Safari 16.4+ | 全现代浏览器 | 全兼容 |
+| 兼容性 | Safari 15.4+（`<img>`） | 全现代浏览器 | 全兼容 |
 | 推荐度 | 简单场景首选 | **需要控制时首选** | 不推荐 |
 
-> **实战组合**：`<img loading="lazy">` 做兜底 + IntersectionObserver 做增强（淡入、占位、错误重试）。两者不冲突，IntersectionObserver 先触发就自己处理。
-
-### 2.5 一个生产级的 Vue 组件
+### 2.5 懒加载 Vue 组件
 
 ```vue
 <template>
-  <div class="lazy-img" :style="{ aspectRatio: ratio }">
+  <div ref="el" class="lazy-img" :style="{ aspectRatio: ratio }">
     <img
       v-if="shouldLoad"
       :src="src"
@@ -236,7 +229,7 @@ function onError(e) { emit('error', e) }
 </style>
 ```
 
-> 这个组件的三个关键设计：**① `priority="high"` 时跳过懒加载**（首屏图专用）；**② `aspectRatio` 预留空间**（防止 CLS）；**③ `decoding="async"`**（不阻塞主线程解码）。
+根节点上的 `ref="el"` 是必需的：`IntersectionObserver` 的观察目标就是它，缺了 `el.value` 为 `null`，`observe` 直接抛 `TypeError`。
 
 ---
 
@@ -244,7 +237,7 @@ function onError(e) { emit('error', e) }
 
 | 资源 | 是否懒加载 | 原因 |
 |---|---|---|
-| 首屏 LCP 图 | ❌ **绝对不懒** | 会延后 LCP 元素发现，劣化 1~2s |
+| 首屏 LCP 图 | ❌ **绝对不懒** | 不参与预加载扫描，请求发起晚于 eager 图 |
 | 首屏轮播图第 2 张之后 | ✅ 可懒 | 但第 1 张要立即加载 |
 | 首屏内的头像、图标 | ⚠️ 视情况 | 小图可内联或直接加载 |
 | 视口下方的图片 | ✅ 懒 | 主要收益来源 |
@@ -261,16 +254,16 @@ function onError(e) { emit('error', e) }
 
 ### 4.1 五种格式对比
 
-| 格式 | 压缩率（相对 JPEG） | 透明 | 动画 | 无损 | 浏览器支持 | 适合 |
+| 格式 | 体积（相对 JPEG） | 透明 | 动画 | 无损 | 浏览器支持 | 适合 |
 |---|---|---|---|---|---|---|
 | **JPEG** | 基线 | ❌ | ❌ | 否 | 全 | 照片（老兜底） |
-| **PNG** | 大（3~5 倍） | ✅ | ❌ | ✅ | 全 | 需要透明的图、截图（老） |
-| **WebP** | **-25%~35%** | ✅ | ✅ | ✅ | 全现代浏览器（含 Safari 14+） | **通用首选** |
-| **AVIF** | **-50%**（相对 JPEG） | ✅ | ✅ | ✅ | Chrome 85+、Safari 16.4+、Firefox 93+ | **最优，需兜底** |
+| **PNG** | 照片场景远大于 JPEG | ✅ | ❌ | ✅ | 全 | 需要透明的图、截图（老） |
+| **WebP** | **约 -25%~35%** | ✅ | ✅ | ✅ | 全现代浏览器（含 Safari 14+） | **通用首选** |
+| **AVIF** | **约 -50%** | ✅ | ✅ | ✅ | Chrome 85+、Safari 16.4+、Firefox 93+ | **最优，需兜底** |
 | **SVG** | 极小（矢量） | ✅ | ✅ | ✅ | 全 | 图标、logo、图表 |
 | GIF | 大 | 支持 1 位 | ✅ | ✅ | 全 | **已淘汰**，用视频/WebP 替代 |
 
-> **一句话结论**：**照片类优先 AVIF，用 WebP 兜底，JPEG 保底；需要透明的图优先 WebP/AVIF；图标用 SVG。**
+> **一句话结论**：照片类优先 AVIF，WebP 兜底，JPEG 保底；需要透明的图优先 WebP/AVIF；图标用 SVG。
 
 ### 4.2 三层兜底写法
 
@@ -287,7 +280,7 @@ function onError(e) { emit('error', e) }
 </picture>
 ```
 
-> **注意**：`<picture>` 的 `<source>` 是**按顺序匹配**的，浏览器选第一个支持的 `type`。所以要把**压缩率最好的放前面**。
+> `<source>` 按文档顺序匹配 `type` 与 `media`，第一个命中的生效，所以把压缩率最好的放前面。
 
 ### 4.3 什么时候用什么格式（决策表）
 
@@ -300,8 +293,6 @@ function onError(e) { emit('error', e) }
 | 渐变/纯色背景 | **CSS 渐变**（0 字节） |
 | 需要动画的小图 | **WebP 动图 / 视频（mp4/webm）** |
 | 需要放大缩小的图形 | **SVG** |
-
-> **加分点**："能用 CSS 画的绝不用图片"——渐变、圆角、阴影、简单图形都可以纯 CSS，省一个请求和几十 KB。这是很多候选人想不到的。
 
 ### 4.4 格式转换怎么做
 
@@ -324,7 +315,7 @@ import heroWebp from './hero.jpg?w=800;1600&format=webp&as=srcset'
 
 ### 5.1 为什么需要
 
-一张 2000×1200 的图，在 375px 宽的手机上显示——浪费了 **96% 的像素**。响应式图的目的是**按设备选合适尺寸**。
+一张 2000×1200 的图在 375px 宽的手机上显示，实际需要的只是几百像素宽的副本，其余像素全部是下载浪费。
 
 ### 5.2 `srcset` + `sizes` 的完整写法
 
@@ -393,19 +384,16 @@ import heroWebp from './hero.jpg?w=800;1600&format=webp&as=srcset'
 ### 5.5 响应式图的配套设置
 
 ```html
-<img
-  src="..."
-  srcset="..."
-  sizes="..."
-  width="800" height="500"          <!-- ① 防 CLS：解析时就预留空间 -->
-  loading="lazy"                     <!-- ② 非首屏懒加载 -->
-  decoding="async"                   <!-- ③ 异步解码，不阻塞主线程 -->
-  fetchpriority="high"               <!-- ④ 仅首屏 LCP 图 -->
-  alt="..."
->
+<!-- 视口下方：懒加载 -->
+<img src="photo.jpg" srcset="..." sizes="..." width="800" height="500"
+     loading="lazy" decoding="async" alt="...">
+
+<!-- 首屏 LCP 图：不 lazy，提优先级 -->
+<img src="hero.jpg" srcset="..." sizes="..." width="1600" height="900"
+     fetchpriority="high" decoding="async" alt="...">
 ```
 
-> `decoding="async"` 的价值很多人不知道：图片解码（JPEG → 位图）是 CPU 密集的，同步解码会阻塞主线程导致掉帧。`async` 让浏览器在后台解码。
+`decoding="async"` 的作用：图片解码（JPEG → 位图）是 CPU 密集操作，`sync` 会阻塞主线程导致掉帧，`async` 让浏览器在后台解码；默认值 `auto` 由浏览器自行决定。
 
 ---
 
@@ -436,13 +424,13 @@ import heroWebp from './hero.jpg?w=800;1600&format=webp&as=srcset'
 <img src="https://demo.imgix.net/a.jpg?w=800&auto=format,compress&q=75">
 ```
 
-> **`f_auto` / `auto=format`** 是自动按 `Accept` 头返回 AVIF/WebP/JPEG 的能力，最省事。面试提到这个是加分项。
+> **`f_auto` / `auto=format`** 按请求的 `Accept` 头返回 AVIF/WebP/JPEG，一次配置覆盖全端。
 
 ### 6.3 CDN 图片处理的最佳实践
 
 | 实践 | 说明 |
 |---|---|
-| **按展示尺寸的 2 倍出图**（适配 DPR=2） | 别传 4000px 原图给 400px 的容器 |
+| **按目标 DPR 出图（常见 2~3 倍）** | 别传 4000px 原图给 400px 的容器 |
 | **自动格式**（`f_auto`） | 一次配置，全端最优 |
 | **质量参数 75~82** | 再高肉眼看不出，体积却翻倍 |
 | **WebP/AVIF 有损压缩** | 大部分场景质量足够 |
@@ -452,6 +440,8 @@ import heroWebp from './hero.jpg?w=800;1600&format=webp&as=srcset'
 ---
 
 ## 7. 占位与渐进加载
+
+占位解决两件事：图片加载完成后把下方内容顶下去的布局偏移（CLS），以及空白期的视觉过渡。`width`/`height` 或 `aspect-ratio` 在解析阶段就预留空间，占位图只负责视觉。
 
 ### 7.1 四种占位方案
 
@@ -513,7 +503,7 @@ PJPEG（Progressive JPEG）分多次扫描，先出模糊全图再逐层清晰�
 .icon { fill: currentColor; }          /* 自动继承文字颜色 */
 ```
 
-> **为什么雪碧图不行了**：HTTP/2 多路复用后"减少请求数"不再关键；而雪碧图有三大问题——改一个图标要重新生成整张、无法按需加载、单张图变大。**这是答"图片优化"时能体现时代感的点**（见分册 00 的题单问题 #4）。
+> **为什么雪碧图不行了**：HTTP/2 多路复用后"减少请求数"不再关键；而雪碧图改一个图标要重新生成整张、无法按需加载、单张图变大。
 
 ---
 
@@ -526,7 +516,7 @@ PJPEG（Progressive JPEG）分多次扫描，先出模糊全图再逐层清晰�
 - [ ] 源图分辨率不超过实际展示的 2 倍
 - [ ] 统一转 AVIF + WebP
 - [ ] 质量参数 75~82
-- [ ] 去除 EXIF（省 10~50KB，也保护隐私）
+- [ ] 去除 EXIF（减小体积，也保护隐私）
 - [ ] 大图生成多个尺寸（400/800/1200/1600）
 - [ ] 生成 LQIP / BlurHash 占位数据
 
@@ -536,7 +526,7 @@ PJPEG（Progressive JPEG）分多次扫描，先出模糊全图再逐层清晰�
 - [ ] `srcset` + `sizes` 按设备选尺寸（**别忘了 `sizes`**）
 - [ ] 必须写 `width`/`height` 或 `aspect-ratio`（防 CLS）
 - [ ] 首屏图 `fetchpriority="high"` + `<link rel="preload">`
-- [ ] 非首屏图 `loading="lazy"`（配 IntersectionObserver 增强）
+- [ ] 非首屏图 `loading="lazy"`（要控制提前量时改用 IntersectionObserver）
 - [ ] `decoding="async"`
 - [ ] 小于 2~4KB 的图考虑 base64 内联
 - [ ] 能用 CSS 实现的不用图片（渐变/圆角/阴影）
@@ -563,7 +553,7 @@ PJPEG（Progressive JPEG）分多次扫描，先出模糊全图再逐层清晰�
 | **首帧做 LCP 图** | 用 `poster` 而不是靠视频加载 |
 | **HLS / DASH 分片** | 按需加载分片，不下载整个文件 |
 | **WebM/AV1** | 比 MP4/H.264 小 30%~50% |
-| **短视频代替 GIF** | 一段 3s GIF 可能 5MB，同内容 MP4 只要 200KB |
+| **短视频代替 GIF** | GIF 无帧间压缩，同内容视频体积远小于 GIF |
 | `muted` + `autoplay` | 移动端自动播放的前提 |
 
 ```html
@@ -582,7 +572,7 @@ PJPEG（Progressive JPEG）分多次扫描，先出模糊全图再逐层清晰�
 
 | 手段 | 收益 |
 |---|---|
-| **子集化** | 中文字体 5MB → 200KB（只留用到的字） |
+| **子集化** | 中文字体动辄数 MB，只留用到的字后降到几百 KB |
 | **`unicode-range` 分片** | 按字符集切片，按需加载 |
 | **`font-display: swap/optional`** | 避免白屏/减少 CLS |
 | **`preload` + `crossorigin`** | 提前加载首屏字体 |
@@ -596,20 +586,15 @@ PJPEG（Progressive JPEG）分多次扫描，先出模糊全图再逐层清晰�
 
 | # | 坑 | 后果 | 纠正 |
 |---|---|---|---|
-| 1 | 首屏 LCP 图加 `loading="lazy"` | LCP 劣化 1~2s | 首屏图不懒 + `fetchpriority=high` |
-| 2 | 图片不写 `width/height` | CLS 差（图片加载完顶下去） | 写属性或 `aspect-ratio` |
-| 3 | 只写 `srcset` 不写 `sizes` | 桌面端下载过大图 | 配 `sizes` |
-| 4 | 所有图都 `loading="lazy"` | 首屏图被延后 | 只给视口下方加 |
-| 5 | 用 PNG 存照片 | 体积是 JPEG 的 3~5 倍 | 用 WebP/AVIF |
-| 6 | 用 GIF 存动画 | 体积巨大 | 用视频或 WebP 动图 |
-| 7 | CDN 图不加质量参数 | 传原图，浪费带宽 | `q=75~82` |
-| 8 | 忘了 `decoding="async"` | 大图解码阻塞主线程 | 加上 |
-| 9 | `IntersectionObserver` 忘了 `unobserve` | 重复触发、内存泄漏 | 加载后立即 disconnect/unobserve |
-| 10 | base64 内联大图 | HTML 膨胀、无法缓存 | 只内联 < 2~4KB |
-| 11 | 雪碧图用在 HTTP/2 站点 | 无收益还有维护成本 | 用 SVG Symbol |
-| 12 | 图片域名带 cookie | 每个请求多带 cookie 头 | 图片域名独立、无 cookie |
-| 13 | `object-fit` 忘了写导致拉伸 | 视觉变形 | `object-fit: cover` |
-| 14 | 懒加载容器内滚动不生效 | root 没指定 | `root: 滚动容器` |
+| 1 | 用 PNG 存照片 | 照片场景体积远大于 JPEG | 用 WebP/AVIF |
+| 2 | 用 GIF 存动画 | 无帧间压缩，体积巨大 | 用视频或 WebP 动图 |
+| 3 | CDN 图不加质量参数 | 传原图，浪费带宽 | `q=75~82` |
+| 4 | `IntersectionObserver` 忘了 `unobserve` | 重复触发、持续占用观察列表 | 加载后立即 disconnect/unobserve |
+| 5 | base64 内联大图 | HTML 膨胀、无法缓存 | 只内联 < 2~4KB |
+| 6 | 雪碧图用在 HTTP/2 站点 | 无收益还有维护成本 | 用 SVG Symbol |
+| 7 | 图片域名带 cookie | 每个请求多带 cookie 头 | 图片域名独立、无 cookie |
+| 8 | `object-fit` 忘了写导致拉伸 | 视觉变形 | `object-fit: cover` |
+| 9 | 懒加载容器内滚动不生效 | root 没指定 | `root: 滚动容器` |
 
 ---
 
@@ -617,41 +602,35 @@ PJPEG（Progressive JPEG）分多次扫描，先出模糊全图再逐层清晰�
 
 ### 12.1 「懒加载是什么，有什么用」——30 秒
 
-> "懒加载是把当前不需要的资源推迟到需要时再加载。分三个层次：资源级比如图片进入视口才下载、模块级比如路由 `import()` 动态导入、数据级比如分页和虚拟列表。收益是减少首屏字节、加快首屏、省用户流量和 CDN 成本。图片实现上现在首选原生 `loading=lazy`，需要控制提前量或做淡入就用 IntersectionObserver。**但首屏 LCP 图绝对不能懒加载**。"
+- 定义：把当前不需要的资源推迟到需要时再加载。
+- 三个层次：资源级（图片/iframe）、模块级（`import()`）、数据级（分页/虚拟列表）。
+- 收益：首屏字节、首屏渲染、用户流量、CDN 成本。
+- 实现：原生 `loading="lazy"` 优先；需要控制提前量或做淡入用 IntersectionObserver。
+- 边界：首屏 LCP 图不懒加载，改用 `fetchpriority="high"` + preload。
 
 ### 12.2 「懒加载」——2 分钟
 
-> "懒加载本质是'把加载时机从页面打开推迟到真正需要'，我一般按三个层次讲。
->
-> **资源级**最常见的是图片。有两种实现：原生 `loading=lazy` 零代码，浏览器会根据网络状况自动决定提前多少距离开始加载，缺点是不能控制阈值；需要控制就用 IntersectionObserver，设 `rootMargin` 提前 200 到 400 像素开始下载，加载完取消观察。老方案是 scroll 加 `getBoundingClientRect`，但它每次都读布局属性会强制同步布局，已经不推荐了。
->
-> **模块级**是路由和组件，用 `import()` 动态导入，配合 prefetch 预取，避免把等待转移到路由切换。
->
-> **数据级**是分页、无限滚动、虚拟列表。
->
-> 最重要的一个边界是：**首屏 LCP 图不能懒加载**。因为浏览器会等布局完成才判断是否在视口内，这会把 LCP 元素发现时间推后一到两秒，反而把首屏指标做坏了。首屏图应该是 `fetchpriority=high` 加 preload。
->
-> 实现细节上还要注意三点：容器内滚动要指定 `root`；加载完要 `unobserve` 否则重复触发；图片要有占位尺寸，不然懒加载会把 CLS 做差。"
+- 本质：把加载时机从"页面打开"推到"真正需要"。
+- 资源级：原生 `loading="lazy"` 零代码但阈值不可控（Chrome 4G 约 1250px）；要控制就用 IntersectionObserver，`rootMargin` 200~400px，加载后 `unobserve`。
+- 模块级：路由/组件 `import()` 动态导入，配合 prefetch，避免把等待转移到路由切换。
+- 数据级：分页、无限滚动、虚拟列表。
+- 边界：容器内滚动要指定 `root`；预留尺寸防 CLS；首屏图不懒加载。
 
 ### 12.3 「图片优化方案」——30 秒
 
-> "五个维度：**格式**用 AVIF 优先、WebP 兜底、JPEG 保底，图标用 SVG；**尺寸**用 `srcset` + `sizes` 按设备选，源图不超过展示尺寸的两倍；**加载时机**非首屏懒加载、首屏 `fetchpriority=high` + preload；**占位**用 LQIP 或 BlurHash 加 `aspect-ratio` 防抖动；**处理**交给 CDN 做自动格式转换和按需缩放。"
+- 格式：AVIF 优先、WebP 兜底、JPEG 保底，图标用 SVG。
+- 尺寸：`srcset` + `sizes` 按设备选，源图不超过展示尺寸的两倍。
+- 时机：非首屏懒加载，首屏 `fetchpriority="high"` + preload。
+- 占位：LQIP 或 BlurHash，配 `aspect-ratio` 防 CLS。
+- 处理：CDN `f_auto` 自动格式 + 按需缩放，`q=75~82`。
 
 ### 12.4 「图片优化方案」——2 分钟
 
-> "我按五个维度讲，每个维度给一个最有代表性的手段。
->
-> **第一是格式。** 现在 AVIF 比 JPEG 小一半左右，WebP 小三成，所以最优解是 `<picture>` 三层兜底：AVIF 放第一个、WebP 第二、JPEG 的 `img` 兜底。浏览器按顺序匹配它支持的 type。另外图标一定用 SVG，能用 CSS 画的（渐变、圆角、阴影）就别用图片。
->
-> **第二是尺寸。** 一张 2000 像素的图在 375 的手机上显示，浪费了 96% 的像素。用 `srcset` 给多个候选、`sizes` 告诉浏览器显示宽度，浏览器会按 DPR 自动选。这里最常见的错误是只写 `srcset` 不写 `sizes`，那浏览器会以为图永远占满屏幕，桌面端就下载了过大的图。
->
-> **第三是加载时机。** 视口下方的图懒加载，首屏图绝对不能懒，要 `fetchpriority=high` 加 preload。
->
-> **第四是占位。** 图片必须写 `width` 和 `height` 或者 `aspect-ratio`，否则加载完会把下面内容顶下去，CLS 直接爆。更进一步可以加 LQIP 或 BlurHash 做模糊占位。
->
-> **第五是处理链路。** 交给 CDN 做 `f_auto` 自动格式和按需缩放，质量参数 75 到 82，上传时就转好格式、去掉 EXIF、生成多尺寸。
->
-> 最后补一句：所有这些的前提是**别让首屏图被懒加载**，这是最常见的自伤操作。"
+- 格式：`<picture>` 三层兜底 AVIF → WebP → JPEG，浏览器按顺序匹配支持的 `type`；图标用 SVG，能用 CSS 画的不用图。
+- 尺寸：`srcset` 给候选、`sizes` 说明显示宽度，浏览器按 DPR 选；只写 `srcset` 会让桌面端下载过大图。
+- 时机：非首屏图懒加载，首屏图 `fetchpriority="high"` + preload。
+- 占位：`width`/`height` 或 `aspect-ratio` 预留空间，LQIP/BlurHash 做模糊过渡。
+- 处理：上传时转格式、去 EXIF、生成多尺寸；CDN 做 `f_auto` 与按需缩放。
 
 ---
 
@@ -659,16 +638,16 @@ PJPEG（Progressive JPEG）分多次扫描，先出模糊全图再逐层清晰�
 
 | # | 追问 | 要点 |
 |---|---|---|
-| 1 | 首屏图能懒加载吗？ | 不能。会延后 LCP 元素发现，劣化 1~2s |
-| 2 | `loading="lazy"` 的触发距离是多少？ | Chrome 约 1250px（4G），浏览器按网络状况动态调整，不可控 |
+| 1 | 首屏图能懒加载吗？ | 不能。不参与预加载扫描，请求发起更晚 |
+| 2 | `loading="lazy"` 的触发距离是多少？ | Chrome 4G 约 1250px、3G 及以下约 2500px，按网络状况调整，不可控 |
 | 3 | IntersectionObserver 有什么优势？ | 异步回调、不触发同步布局、可设 rootMargin/root |
 | 4 | 懒加载会导致 CLS 吗？ | 会，如果没预留尺寸；必须写 `width/height` 或 `aspect-ratio` |
 | 5 | `srcset` 的 `w` 和 `x` 区别？ | `w` 用于自适应（配 `sizes`）；`x` 用于固定尺寸（配 DPR） |
 | 6 | 只写 `srcset` 不写 `sizes` 会怎样？ | `sizes` 默认 `100vw`，桌面端会选过大图 |
 | 7 | AVIF 兼容性怎么办？ | `<picture>` 三层兜底；或 CDN `f_auto` 按 Accept 返回 |
-| 8 | WebP 比 JPEG 小多少？ | 约 25%~35%（同等质量） |
-| 9 | AVIF 比 JPEG 小多少？ | 约 50%，但编码慢、部分老设备解码慢 |
-| 10 | 为什么 GIF 该淘汰？ | 体积巨大、只有 1 位透明；用视频/WebP 动图替代 |
+| 8 | WebP 比 JPEG 小多少？ | 同等质量下约 25%~35% |
+| 9 | AVIF 比 JPEG 小多少？ | 同等质量下约 50%，但编码慢、部分老设备解码慢 |
+| 10 | 为什么 GIF 该淘汰？ | 无帧间压缩、体积巨大、只有 1 位透明；用视频/WebP 动图替代 |
 | 11 | 雪碧图还有用吗？ | HTTP/2 下基本无用；仅精灵动画场景 |
 | 12 | base64 内联的阈值？ | 2~4KB；再大就得不偿失（HTML 膨胀、无法缓存） |
 | 13 | `decoding="async"` 有什么用？ | 异步解码，避免大图解码阻塞主线程 |
@@ -698,7 +677,7 @@ scroll + rect        已淘汰（强制同步布局）
 首屏图 = fetchpriority=high + preload + 不 lazy
 
 【格式】
-AVIF（-50%）> WebP（-30%）> JPEG
+AVIF（约 -50%）> WebP（约 -30%）> JPEG
 <picture> 三层兜底：AVIF → WebP → JPEG
 图标用 SVG；能用 CSS 画的别用图
 

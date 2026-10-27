@@ -2,7 +2,7 @@
 
 > 覆盖题号：**6、14、24、4**
 > 对应原题：《简述一下前端性能优化指标》《Web 性能指标有哪些》《什么是 Core Web Vitals》《前端监控方案》
-> 这 4 题本质是一件事：**你要优化到什么程度算好，线上怎么知道好不好。**
+> 这 4 题指向同一个问题：**优化到什么程度算好，线上怎么确认好不好。**
 
 ---
 
@@ -27,7 +27,7 @@
 
 ### 1.1 一句话结论
 
-性能指标不是一堆缩写，而是**三类用户感受的量化**：**"多久看到东西"（加载）、"点了有没有反应"（交互）、"页面会不会乱跳"（稳定）**。Core Web Vitals 就是这三类各取一个代表。
+性能指标是三类用户感受的量化：**"多久看到东西"（加载）、"点了有没有反应"（交互）、"页面会不会乱跳"（稳定）**。Core Web Vitals 三类各取一个代表。
 
 ### 1.2 按"度量什么"分成三类
 
@@ -52,45 +52,26 @@ flowchart LR
 
 | 指标 | 全称 | 度量什么 | 良好阈值 | 数据来源 | 现状 |
 |---|---|---|---|---|---|
-| **TTFB** | Time To First Byte | 请求发出到收到第一个字节（DNS + TCP + TLS + 服务端处理） | **< 800ms** | Lab + Field | 核心诊断指标 |
-| **FCP** | First Contentful Paint | 首个文本/图片像素出现 | **< 1.8s** | Lab + Field | 常用 |
-| **LCP** | Largest Contentful Paint | 视口内最大内容元素绘制完成 | **< 2.5s** | Lab + Field | **CWV 核心** |
-| **INP** | Interaction to Next Paint | 交互到下一帧绘制的最长延迟（近似 98 分位） | **< 200ms** | Field | **CWV 核心（2024.3 取代 FID）** |
-| **CLS** | Cumulative Layout Shift | 意外布局偏移累积 | **< 0.1** | Lab + Field | **CWV 核心** |
-| ~~FID~~ | First Input Delay | 首次交互的输入延迟（不含处理与渲染） | ~~< 100ms~~ | Field | **已废弃** |
+| **TTFB** | Time To First Byte | 请求发出到收到第一个字节（DNS + TCP + TLS + 服务端处理） | **≤ 800ms** | Lab + Field | 核心诊断指标 |
+| **FCP** | First Contentful Paint | 首个文本/图片像素出现 | **≤ 1.8s** | Lab + Field | 常用 |
+| **LCP** | Largest Contentful Paint | 视口内最大内容元素绘制完成 | **≤ 2.5s** | Lab + Field | **CWV 核心** |
+| **INP** | Interaction to Next Paint | 交互到下一帧绘制的最长延迟（近似 98 分位） | **≤ 200ms** | Field | **CWV 核心（2024.3 取代 FID）** |
+| **CLS** | Cumulative Layout Shift | 意外布局偏移累积 | **≤ 0.1** | Lab + Field | **CWV 核心** |
+| ~~FID~~ | First Input Delay | 首次交互的输入延迟（不含处理与渲染） | ~~< 100ms~~ | Field | **已被 INP 取代（仍可采集）** |
 | **TBT** | Total Blocking Time | FCP 到 TTI 之间所有长任务超出 50ms 部分之和 | **< 200ms** | 仅 Lab | INP 的实验室代理 |
 | ~~TTI~~ | Time to Interactive | 首个可稳定响应交互的时间点 | < 3.8s | 仅 Lab | Lighthouse 10 已移除 |
-| **TBT / 长任务** | Long Task | 主线程连续占用 > 50ms 的任务 | 单任务 < 50ms | Lab | 诊断用 |
 | **SI** | Speed Index | 首屏内容填充速度（视觉进度） | < 3.4s | 仅 Lab | 辅助 |
 
-> **记法**：`TTFB < 800ms` → `FCP < 1.8s` → `LCP < 2.5s`，形成一条**时间轴递进**：字节到了（TTFB）→ 有东西了（FCP）→ 主要内容齐了（LCP）。三个数字刚好是 0.8 / 1.8 / 2.5，很好记。
+> **记法**：`TTFB ≤ 800ms` → `FCP ≤ 1.8s` → `LCP ≤ 2.5s` 是时间轴上的递进：字节到了 → 有东西了 → 主要内容齐了。
 
 ### 1.4 一张时间轴串起来
 
-```
-导航开始
-  │
-  ├─ DNS 查询 ─┐
-  ├─ TCP 握手  ├── 这些加起来 ≈ TTFB 的一部分
-  ├─ TLS 握手  │
-  ├─ 请求发送  │
-  └─ 等待响应 ─┘
-  ▼
-TTFB（首字节）
-  │
-  ├─ HTML 下载 + 解析
-  ├─ CSS 下载（阻塞渲染）
-  ├─ JS 下载 + 执行（可能阻塞解析）
-  ▼
-FCP（首次内容绘制）   ← 用户第一次"看到东西"
-  │
-  ├─ 图片/字体/大块内容加载
-  ▼
-LCP（最大内容绘制）   ← 用户认为"主要内容出来了"
-  │
-  ├─ 主线程空闲下来
-  ▼
-TTI（可交互）        ← 注意：TTI 严格在 LCP 之后，也可能更晚
+```mermaid
+flowchart LR
+  N["导航开始"] --> T["TTFB<br/>首字节"]
+  T --> F["FCP<br/>首次内容绘制"]
+  F --> L["LCP<br/>最大内容绘制"]
+  L -.-> I["TTI<br/>通常在 LCP 之后（Lighthouse 10 已移除）"]
 ```
 
 ### 1.5 常见坑
@@ -105,25 +86,23 @@ TTI（可交互）        ← 注意：TTI 严格在 LCP 之后，也可能更�
 
 ### 1.6 30 秒版
 
-> "主要分三类：加载类看 TTFB、FCP、LCP，LCP 是核心；交互类以前看 FID，现在已经被 INP 取代，阈值 200ms；稳定类看 CLS，阈值 0.1。这三项就是 Core Web Vitals。实验室还会看 TBT 和长任务做诊断。评分口径是 p75。"
+- 加载：TTFB 800ms → FCP 1.8s → LCP 2.5s，依次递进。
+- 交互：FID 已被 INP 取代，阈值 200ms。
+- 稳定：CLS 0.1。
+- LCP / INP / CLS 即 Core Web Vitals；评分按 p75；实验室另看 TBT 与长任务。
 
 ### 1.7 2 分钟版
 
-> "我会把指标分三组来记。
->
-> **第一组是加载**。TTFB 是首字节时间，涵盖 DNS、TCP、TLS 和服务端处理，良好线 800ms；FCP 是第一个文本或图片像素出现，1.8s；LCP 是视口内最大内容元素绘制完，2.5s。这三个刚好是递进关系，如果 TTFB 就超了，后面全都会拖。
->
-> **第二组是交互**。以前是 FID，只测首次输入的排队延迟，而且不含处理和渲染时间，所以它测不出'点了没反应'的真实体感。2024 年 3 月 Google 用 INP 替代了它，INP 覆盖整个生命周期里所有交互，取接近 98 分位的最差交互，从输入一直算到下一帧画出来，阈值 200ms。实验室里用 TBT 做代理，就是所有长任务超出 50ms 的部分累加，200ms 以内算好。
->
-> **第三组是视觉稳定**，就是 CLS，0.1 以内。它算的是元素意外位移的累积，用影响面积比例乘移动距离比例，而且只算没有用户输入触发的偏移，还按 5 秒会话窗口分组，取最大的那一段。
->
-> 除了这三组，TTFB 用来定位网络和服务端问题，TBT 用来找长任务，TTI 已经被 Lighthouse 10 移除了不用再提。所有指标按 p75 评分，因为平均值会被网络好的用户稀释。"
+- 分三组：加载（TTFB / FCP / LCP）、交互（INP）、稳定（CLS）。
+- 三组是递进关系：TTFB 超了，FCP、LCP 都会被拖后；FCP 与 LCP 差距大，说明主内容加载慢。
+- FID 只测首次输入的排队延迟，不含处理与渲染；INP 覆盖全部交互，取接近 98 分位。
+- CLS 只算非用户输入触发的偏移，按 5 秒会话窗口取最大值。
+- 评分按 p75；TTI 已从 Lighthouse 10 移除，实验室诊断看 TBT 与长任务。
 
 ### 1.8 追问
 
 | 追问 | 要点 |
 |---|---|
-| LCP 和 FCP 有什么区别？ | FCP 是第一个像素，LCP 是最大内容块；二者差距大说明关键内容加载慢（图片/字体/懒渲染） |
 | 为什么 TTI 被移除？ | 算法复杂（基于 5s 无长任务窗口）、不稳定、与 INP 语义重叠 |
 | INP 和 FID 最本质的区别？ | FID 只测输入排队延迟（不含处理+渲染），只测首次；INP 测全生命周期所有交互的端到端延迟 |
 | 为什么用 p75 不用平均？ | 平均值被快用户稀释；p75 意味着 75% 的访问是好的，Google 评分口径 |
@@ -134,7 +113,7 @@ TTI（可交互）        ← 注意：TTI 严格在 LCP 之后，也可能更�
 
 ## 2. LCP 深度拆解（最该讲透的指标）
 
-面试官问指标，如果你能把 LCP **拆成四段并对应到手段**，这题就满分了——因为它证明你懂"指标 → 归因 → 手段"的闭环。
+LCP 拆成四段后，每一段都能对应到具体优化手段，形成"指标 → 归因 → 手段"的闭环。
 
 ### 2.1 LCP 元素是谁
 
@@ -146,16 +125,9 @@ TTI（可交互）        ← 注意：TTI 严格在 LCP 之后，也可能更�
 4. 通过 `url()` 加载背景图的元素（**注意：`background-image` 用 CSS 渐变不算**）
 5. **包含文本节点**的块级元素（`<p>`、`<h1>`、`<div>` 等）
 
-> 注意：LCP 只考虑**首屏视口内**的元素。而且随着页面加载，如果更大的元素出现，LCP 会被更新——直到用户第一次交互或页面隐藏为止。
+> LCP 只考虑**首屏视口内**的元素；更大的元素出现会更新 LCP，直到用户首次按键/点击或页面隐藏。
 
-### 2.2 四段拆解（这是核心）
-
-```
-|<---------------------------- LCP 总时间 ---------------------------->|
-|                                                                    |
-|-- TTFB --|-- 资源加载延迟 --|-- 资源加载时长 --|-- 元素渲染延迟 --|
-   首字节      发现资源到开始请求    下载耗时        下载完到画出来
-```
+### 2.2 四段拆解
 
 | 阶段 | 定义 | 典型病因 | 对应手段 |
 |---|---|---|---|
@@ -167,30 +139,30 @@ TTI（可交互）        ← 注意：TTI 严格在 LCP 之后，也可能更�
 ### 2.3 一段能定位问题的代码
 
 ```js
-// LCP 归因：用 PerformanceObserver 拿到四段耗时，直接知道该优化哪一段
+// LCP 归因：navigation + resource timing 还原四段
 new PerformanceObserver((list) => {
-  const entries = list.getEntries()
-  const last = entries[entries.length - 1]
+  const lcp = list.getEntries().at(-1)
+  const nav = performance.getEntriesByType('navigation')[0]
+  const res = lcp.url
+    ? performance.getEntriesByType('resource').find((e) => e.name === lcp.url)
+    : null
 
-  const lcp = last.startTime
-  const ttfb = performance.getEntriesByType('navigation')[0]?.responseStart ?? 0
+  const ttfb = nav?.responseStart ?? 0
+  const requestStart = Math.max(ttfb, res ? res.requestStart || res.startTime : 0)
+  const responseEnd = Math.max(requestStart, res ? res.responseEnd : 0)
+  const renderTime = Math.max(responseEnd, lcp.startTime)
 
-  // 资源加载延迟 = 资源请求开始 - TTFB
-  const loadDelay = (last.loadTime || 0) - ttfb
-  // 资源加载时长 = 资源下载完 - 资源请求开始
-  const loadDuration = (last.loadTime || 0) && (last.renderTime || 0)
-    ? (last.loadTime || 0) - (last.loadTime || 0)   // 简化：见下方说明
-    : 0
-
-  console.log('LCP 元素', last.element, last.url)
-  console.log('LCP 时间', lcp.toFixed(0), 'ms')
-  console.log('TTFB', ttfb.toFixed(0), 'ms')
-  console.log('资源加载延迟', loadDelay.toFixed(0), 'ms')
-  console.log('元素渲染延迟', (lcp - (last.loadTime || lcp)).toFixed(0), 'ms')
+  console.log({
+    element: lcp.element,
+    ttfb,
+    loadDelay: requestStart - ttfb,
+    loadDuration: responseEnd - requestStart,
+    renderDelay: renderTime - responseEnd,
+  })
 }, { type: 'largest-contentful-paint', buffered: true })
 ```
 
-> 上面第二段写得很随意，正式版应该用 `element-timing` 和 `resource-timing` 关联。更省事的做法是直接用官方 `web-vitals` 的 attribution 版本（见 7.2），它会直接告诉你四段分别是多少。
+> 分段口径与 web-vitals LCP attribution 一致：`requestStart` 缺失时退回 `startTime`，各段做单调钳制。文本类 LCP 没有 `url`，后三段退化为 `renderTime - ttfb`；跨域图片缺少 Timing-Allow-Origin 时 `renderTime` 会被粗化。精确分段直接用 7.2 的 attribution 版本。
 
 **判断口诀：**
 
@@ -202,7 +174,7 @@ new PerformanceObserver((list) => {
 
 | 坑 | 后果 | 修复 |
 |---|---|---|
-| 首屏图加 `loading="lazy"` | LCP 直接劣化 1~2s（浏览器延迟到布局后才去请求） | 首屏图不要 lazy，加 `fetchpriority="high"` |
+| 首屏图加 `loading="lazy"` | 浏览器推迟到布局后才请求，LCP 明显变差 | 首屏图不要 lazy，加 `fetchpriority="high"` |
 | 轮播图第一张是 `background-image` | 浏览器发现晚（CSSOM 解析后才知道） | 用 `<img>` + `preload` |
 | 用一个 2000px 大图在 375px 屏上显示 | 加载时长远超预期 | `srcset` + `sizes` |
 | 首屏内容靠 JS 渲染 | 资源加载延迟会膨胀到"JS 下载+执行完" | SSR / 骨架屏 / 关键内容直出 |
@@ -212,10 +184,10 @@ new PerformanceObserver((list) => {
 
 | 追问 | 要点 |
 |---|---|
-| LCP 会一直更新吗？ | 会，直到用户首次交互或页面隐藏；取最后一次 |
+| LCP 会一直更新吗？ | 会，直到用户首次按键/点击或页面隐藏；取最后一次 |
 | 视频算 LCP 吗？ | 只看 `poster`，不把视频帧算进去 |
 | CLS 和 LCP 冲突怎么办？ | 图片不写宽高比会撑开布局 → 既伤 CLS 也可能推迟 LCP；必须写 `width/height` 或 `aspect-ratio` |
-| LCP 2.5s 是怎么定的？ | Google 基于大量真实用户数据，取"75% 用户感觉良好"的经验阈值 |
+| LCP 2.5s 是怎么定的？ | 基于用户感知研究定的良好线，评分时按站点 p75 统计 |
 
 ---
 
@@ -223,14 +195,14 @@ new PerformanceObserver((list) => {
 
 ### 3.1 一句话结论
 
-**INP 度量的是"用户每一次交互，从手指落下到屏幕画出下一帧，一共等了多久"，取整个访问过程中接近最差的那次（约 98 分位）。**
+**INP 度量用户每次交互从输入到下一帧绘制完成的耗时，取整个访问过程中接近最差的一次（约 98 分位）。**
 
 ### 3.2 为什么 FID 不够
 
-FID 只测 **首次** 交互的 **输入延迟（input delay）**，即"事件从排队到开始执行"的时间。它有三处硬伤：
+FID 只测 **首次** 交互的 **输入延迟（input delay）**，即"事件从排队到开始执行"的时间。它有三处局限：
 
 1. **只测第一次交互** —— 用户后面点了一百次，卡不卡它不管
-2. **不含处理时间** —— 事件处理器跑了 800ms，FID 仍然是 0
+2. **不含处理时间** —— 事件处理器跑了 800ms，FID 仍然很小
 3. **不含渲染时间** —— 处理完了但画面到下一帧才更新，FID 看不到
 
 ```
@@ -251,11 +223,7 @@ INP 量完整三段：  |██████████████████�
 
 ### 3.4 阈值
 
-| 等级 | INP | 说明 |
-|---|---|---|
-| 良好 | **≤ 200ms** | 用户感觉"即时" |
-| 需改进 | 200 ~ 500ms | 能感到轻微延迟 |
-| 差 | **> 500ms** | 明显卡顿 |
+按 p75 分档：**≤ 200ms 良好，200 ~ 500ms 需改进，> 500ms 差**（与 5.4 同一套口径）。
 
 ### 3.5 怎么优化 INP（四个方向）
 
@@ -273,12 +241,12 @@ async function chunkedProcess(items, handle) {
   for (let i = 0; i < items.length; i += CHUNK) {
     items.slice(i, i + CHUNK).forEach(handle)
     // 让出主线程，浏览器可以处理输入和渲染
-    await scheduler.yield?.() ?? new Promise(r => setTimeout(r, 0))
+    await (globalThis.scheduler?.yield?.() ?? new Promise((r) => setTimeout(r, 0)))
   }
 }
 ```
 
-> `scheduler.yield()` 是新的调度 API（Chrome 129+），语义比 `setTimeout(0)` 好：它会**优先恢复本任务**，而不是排到所有任务后面。面试提到是加分项。
+> `scheduler.yield()` 会让出主线程，但优先恢复当前任务，语义优于 `setTimeout(0)`。
 
 ### 3.6 常见坑
 
@@ -287,7 +255,6 @@ async function chunkedProcess(items, handle) {
 | 认为 INP 只和 JS 有关 | 渲染延迟也算，DOM 太多、布局复杂同样会差 |
 | 用防抖"优化 INP" | 防抖只是减少触发次数，单次仍然卡；关键是把单次做快 |
 | 忽略"呈现延迟" | 回调只跑了 20ms，但改了 3000 个 DOM，渲染排了 300ms |
-| 在 RUM 里算平均值 | INP 官方口径本身已是高分位，自己再平均就失真 |
 
 ### 3.7 追问
 
@@ -304,7 +271,7 @@ async function chunkedProcess(items, handle) {
 
 ### 4.1 一句话结论
 
-**CLS 衡量"页面元素在你没预期的时候突然挪位置"的严重程度**，用「影响比例 × 移动距离比例」累加，按 5 秒会话窗口取最大值。
+**CLS 衡量页面元素在非预期时发生位移的严重程度**，单次偏移得分为「影响比例 × 距离比例」，按 5 秒会话窗口取最大值。
 
 ### 4.2 计算方式
 
@@ -317,32 +284,36 @@ layout shift score = impact fraction × distance fraction
 - **impact fraction（影响比例）**：受影响区域（元素移动前后的并集）占视口的比例
 - **distance fraction（距离比例）**：元素移动的最大距离 / 视口最大边（高或宽取大）
 
-**CLS 不是简单相加**：按"会话窗口"分组 —— 相邻偏移间隔 < 1s 且总时长 ≤ 5s 视为一个窗口，取**最大窗口的和**。
+**CLS 不是简单相加**：按"会话窗口"分组 —— 相邻偏移间隔 < 1s 且窗口总时长 < 5s 视为一个窗口，取**最大窗口的和**。
 
 ```js
 // 手写 CLS 计算，理解口径
-let sessionValue = 0
+let cls = 0
 let sessionEntries = []
 
 new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) {
     // 关键：只有"非用户输入触发"的偏移才算
     if (entry.hadRecentInput) continue
-    sessionEntries.push(entry)
 
     const first = sessionEntries[0]
     const last = sessionEntries[sessionEntries.length - 1]
-
-    // 距上一个偏移 > 1s 或窗口 > 5s，就开新窗口
-    if (last.startTime - first.startTime > 5000) {
+    // 与上一次偏移间隔 ≥ 1s，或窗口总长 ≥ 5s，就开新窗口
+    if (
+      !first ||
+      entry.startTime - last.startTime >= 1000 ||
+      entry.startTime - first.startTime >= 5000
+    ) {
       sessionEntries = [entry]
+    } else {
+      sessionEntries.push(entry)
     }
-    sessionValue = sessionEntries.reduce((s, e) => s + e.value, 0)
+    cls = Math.max(cls, sessionEntries.reduce((sum, e) => sum + e.value, 0))
   }
 }, { type: 'layout-shift', buffered: true })
 ```
 
-> `hadRecentInput === true` 的偏移**不计入 CLS**：用户点了按钮弹出弹窗导致内容下移，这是预期行为，不算你的锅。这条规则很多人不知道，是加分点。
+> `hadRecentInput === true` 的偏移不计入 CLS：用户点击后 500ms 内引起的位移属于预期行为。
 
 ### 4.3 五大成因与修法
 
@@ -359,17 +330,17 @@ new PerformanceObserver((list) => {
 | 坑 | 说明 |
 |---|---|
 | 只写 CSS 宽高不写 HTML 属性 | HTML `width/height` 属性才能让浏览器在**解析阶段**就预留空间，CSS 要等 CSSOM 解析完 |
-| 用 `transform` 位移以为能消除 CLS | 不行。`transform` 的位移**也算布局偏移**（因为它改变的是视觉位置），只是不触发 Layout |
+| 用 `top`/`left` 做位移动画 | 改变布局位置，会计入 CLS；改用 `transform` / `opacity` 合成动画 |
 | 忽略字体导致的 CLS | 中文字体文件大，`swap` 后字体到达必然重排；用 `size-adjust` + 系统字体度量匹配 |
-| 认为 CLS 只在首屏 | 滚动触发的偏移也算，懒加载图片没预留高度是重灾区 |
+| 认为 CLS 只在首屏 | 滚动触发的偏移也算，懒加载图片没预留高度是常见来源 |
 
 ### 4.5 追问
 
 | 追问 | 要点 |
 |---|---|
 | 为什么用会话窗口而不是总和？ | 避免"页面开很久、零散偏移累积"把分数堆爆；5 秒窗口更贴近"一次交互体验" |
-| 用户点击导致的偏移算吗？ | 不算（`hadRecentInput`），但**点击后 500ms 内**的偏移仍可能被判为预期，超过也算 |
-| `transform: translateY` 会算 CLS 吗？ | 算。它改变视觉位置，浏览器判定为偏移；如果用 `top/left` 则还会触发 Layout，更差 |
+| 用户点击导致的偏移算吗？ | 不算（`hadRecentInput`）。输入后 500ms 内的偏移被标记；超过 500ms 才出现的插入内容仍然计入 |
+| `transform: translateY` 会算 CLS 吗？ | 不算。`transform` / `opacity` 是合成动画，不触发 layout 也不产生布局偏移；`top` / `left` 动画才会 |
 | CLS 能到 0 吗？ | 很难，SSR/字体/图片都可能带小幅偏移；< 0.1 就算良好 |
 
 ---
@@ -378,7 +349,7 @@ new PerformanceObserver((list) => {
 
 ### 5.1 一句话结论
 
-**Core Web Vitals 是 Google 定义的三项"核心用户体验"指标 —— LCP（加载）、INP（交互）、CLS（稳定）—— 用于统一衡量页面体验，并作为搜索排名的一个信号。**
+**Core Web Vitals 是三项核心体验指标：LCP（加载）、INP（交互）、CLS（稳定），同时是 Google 搜索排名的一个轻量信号。**
 
 ### 5.2 三根支柱
 
@@ -392,15 +363,14 @@ flowchart TD
   C --> C1["手段：预留尺寸/字体策略/固定占位"]
 ```
 
-### 5.3 演进历史（体现你关注标准变化）
+### 5.3 演进历史
 
 | 时间 | 变化 |
 |---|---|
 | 2020.5 | 提出 Core Web Vitals：LCP、FID、CLS |
 | 2021.6 | 纳入 Google 搜索排名信号（Page Experience） |
-| 2021 | CLS 计算口径调整（引入 session window） |
-| **2024.3** | **FID 正式退役，INP 成为核心指标** |
-| 2025 | 讨论中加入更多"软性指标"（如 smoothness / responsiveness 细化），核心三项未变 |
+| 2021 | CLS 引入 session window 计算口径 |
+| **2024.3** | **FID 退役，INP 成为核心指标** |
 
 ### 5.4 评分口径
 
@@ -414,19 +384,23 @@ flowchart TD
 
 - 三项**全部**达到"良好"，页面才算"通过 CWV"
 - 数据来源：Chrome UX Report（CrUX，真实 Chrome 用户 28 天滚动数据）
+- 阈值与 `web-vitals` 的 `LCPThresholds`（2500/4000）、`INPThresholds`（200/500）、`CLSThresholds`（0.1/0.25）一致
 
 ### 5.5 常见坑
 
 | 坑 | 说明 |
 |---|---|
-| 说"CWV 直接影响排名" | 它是**轻微的**排名信号（tie-breaker 级别），内容相关性权重远高于它。说"有影响但不是决定性"更准确 |
+| 说"CWV 直接影响排名" | 它是**轻微的**排名信号（tie-breaker 级别），内容相关性权重远高于它 |
 | 说 CWV 有 6 项 | 只有 3 项。FCP/TTFB/TBT 是诊断指标，不是 CWV |
 | 用 Lighthouse 分数当 CWV | Lighthouse 是实验室模拟，CWV 官方口径是现场数据 p75 |
 | 认为 CWV 好就等于体验好 | 它不覆盖可访问性、动画流畅度、内存占用 |
 
 ### 5.6 30 秒版
 
-> "Core Web Vitals 是 Google 定义的三项核心体验指标：LCP 衡量主要内容多快出现，2.5 秒内算好；INP 衡量交互响应，从点击到下一帧绘制，200 毫秒内算好，它在 2024 年 3 月取代了原来的 FID；CLS 衡量视觉稳定性，0.1 以内算好。评分按 p75 分三档，三项都达标才算通过。它是搜索排名的一个轻微信号，不是决定性的。"
+- CWV = LCP（加载）、INP（交互）、CLS（稳定），三类各取一个代表。
+- 评分按 p75 分三档，三项全部良好才算通过（阈值见 5.4）。
+- INP 于 2024.3 取代 FID；FCP / TTFB / TBT 是诊断指标，不属于 CWV。
+- 它是 Page Experience 的轻量排名信号，不是决定性因素。
 
 ### 5.7 追问
 
@@ -435,21 +409,21 @@ flowchart TD
 | CWV 影响 SEO 吗？ | 是 Page Experience 的一部分，权重较轻；内容质量仍是主导 |
 | 怎么查自己站的 CWV？ | PageSpeed Insights（含 CrUX 现场数据）、Search Console 的 Core Web Vitals 报告、自建 RUM |
 | 三项冲突时优先哪个？ | 通常 LCP 优先（影响最大、最容易被感知）；但电商类 INP 权重也高 |
-| CrUX 数据没有我的站怎么办？ | 流量不足时无数据；用自建 RUM 采样替代 |
+| CrUX 数据里没有目标站点怎么办？ | 流量不足时无数据；用自建 RUM 采样替代 |
 
 ---
 
 ## 6. 其他指标：TTFB / FCP / TBT / TTI
 
-| 指标 | 精确定义 | 阈值 | 怎么优化 |
-|---|---|---|---|
-| **TTFB** | `responseStart - navigationStart`，含 DNS、TCP、TLS、请求排队、服务端处理、首字节传输 | < 800ms | CDN 边缘缓存、减少重定向（每个 301 加一次 RTT）、服务端缓存/数据库索引、HTTP/2+、TLS1.3、`preconnect` |
-| **FCP** | 首个文本或图片像素绘制 | < 1.8s | 内联关键 CSS、减少阻塞脚本、`font-display`、避免 JS 渲染首屏 |
-| **TBT** | FCP 到 TTI 之间，所有长任务（>50ms）超出 50ms 部分之和 | < 200ms | 拆长任务、代码分割、延后非关键 JS、Worker |
-| **TTI** | 从 FCP 开始，向前找 5s 内无长任务且无 2 个以上并行请求的窗口 | < 3.8s | （已被 Lighthouse 10 移除，用 TBT 代替） |
-| **长任务** | 主线程连续执行 > 50ms 的任务 | 单任务 < 50ms | 切片、Worker、`requestIdleCallback` |
+| 指标 | 精确定义 | 怎么优化 |
+|---|---|---|
+| **TTFB** | `responseStart - startTime`，含 DNS、TCP、TLS、请求排队、服务端处理、首字节传输 | CDN 边缘缓存、减少重定向（每个 301 加一次 RTT）、服务端缓存/数据库索引、HTTP/2+、TLS1.3、`preconnect` |
+| **FCP** | 首个文本或图片像素绘制 | 内联关键 CSS、减少阻塞脚本、`font-display`、避免 JS 渲染首屏 |
+| **TBT** | FCP 到 TTI 之间，所有长任务（>50ms）超出 50ms 部分之和 | 拆长任务、代码分割、延后非关键 JS、Worker |
+| **TTI** | 在 FCP 与 DOMContentLoaded 之后，找到连续 5s 无长任务、并行 GET 请求 ≤ 2 的静默窗口，取窗口起点 | Lighthouse 10 已移除，用 TBT 代替 |
+| **长任务** | 主线程连续执行 > 50ms 的任务 | 切片、Worker、`requestIdleCallback` |
 
-> **TTFB 的一个细节**：`responseStart` 与 `firstByte` 的差异在 HTTP/2 下会体现为"服务器处理完到客户端收到"的延迟。如果 TTFB 高但服务端日志显示处理只要 20ms，问题常在 CDN 回源或 TLS。
+> TTFB 高但服务端日志显示处理只要 20ms 时，问题通常在 CDN 回源、TLS 握手或重定向链。
 
 ---
 
@@ -467,7 +441,7 @@ function report(metric) {
     value: Math.round(metric.name === 'CLS' ? metric.value * 1000 : metric.value),
     rating: metric.rating,
     id: metric.id,             // 同一次页面加载的唯一 ID，用于关联
-    navigationType: metric.navigationType,  // navigate / reload / back-forward
+    navigationType: metric.navigationType,  // navigate / reload / back-forward 等
   })
 }
 
@@ -477,7 +451,7 @@ onCLS(report)
 onTTFB(report)
 onFCP(report)
 
-// 关键：页面隐藏时统一上报，避免多次请求
+// 页面隐藏时统一上报，避免多次请求
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && queue.length) {
     navigator.sendBeacon('/api/perf', JSON.stringify({
@@ -489,9 +463,9 @@ document.addEventListener('visibilitychange', () => {
 })
 ```
 
-> 为什么用 `visibilitychange` + `sendBeacon`：`unload` / `beforeunload` 在移动端不可靠（尤其 iOS 和 bfcache），`fetch` 在页面销毁时会被取消，`sendBeacon` 由浏览器保证发送。
+> 上报时机与传输方式见 8.4：`visibilitychange` + `sendBeacon` 是页面销毁阶段仍能发出的组合。
 
-### 7.2 归因版：直接告诉你要优化哪一段
+### 7.2 归因版：定位瓶颈分段
 
 ```js
 import { onLCP, onINP, onCLS } from 'web-vitals/attribution'
@@ -499,7 +473,8 @@ import { onLCP, onINP, onCLS } from 'web-vitals/attribution'
 onLCP(({ value, attribution }) => {
   // attribution 直接给出四段耗时
   console.log({
-    target: attribution.target,                     // LCP 元素选择器
+    element: attribution.element,                   // LCP 元素选择器
+    url: attribution.url,
     timeToFirstByte: attribution.timeToFirstByte,
     resourceLoadDelay: attribution.resourceLoadDelay,
     resourceLoadDuration: attribution.resourceLoadDuration,
@@ -510,10 +485,11 @@ onLCP(({ value, attribution }) => {
 onINP(({ value, attribution }) => {
   console.log({
     interactionTarget: attribution.interactionTarget,
+    interactionType: attribution.interactionType,
     inputDelay: attribution.inputDelay,
     processingDuration: attribution.processingDuration,
     presentationDelay: attribution.presentationDelay,
-    longestScript: attribution.longestScript,       // 罪魁脚本
+    longAnimationFrame: attribution.longAnimationFrameEntries.at(-1),
   })
 })
 
@@ -525,17 +501,15 @@ onCLS(({ value, attribution }) => {
 })
 ```
 
-**这段代码的价值**：线上采集时把 attribution 一起上报，你就能直接说"这次 LCP 慢是因为 `resourceLoadDelay` 占了 1.8s，那个图是在 JS 里插入的"，而不是拿着原始指标猜。
+把 attribution 一起上报，告警里能直接给出瓶颈分段，而不是只有总时长。
 
 ### 7.3 手动观测长任务
 
 ```js
 new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) {
-    if (entry.duration > 50) {
-      // 上报长任务，用于定位 INP 元凶
-      report({ type: 'longtask', duration: entry.duration, name: entry.name })
-    }
+    // longtask 的判定标准就是 > 50ms，无需再过滤
+    report({ type: 'longtask', duration: entry.duration, name: entry.name })
   }
 }).observe({ type: 'longtask', buffered: true })
 ```
@@ -546,7 +520,7 @@ new PerformanceObserver((list) => {
 
 ### 8.1 一句话结论
 
-**监控 = 三类数据（性能 / 错误 / 行为）的「采集 → 上报 → 聚合 → 告警 → 归因」闭环**。目的不是"存数据"，而是"出问题时 5 分钟内知道是哪次发布、哪个页面、什么设备"。
+**监控 = 性能 / 错误 / 行为三类数据的「采集 → 上报 → 聚合 → 告警 → 归因」闭环**，最终要能定位到发布版本、页面、设备。
 
 ### 8.2 体系分解
 
@@ -571,7 +545,7 @@ flowchart TD
 
 | 采什么 | 怎么采 |
 |---|---|
-| CWV 五项 | `web-vitals` |
+| LCP / INP / CLS + TTFB / FCP | `web-vitals` |
 | 长任务 | `PerformanceObserver('longtask')` |
 | 资源耗时 | `PerformanceObserver('resource')`，找出最慢的 10 个资源 |
 | 慢接口 | 包装 `fetch` / `axios` 拦截器，记录 > 1s 的请求 |
@@ -600,7 +574,7 @@ window.addEventListener('error', (e) => {
     lineno: e.lineno,
     colno: e.colno,
   })
-}, true)   // ← 必须 true，否则捕获不到资源错误
+}, true)   // 必须 true，否则捕获不到资源错误
 
 // ② 未处理的 Promise rejection
 window.addEventListener('unhandledrejection', (e) => {
@@ -630,20 +604,20 @@ app.config.errorHandler = (err, instance, info) => {
 - 停留时长：`visibilitychange` + 心跳
 - 转化漏斗：关键节点打点，后端做漏斗计算
 
-### 8.4 上报层的四个工程细节（这块最能体现深度）
+### 8.4 上报层的工程细节
 
 | 问题 | 方案 |
 |---|---|
-| **页面卸载丢数据** | `visibilitychange` + `sendBeacon`（不用 `unload`） |
-| **上报量太大** | 采样：错误 100% 采、性能按 session 采（如 10%）、行为按需 |
+| **页面卸载丢数据** | `visibilitychange` + `sendBeacon`；`unload` / `beforeunload` 在 iOS 与 bfcache 下不可靠，`fetch` 在页面销毁时会被取消 |
+| **上报量太大** | 采样：错误 100% 采、性能按会话采（如 10%）、行为按需 |
 | **上报本身拖慢页面** | 批量 + 延迟（`requestIdleCallback`）+ 单独域名（避免占用主域连接数） |
 | **重复上报刷爆** | 相同 message + stack 指纹去重，同指纹 1 分钟内只报 1 次；客户端限流（如单页最多 20 条） |
 | **跨域脚本错误信息 `Script error.`** | `<script crossorigin="anonymous">` + 服务端 `Access-Control-Allow-Origin` |
 | **压缩后堆栈看不懂** | 上传 sourcemap 到监控平台（不要公开部署），或用 `source-map` 库还原 |
 
-### 8.5 告警与归因（从"能看"到"能查"）
+### 8.5 告警与归因
 
-**必备的分桶维度**（没有这些维度，数据等于没用）：
+**必备的分桶维度**（没有这些维度，数据无法归因）：
 
 ```
 appVersion / 构建 hash   ← 最重要：能定位到"哪次发布引入的"
@@ -673,35 +647,32 @@ isSpider / isTest
 | 纯性能 | PageSpeed Insights、WebPageTest、Lighthouse CI | 实验室分析、CI 卡口 |
 | 自建轻量 | `web-vitals` + 自建 Node 服务 + ClickHouse | 定制化强、成本低 |
 
-> 面试时给一个**混合方案**最稳：错误用 Sentry（成熟、sourcemap 处理完善），性能用自建 `web-vitals` 上报到自有接口（数据在自己手里，且可定制归因字段），行为用自研埋点 SDK。
+> 常见组合：错误用 Sentry（sourcemap 处理成熟），性能用自建 `web-vitals` 上报（数据自主、可加归因字段），行为用自研埋点 SDK。
 
 ### 8.7 常见坑
 
 | 坑 | 说明 |
 |---|---|
-| 只监控错误不监控性能 | 性能劣化没有"报错"，不会触发告警，悄悄流失用户 |
+| 只监控错误不监控性能 | 性能劣化没有"报错"，不会触发告警 |
 | 上报不带版本号 | 无法归因到发布 |
 | 用 `window.onerror` 而非 `addEventListener` | 会覆盖别人的处理器，且捕获不到资源错误 |
 | 资源错误用 `false`（冒泡阶段） | 资源错误不冒泡，必须捕获阶段 |
-| 没有采样 | 大流量下上报打爆自己的接口 |
-| sourcemap 公开部署 | 源码泄露（安全问题） |
 | 只看总量不看分桶 | "错误 1000 条"没意义，"某机型 900 条"才有意义 |
 
 ### 8.8 30 秒版
 
-> "监控我分三块：性能、错误、行为。性能用 web-vitals 采 CWV 和长任务，错误监听 window error、unhandledrejection、接口拦截和框架 errorHandler，行为做 PV 和关键路径埋点。上报用 sendBeacon 在 visibilitychange 时批量发，配合采样和去重；服务端按版本、页面、设备、网络分桶聚合，配阈值告警；错误用上传的 sourcemap 还原堆栈。核心目标是出问题能快速定位到哪次发布、哪个页面、什么设备。"
+- 三类数据：性能（web-vitals + 长任务）、错误（error 捕获阶段 / unhandledrejection / 接口 / 框架）、行为（PV、点击、漏斗）。
+- 上报统一走 `visibilitychange` + `sendBeacon`，配合采样、去重、独立域名（见 8.4）。
+- 服务端按 appVersion / 页面 / 机型 / 网络分桶聚合，按阈值告警。
+- sourcemap 上传监控平台，用于堆栈还原。
 
 ### 8.9 2 分钟版
 
-> "我把监控拆成三层：采集、上报、消费。
->
-> **采集**分三类数据。性能上用 web-vitals 采 LCP、INP、CLS、TTFB、FCP，再加长任务和慢接口；错误上四个来源必须全覆盖——`window.addEventListener('error')` 且用捕获阶段，这样能同时拿到 JS 错误和资源加载失败；`unhandledrejection` 拿未处理的 Promise；axios 拦截器拿接口错误；框架的 `errorHandler` 拿组件内错误。行为上做 PV、点击、停留和漏斗。
->
-> **上报**有几个细节容易踩：页面卸载时 fetch 会被取消，所以用 `visibilitychange` 加 `sendBeacon`；上报域名单独一个，避免占主域的连接数；要有采样，错误全采、性能按比例采；同指纹去重避免刷爆；跨域脚本要加 `crossorigin` 否则只能拿到 `Script error.`。
->
-> **消费**端最重要的是分桶维度。每条数据都带 appVersion、路由、机型、网络类型、地区。没有版本号，出问题你没法归因到哪次发布。告警我一般配错误率突增、白屏率、LCP p75 劣化、接口错误率这几条。
->
-> 工具上我倾向混合：错误用 Sentry，sourcemap 处理成熟；性能自建，数据自主且能加自定义归因字段；行为自研埋点 SDK。"
+- 采集：性能、错误、行为三类。错误四个来源必须全覆盖——`window.addEventListener('error')` 捕获阶段、`unhandledrejection`、axios 拦截器、框架 `errorHandler`。
+- 上报：`visibilitychange` + `sendBeacon`；独立域名、采样、指纹去重；跨域脚本加 `crossorigin`（细节见 8.4）。
+- 消费：每条数据带 appVersion、路由、机型、网络、地区；没有版本号就无法归因到发布。
+- 告警：错误率突增、白屏率、LCP p75 劣化、接口错误率。
+- 选型：错误 Sentry，性能自建，行为自研 SDK。
 
 ### 8.10 追问
 
@@ -726,34 +697,21 @@ isSpider / isTest
 | 4 | 指标报平均值 | 用 p75/p95 |
 | 5 | 只监控错误不监控性能 | 性能劣化无"报错"，必须独立监控 |
 | 6 | 资源错误监听不到 | `addEventListener('error', fn, true)` 捕获阶段 |
-| 7 | 用 `unload` 上报 | 移动端不可靠，用 `visibilitychange` + `sendBeacon` |
-| 8 | LCP 四段不分 | 不分段就无法对应手段（见 2.2） |
-| 9 | CLS 认为 `transform` 能规避 | `transform` 位移同样计入 CLS |
-| 10 | 上报无版本号 | 无法归因到发布，监控价值减半 |
+| 7 | 用 `unload` 上报 | iOS 与 bfcache 下不可靠，用 `visibilitychange` + `sendBeacon` |
+| 8 | 用 `top`/`left` 做位移动画 | 会计入 CLS；用 `transform` / `opacity` |
+| 9 | 上报无版本号 | 无法归因到发布 |
 
 ---
 
 ## 10. 答题模板
 
-### 「性能指标有哪些」——30 秒
-
-> "分三类三组：加载看 TTFB 800ms、FCP 1.8s、LCP 2.5s；交互看 INP 200ms，它是 2024 年取代 FID 的新指标；稳定看 CLS 0.1。前三项就是 Core Web Vitals，按 p75 评分。实验室还会看 TBT 和长任务做诊断。"
-
-### 「性能指标有哪些」——2 分钟
-
-> （用第 1.7 节 2 分钟版，讲三类 + 每组至少一个"为什么这么定"的细节 + 最后补 p75 口径和诊断指标。）
-
-### 「什么是 Core Web Vitals」——30 秒
-
-> （用第 5.6 节。）
-
-### 「前端监控方案」——30 秒
-
-> （用第 8.8 节。）
-
-### 「前端监控方案」——2 分钟
-
-> （用第 8.9 节。）
+| 题目 | 时长 | 结构 |
+|---|---|---|
+| 性能指标有哪些 | 30 秒 | 三类三组 + p75 口径（见 1.6） |
+| 性能指标有哪些 | 2 分钟 | 三类 + 每类一个"为什么这么定"的细节（见 1.7） |
+| 什么是 Core Web Vitals | 30 秒 | 三项定义 + 分档 + 排名权重（见 5.6） |
+| 前端监控方案 | 30 秒 | 采集 / 上报 / 消费三段（见 8.8） |
+| 前端监控方案 | 2 分钟 | 三类数据 + 上报细节 + 分桶维度（见 8.9） |
 
 ---
 
@@ -763,11 +721,11 @@ isSpider / isTest
 |---|---|---|
 | 1 | LCP 和 FCP 差很多说明什么？ | 主内容加载慢：图片太大、字体阻塞、内容靠 JS 渲染 |
 | 2 | TTFB 高怎么排查？ | 看 Network 的 Waiting；查 DNS/TLS、CDN 命中率、重定向、后端耗时 |
-| 3 | CLS 阈值为什么是 0.1？ | 经验值：0.1 约等于"用户能察觉但不困扰"的位移量级 |
+| 3 | CLS 阈值为什么是 0.1？ | 来自用户感知研究：0.1 以下的位移可察觉但不至于困扰；评分仍按 p75 统计 |
 | 4 | INP 200ms 对应多少帧？ | 60fps 下一帧 16.7ms，200ms≈12 帧，用户开始感到"不跟手" |
 | 5 | 长任务为什么定 50ms？ | 主线程被占 50ms 以上，浏览器就无法保证 60fps 响应 |
 | 6 | 怎么测首屏时间？ | 无标准；用 LCP 近似，或自定义"关键元素可见"埋点 |
-| 7 | 指标采集会影响性能吗？ | PerformanceObserver 开销极小；注意别在回调里做重活 |
+| 7 | 指标采集会影响性能吗？ | `PerformanceObserver` 是异步批量回调，开销可控；不要全量监听 `event`，也不要在回调里做重活 |
 | 8 | 怎么区分"慢"是前端还是后端？ | TTFB 正常 → 前端；TTFB 高 → 网络/后端 |
 | 9 | 用户网络差怎么优化？ | 分桶看指标；低端机降级（少图、关动画、简化骨架） |
 | 10 | 单页应用路由切换有指标吗？ | CWV 只覆盖首次加载；SPA 内可自测"路由切换可交互时间" |
@@ -780,7 +738,7 @@ isSpider / isTest
 | 17 | 怎么做用户行为回放？ | rrweb 录制 DOM 变更 + 输入脱敏 |
 | 18 | 监控数据存哪？ | 时序数据（指标）→ ClickHouse/Prometheus；明细（错误）→ ES；量大要采样和 TTL |
 | 19 | 怎么做多项目统一监控？ | 统一 SDK + 项目 ID 维度 + 统一上报协议 |
-| 20 | 怎么说服团队投入监控？ | 用一次真实故障的定位时长对比（无监控 2 天 vs 有监控 20 分钟） |
+| 20 | 怎么说服团队投入监控？ | 用历史故障的定位耗时对比说明 |
 
 ---
 
@@ -788,13 +746,13 @@ isSpider / isTest
 
 ```
 【三类指标】
-加载：TTFB 800ms → FCP 1.8s → LCP 2.5s（递进关系）
-交互：INP 200ms（2024.3 取代 FID；含输入+处理+渲染三段）
-稳定：CLS 0.1（影响比例 × 距离比例；5s 会话窗口；hadRecentInput 不算）
+加载：TTFB 800ms → FCP 1.8s → LCP 2.5s（递进）
+交互：INP 200ms（2024.3 取代 FID）
+稳定：CLS 0.1
 
 【CWV】
-LCP / INP / CLS 三项，p75 口径，三项全 Good 才算通过
-对 SEO 是轻微信号，不是决定性
+LCP / INP / CLS，p75 口径，三项全 Good 才通过
+SEO 上是轻量信号
 
 【LCP 四段】
 TTFB → 资源加载延迟（发现晚）→ 资源加载时长（太大）→ 元素渲染延迟（主线程忙）
