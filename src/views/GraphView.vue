@@ -166,6 +166,28 @@
                 class="doc-concepts"
                 >{{ doc.concepts.join(' / ') }}</span
               >
+              <span
+                v-if="doc.relatedCategories.length"
+                class="doc-related"
+                :title="
+                  doc.relatedCategories.map((item) => `${item.label} ${item.count}`).join(' / ')
+                "
+              >
+                关联分类：{{
+                  doc.relatedCategories
+                    .slice(0, 3)
+                    .map((item) => item.label)
+                    .join(' / ')
+                }}
+                <template v-if="doc.relatedCategories.length > 3">
+                  +{{ doc.relatedCategories.length - 3 }}
+                </template>
+              </span>
+              <span
+                v-else
+                class="doc-related muted"
+                >关联分类：仅本分类</span
+              >
             </li>
           </ul>
         </template>
@@ -243,9 +265,16 @@ interface CategoryEdgeView {
   width: number
 }
 
+interface RelatedCategory {
+  label: string
+  count: number
+}
+
 interface DocViewItem extends KnowledgeGraphNode {
   degree: number
   concepts: string[]
+  /** 跨分类关联指向的分类，按关联条数降序；本分类不计入 */
+  relatedCategories: RelatedCategory[]
 }
 
 const route = useRoute()
@@ -353,15 +382,36 @@ const selectedDocs = computed<DocViewItem[]>(() => {
   const data = graph.value
   if (!data || !selectedDir.value) return []
 
+  const nodeMap = new Map(data.nodes.map((node) => [node.id, node]))
+  const categoryOrder = new Map(data.categories.map((category, index) => [category.dir, index]))
+
   return data.nodes
     .filter((node) => node.category === selectedDir.value)
     .map((node) => {
       const incident = data.edges.filter((edge) => edge.a === node.id || edge.b === node.id)
       const concepts = new Set<string>()
+      const related = new Map<string, number>()
       for (const edge of incident) {
         for (const concept of edge.concepts) concepts.add(concept)
+
+        const neighbor = nodeMap.get(edge.a === node.id ? edge.b : edge.a)
+        if (!neighbor || neighbor.category === node.category) continue
+        related.set(neighbor.category, (related.get(neighbor.category) ?? 0) + 1)
       }
-      return { ...node, degree: incident.length, concepts: [...concepts].slice(0, 3) }
+
+      const relatedCategories = [...related.entries()]
+        .sort(
+          ([dirA, countA], [dirB, countB]) =>
+            countB - countA || (categoryOrder.get(dirA) ?? 0) - (categoryOrder.get(dirB) ?? 0),
+        )
+        .map(([dir, count]) => ({ label: categoryLabel(categoryTitleOf(dir)), count }))
+
+      return {
+        ...node,
+        degree: incident.length,
+        concepts: [...concepts].slice(0, 3),
+        relatedCategories,
+      }
     })
     .sort((a, b) => b.degree - a.degree || a.title.localeCompare(b.title))
 })
@@ -677,6 +727,18 @@ watch([graph, () => route.query.focus, () => route.query.category], applyQuery, 
   font-size: 12px;
   color: var(--text);
   opacity: 0.65;
+}
+
+.doc-related {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.doc-related.muted {
+  color: var(--text);
+  opacity: 0.5;
 }
 
 .category-list {
