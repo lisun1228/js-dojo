@@ -7,9 +7,46 @@
     :inert="!visible"
   >
     <div
+      ref="sidebarInner"
       class="sidebar-inner"
       :style="{ width: `${width}px` }"
     >
+      <!-- 定位当前文章：分组被收起或列表滚远时，一键回到当前条目 -->
+      <div
+        v-if="activeGroupTitle"
+        class="nav-tools"
+      >
+        <button
+          type="button"
+          class="locate-button"
+          title="定位到当前文章"
+          aria-label="定位到当前文章"
+          @click="locateCurrent"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="6"
+            />
+            <path d="M12 2v3" />
+            <path d="M12 19v3" />
+            <path d="M2 12h3" />
+            <path d="M19 12h3" />
+          </svg>
+        </button>
+      </div>
+
       <template
         v-for="entry in menus"
         :key="isNavGroup(entry) ? entry.title : entry.path"
@@ -103,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { isNavGroup, navMenus } from '../config/nav-menus'
 import { categories } from '../router/tutorials'
@@ -156,18 +193,44 @@ const route = useRoute()
 // 路由首次匹配完成前（START_LOCATION）为空，避免误展开「开始」分组
 const currentPath = computed(() => (route.matched.length ? route.path : ''))
 
+// 当前文章所属分类；首页、图谱等顶层链接没有可展开的父节点，定位按钮也不显示
+const activeGroupTitle = computed(() => {
+  const current = menus.find(
+    (entry) => isNavGroup(entry) && entry.items.some((item) => item.path === currentPath.value),
+  )
+  return current && isNavGroup(current) ? current.title : ''
+})
+
 watch(
-  currentPath,
-  (path) => {
-    if (!path) return
-    // 顶层单条链接没有分组，也就没有可展开的父节点
-    const current = menus.find(
-      (entry) => isNavGroup(entry) && entry.items.some((item) => item.path === path),
-    )
-    if (current && isNavGroup(current)) expanded.value[current.title] = true
+  activeGroupTitle,
+  (title) => {
+    if (title) expanded.value[title] = true
   },
   { immediate: true },
 )
+
+/* ---------- 定位当前文章 ---------- */
+
+const sidebarInner = ref<HTMLElement>()
+
+const locateCurrent = async () => {
+  const title = activeGroupTitle.value
+  if (!title) return
+  // 分组可能被手动收起，先展开再等条目渲染出来
+  expanded.value[title] = true
+  await nextTick()
+
+  const container = sidebarInner.value
+  const link = container?.querySelector<HTMLElement>('.tree-item .tree-link.router-link-active')
+  if (!container || !link) return
+
+  // 只滚动导航容器本身并居中：scrollIntoView 会连带把整页滚走
+  const box = container.getBoundingClientRect()
+  const rect = link.getBoundingClientRect()
+  const top = container.scrollTop + rect.top - box.top - (container.clientHeight - rect.height) / 2
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  container.scrollTo({ top: Math.max(0, top), behavior: reduceMotion ? 'auto' : 'smooth' })
+}
 
 /* ---------- 宽度拖拽 ---------- */
 
@@ -270,6 +333,55 @@ const onResizeKeydown = (event: KeyboardEvent) => {
   padding: 16px 12px;
   overflow-y: auto;
   box-sizing: border-box;
+}
+
+/* 定位按钮浮在导航右上角，不占一行：
+   高度为 0 + 负外边距抵掉容器内边距，后面的分组仍从原来的位置开始 */
+.nav-tools {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  height: 0;
+  margin: -16px -12px 16px;
+}
+
+.locate-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 2px 8px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  opacity: 0.4;
+  cursor: pointer;
+  transition:
+    opacity 0.2s,
+    background 0.2s,
+    color 0.2s;
+}
+
+.locate-button:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* 触屏抽屉里放大点击区，24px 太难点中 */
+.sidebar.drawer .locate-button {
+  width: 32px;
+  height: 32px;
+}
+
+.locate-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .menu-group {
